@@ -456,4 +456,4 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
       </div>
     </div>
   )
-}s
+}
