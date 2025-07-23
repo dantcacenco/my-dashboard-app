@@ -100,6 +100,24 @@ export default function CustomerProposalView({ proposal }: CustomerProposalViewP
           }
         })
 
+      // Send notification email to business
+      await fetch('/api/proposal-approval', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          proposal_id: proposal.id,
+          proposal_number: proposal.proposal_number,
+          proposal_title: proposal.title,
+          customer_name: proposal.customers.name,
+          customer_email: proposal.customers.email,
+          total_amount: proposal.total,
+          customer_notes: customerNotes,
+          action_type: 'approved'
+        })
+      })
+
       alert('Thank you! Your proposal has been approved. We will contact you soon to schedule the work.')
       setShowApprovalForm(false)
       
@@ -138,6 +156,24 @@ export default function CustomerProposalView({ proposal }: CustomerProposalViewP
             rejected_at: new Date().toISOString()
           }
         })
+
+      // Send notification email to business
+      await fetch('/api/proposal-approval', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          proposal_id: proposal.id,
+          proposal_number: proposal.proposal_number,
+          proposal_title: proposal.title,
+          customer_name: proposal.customers.name,
+          customer_email: proposal.customers.email,
+          total_amount: proposal.total,
+          customer_notes: customerNotes,
+          action_type: 'rejected'
+        })
+      })
 
       alert('We have received your response. Thank you for your time. We may contact you to discuss alternatives.')
       setShowRejectionForm(false)

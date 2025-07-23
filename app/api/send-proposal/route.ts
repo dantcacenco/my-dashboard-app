@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
+import { EMAIL_CONFIG, getEmailSender, getBusinessEmail } from '@/lib/config/email'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -56,8 +57,8 @@ export async function POST(request: NextRequest) {
         <body>
           <div class="container">
             <div class="header">
-              <h1>Service Pro</h1>
-              <p>Professional HVAC Services</p>
+              <h1>${EMAIL_CONFIG.company.name}</h1>
+              <p>${EMAIL_CONFIG.company.tagline}</p>
             </div>
             
             <div class="content">
@@ -85,9 +86,9 @@ export async function POST(request: NextRequest) {
             </div>
             
             <div class="footer">
-              <p><strong>Service Pro</strong></p>
-              <p>Phone: (555) 123-4567 | Email: info@servicepro.com</p>
-              <p>Professional HVAC Installation, Repair & Maintenance</p>
+              <p><strong>${EMAIL_CONFIG.company.name}</strong></p>
+              <p>Phone: ${EMAIL_CONFIG.company.phone} | Email: ${EMAIL_CONFIG.company.email}</p>
+              <p>${EMAIL_CONFIG.company.tagline}</p>
             </div>
           </div>
         </body>
@@ -96,18 +97,18 @@ export async function POST(request: NextRequest) {
 
     // Send email to customer
     const emailResult = await resend.emails.send({
-      from: 'Service Pro <onboarding@resend.dev>',
+      from: getEmailSender(),
       to: [to],
       subject: subject,
       html: htmlContent,
       text: message + `\n\nView your proposal: ${proposal_url}`
     })
 
-    // Send copy to sender if requested
+    // Send copy to business email if requested
     if (send_copy) {
       await resend.emails.send({
-        from: 'Service Pro <onboarding@resend.dev>',
-        to: ['dantcacenco@gmail.com'], // Replace with your business email
+        from: getEmailSender(),
+        to: [getBusinessEmail()],
         subject: `[COPY] ${subject}`,
         html: `
           <div style="background: #fef3c7; padding: 10px; margin-bottom: 20px; border-radius: 4px;">
