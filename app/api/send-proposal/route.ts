@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     // Send email to customer
     const emailResult = await resend.emails.send({
-      from: 'Service Pro <proposals@servicepro.com>',
+      from: 'Service Pro <onboarding@resend.dev>',
       to: [to],
       subject: subject,
       html: htmlContent,
