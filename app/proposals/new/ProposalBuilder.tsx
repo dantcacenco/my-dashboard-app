@@ -1,9 +1,10 @@
-/* eslint-disable react/no-unescaped-entities */
 'use client'
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation' 
+import { useRouter } from 'next/navigation'
+import CustomerSearch from './CustomerSearch'
+import ServiceSearch from './ServiceSearch'
 
 interface Customer {
   id: string
@@ -40,7 +41,8 @@ interface ProposalBuilderProps {
   userId: string
 }
 
-export default function ProposalBuilder({ customers, pricingItems, userId }: ProposalBuilderProps) {
+export default function ProposalBuilder({ customers: initialCustomers, pricingItems, userId }: ProposalBuilderProps) {
+  const [customers, setCustomers] = useState(initialCustomers)
   const [selectedCustomer, setSelectedCustomer] = useState('')
   const [proposalTitle, setProposalTitle] = useState('')
   const [proposalDescription, setProposalDescription] = useState('')
@@ -179,24 +181,13 @@ export default function ProposalBuilder({ customers, pricingItems, userId }: Pro
           <h2 className="text-xl font-semibold mb-4">Proposal Details</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Customer *
-              </label>
-              <select
-                value={selectedCustomer}
-                onChange={(e) => setSelectedCustomer(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              >
-                <option value="">Select customer...</option>
-                {customers.map(customer => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name} - {customer.email}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <CustomerSearch
+              customers={customers}
+              selectedCustomer={selectedCustomer}
+              onCustomerSelect={setSelectedCustomer}
+              onCustomersUpdate={setCustomers}
+              userId={userId}
+            />
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -222,7 +213,7 @@ export default function ProposalBuilder({ customers, pricingItems, userId }: Pro
               type="text"
               value={proposalTitle}
               onChange={(e) => setProposalTitle(e.target.value)}
-              placeholder='HVAC System Installation - Main Office'
+              placeholder="e.g., HVAC System Installation - Main Office"
               className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               required
             />
@@ -256,37 +247,11 @@ export default function ProposalBuilder({ customers, pricingItems, userId }: Pro
 
           {/* Add Item Section */}
           {showAddItem && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-medium mb-3">Add Service or Material</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pricingItems.map(item => (
-                  <div key={item.id} className="border border-gray-200 rounded-lg p-3 hover:bg-white cursor-pointer transition-colors">
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="font-medium text-sm">{item.name}</h4>
-                      <span className="text-xs bg-gray-100 px-2 py-1 rounded">{item.category}</span>
-                    </div>
-                    <p className="text-xs text-gray-600 mb-2">{item.description}</p>
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-green-600">${item.price.toFixed(2)}</span>
-                      <div className="space-x-1">
-                        <button
-                          onClick={() => addItem(item, false)}
-                          className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                        >
-                          Add
-                        </button>
-                        <button
-                          onClick={() => addItem(item, true)}
-                          className="px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700"
-                        >
-                          Add-on
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ServiceSearch
+              pricingItems={pricingItems}
+              onAddItem={addItem}
+              onClose={() => setShowAddItem(false)}
+            />
           )}
 
           {/* Current Items */}
