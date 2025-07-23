@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import CustomerSearch from './CustomerSearch'
 import ServiceSearch from './ServiceSearch'
+import AddNewPricingItem from './AddNewPricingItem'
 
 interface Customer {
   id: string
@@ -41,8 +42,9 @@ interface ProposalBuilderProps {
   userId: string
 }
 
-export default function ProposalBuilder({ customers: initialCustomers, pricingItems, userId }: ProposalBuilderProps) {
+export default function ProposalBuilder({ customers: initialCustomers, pricingItems: initialPricingItems, userId }: ProposalBuilderProps) {
   const [customers, setCustomers] = useState(initialCustomers)
+  const [pricingItems, setPricingItems] = useState(initialPricingItems)
   const [selectedCustomer, setSelectedCustomer] = useState('')
   const [proposalTitle, setProposalTitle] = useState('')
   const [proposalDescription, setProposalDescription] = useState('')
@@ -50,6 +52,7 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
   const [taxRate, setTaxRate] = useState(0.08) // 8% default tax rate
   const [isLoading, setIsLoading] = useState(false)
   const [showAddItem, setShowAddItem] = useState(false)
+  const [showAddNewPricing, setShowAddNewPricing] = useState(false)
   
   const router = useRouter()
   const supabase = createClient()
@@ -61,6 +64,13 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
   
   const taxAmount = subtotal * taxRate
   const total = subtotal + taxAmount
+
+  // Add new pricing item to the list
+  const handleNewPricingItemAdded = (newItem: PricingItem) => {
+    setPricingItems([...pricingItems, newItem])
+    setShowAddNewPricing(false)
+    setShowAddItem(true) // Go back to the service search
+  }
 
   // Add item to proposal
   const addItem = (pricingItem: PricingItem, isAddon: boolean = false) => {
@@ -244,12 +254,28 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
             </button>
           </div>
 
+          {/* Add New Pricing Item Section */}
+          {showAddNewPricing && (
+            <AddNewPricingItem
+              onPricingItemAdded={handleNewPricingItemAdded}
+              onCancel={() => {
+                setShowAddNewPricing(false)
+                setShowAddItem(true) // Go back to service search
+              }}
+              userId={userId}
+            />
+          )}
+
           {/* Add Item Section */}
-          {showAddItem && (
+          {showAddItem && !showAddNewPricing && (
             <ServiceSearch
               pricingItems={pricingItems}
               onAddItem={addItem}
               onClose={() => setShowAddItem(false)}
+              onShowAddNew={() => {
+                setShowAddItem(false)
+                setShowAddNewPricing(true)
+              }}
             />
           )}
 

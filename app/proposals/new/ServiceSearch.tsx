@@ -15,9 +15,10 @@ interface ServiceSearchProps {
   pricingItems: PricingItem[]
   onAddItem: (item: PricingItem, isAddon: boolean) => void
   onClose: () => void
+  onShowAddNew: () => void
 }
 
-export default function ServiceSearch({ pricingItems, onAddItem, onClose }: ServiceSearchProps) {
+export default function ServiceSearch({ pricingItems, onAddItem, onClose, onShowAddNew }: ServiceSearchProps) {
   const [searchTerm, setSearchTerm] = useState('')
 
   // Fuzzy search function with typo tolerance
@@ -104,14 +105,25 @@ export default function ServiceSearch({ pricingItems, onAddItem, onClose }: Serv
     <div className="mb-6 p-4 bg-gray-50 rounded-lg">
       <div className="flex justify-between items-center mb-3">
         <h3 className="font-medium">Add Service or Material</h3>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-gray-600"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onShowAddNew}
+            className="flex items-center px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add New
+          </button>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
       
       {/* Search Input */}

@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import CustomerSearch from '../../new/CustomerSearch'
-import ServiceSearch from '../../new/ServiceSearch'
+import CustomerSearch from '../../../new/CustomerSearch'
+import ServiceSearch from '../../../new/ServiceSearch'
+import AddNewPricingItem from '../../../new/AddNewPricingItem'
 
 interface Customer {
   id: string
@@ -69,8 +70,9 @@ interface ProposalEditorProps {
   userId: string
 }
 
-export default function ProposalEditor({ proposal, customers: initialCustomers, pricingItems, userId }: ProposalEditorProps) {
+export default function ProposalEditor({ proposal, customers: initialCustomers, pricingItems: initialPricingItems, userId }: ProposalEditorProps) {
   const [customers, setCustomers] = useState(initialCustomers)
+  const [pricingItems, setPricingItems] = useState(initialPricingItems)
   const [selectedCustomer, setSelectedCustomer] = useState(proposal.customers.id)
   const [proposalTitle, setProposalTitle] = useState(proposal.title)
   const [proposalDescription, setProposalDescription] = useState(proposal.description || '')
@@ -90,6 +92,7 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
   const [taxRate, setTaxRate] = useState(proposal.tax_rate)
   const [isLoading, setIsLoading] = useState(false)
   const [showAddItem, setShowAddItem] = useState(false)
+  const [showAddNewPricing, setShowAddNewPricing] = useState(false)
   
   const router = useRouter()
   const supabase = createClient()
@@ -101,6 +104,13 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
   
   const taxAmount = subtotal * taxRate
   const total = subtotal + taxAmount
+
+  // Add new pricing item to the list
+  const handleNewPricingItemAdded = (newItem: PricingItem) => {
+    setPricingItems([...pricingItems, newItem])
+    setShowAddNewPricing(false)
+    setShowAddItem(true) // Go back to the service search
+  }
 
   // Add item to proposal
   const addItem = (pricingItem: PricingItem, isAddon: boolean = false) => {
@@ -303,12 +313,28 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
             </button>
           </div>
 
+          {/* Add New Pricing Item Section */}
+          {showAddNewPricing && (
+            <AddNewPricingItem
+              onPricingItemAdded={handleNewPricingItemAdded}
+              onCancel={() => {
+                setShowAddNewPricing(false)
+                setShowAddItem(true) // Go back to service search
+              }}
+              userId={userId}
+            />
+          )}
+
           {/* Add Item Section */}
-          {showAddItem && (
+          {showAddItem && !showAddNewPricing && (
             <ServiceSearch
               pricingItems={pricingItems}
               onAddItem={addItem}
               onClose={() => setShowAddItem(false)}
+              onShowAddNew={() => {
+                setShowAddItem(false)
+                setShowAddNewPricing(true)
+              }}
             />
           )}
 
@@ -407,49 +433,6 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
               className="w-full px-4 py-2 text-blue-600 hover:text-blue-800 text-sm"
             >
               ← Back to Proposals
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="bg-blue-50 rounded-lg p-4">
-          <h3 className="font-medium text-blue-900 mb-2">Quick Stats</h3>
-          <div className="text-sm space-y-1">
-            <div className="flex justify-between">
-              <span>Total Items:</span>
-              <span>{proposalItems.length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Selected Items:</span>
-              <span>{proposalItems.filter(item => item.is_selected).length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Add-ons:</span>
-              <span>{proposalItems.filter(item => item.is_addon).length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Last Updated:</span>
-              <span>{new Date(proposal.updated_at).toLocaleDateString()}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="bg-white rounded-lg shadow p-4">
-          <h3 className="font-medium text-gray-900 mb-3">Actions</h3>
-          <div className="space-y-2">
-            <button
-              onClick={() => router.push(`/proposals/${proposal.id}`)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
-            >
-              View Proposal
-            </button>
-            <button
-              className="w-full px-3 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-              disabled
-            >
-              Send to Customer
-              <span className="text-xs block text-blue-200">(Coming Soon)</span>
             </button>
           </div>
         </div>
