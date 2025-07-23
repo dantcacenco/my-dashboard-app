@@ -90,8 +90,8 @@ export default function ServiceSearch({ pricingItems, onAddItem, onClose }: Serv
 
   const handleItemAdd = (item: PricingItem, isAddon: boolean) => {
     onAddItem(item, isAddon)
-    setSearchTerm('')
-    onClose()
+    setSearchTerm('') // Clear search but keep component open
+    // Don't call onClose() - keep the search open
   }
 
   const handleSuggestionClick = (suggestion: string) => {
