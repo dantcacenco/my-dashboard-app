@@ -22,12 +22,12 @@ interface ProposalData {
 }
 
 interface PageProps {
-  searchParams: {
+  searchParams: Promise<{
     status?: string
     startDate?: string
     endDate?: string
     search?: string
-  }
+  }>
 }
 
 export default async function ProposalsPage({ searchParams }: PageProps) {
@@ -39,6 +39,9 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
   if (userError || !user) {
     redirect('/auth/signin')
   }
+
+  // Await searchParams in Next.js 15
+  const params = await searchParams
 
   // Build query with filters
   let query = supabase
@@ -62,18 +65,18 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
     .order('created_at', { ascending: false })
 
   // Apply status filter
-  if (searchParams.status && searchParams.status !== 'all') {
-    query = query.eq('status', searchParams.status)
+  if (params.status && params.status !== 'all') {
+    query = query.eq('status', params.status)
   }
 
   // Apply date range filter
-  if (searchParams.startDate) {
-    query = query.gte('created_at', new Date(searchParams.startDate).toISOString())
+  if (params.startDate) {
+    query = query.gte('created_at', new Date(params.startDate).toISOString())
   }
   
-  if (searchParams.endDate) {
+  if (params.endDate) {
     // Add 1 day to include the entire end date
-    const endDate = new Date(searchParams.endDate)
+    const endDate = new Date(params.endDate)
     endDate.setDate(endDate.getDate() + 1)
     query = query.lt('created_at', endDate.toISOString())
   }
@@ -97,8 +100,8 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
   // Apply search filter (client-side for simplicity)
   let filteredProposals = proposals || []
   
-  if (searchParams.search) {
-    const searchTerm = searchParams.search.toLowerCase()
+  if (params.search) {
+    const searchTerm = params.search.toLowerCase()
     filteredProposals = filteredProposals.filter(proposal =>
       proposal.proposal_number.toLowerCase().includes(searchTerm) ||
       proposal.title.toLowerCase().includes(searchTerm) ||
@@ -112,7 +115,7 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <ProposalsList 
           proposals={filteredProposals} 
-          searchParams={searchParams}
+          searchParams={params}
         />
       </div>
     </div>
