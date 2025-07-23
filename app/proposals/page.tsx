@@ -31,7 +31,7 @@ interface PageProps {
 }
 
 export default async function ProposalsPage({ searchParams }: PageProps) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // Check authentication
   const { data: { user }, error: userError } = await supabase.auth.getUser()
