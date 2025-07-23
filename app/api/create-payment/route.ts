@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
 
     // Define payment method types based on selection
     const paymentMethodTypes = payment_type === 'ach' 
-      ? ['us_bank_account'] 
-      : ['card']
+      ? ['us_bank_account' as const] 
+      : ['card' as const]
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
