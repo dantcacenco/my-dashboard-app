@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import SendProposal from './SendProposal'
 
 interface Customer {
   id: string
@@ -48,6 +49,7 @@ interface ProposalViewProps {
 
 export default function ProposalView({ proposal, userRole }: ProposalViewProps) {
   const [showPrintView, setShowPrintView] = useState(false)
+  const [showSendModal, setShowSendModal] = useState(false)
   const router = useRouter()
 
   const formatDate = (dateString: string) => {
@@ -427,11 +429,10 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
                       Edit Proposal
                     </Link>
                     <button
+                      onClick={() => setShowSendModal(true)}
                       className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                      disabled
                     >
                       Send to Customer
-                      <span className="block text-xs text-green-200">(Coming Soon)</span>
                     </button>
                   </>
                 )}
@@ -458,6 +459,21 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
             </div>
           </div>
         </div>
+
+        {/* Send Proposal Modal */}
+        {showSendModal && (
+          <SendProposal
+            proposalId={proposal.id}
+            proposalNumber={proposal.proposal_number}
+            customer={proposal.customers}
+            total={proposal.total}
+            onSent={() => {
+              setShowSendModal(false)
+              window.location.reload()
+            }}
+            onCancel={() => setShowSendModal(false)}
+          />
+        )}
       </div>
     </div>
   )
