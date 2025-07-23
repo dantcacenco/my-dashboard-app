@@ -106,8 +106,8 @@ export async function POST(request: NextRequest) {
     // Send copy to sender if requested
     if (send_copy) {
       await resend.emails.send({
-        from: 'Service Pro <proposals@servicepro.com>',
-        to: ['info@servicepro.com'], // Replace with your business email
+        from: 'Service Pro <onboarding@resend.dev>',
+        to: ['dantcacenco@gmail.com'], // Replace with your business email
         subject: `[COPY] ${subject}`,
         html: `
           <div style="background: #fef3c7; padding: 10px; margin-bottom: 20px; border-radius: 4px;">
