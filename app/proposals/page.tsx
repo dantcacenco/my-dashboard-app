@@ -18,7 +18,7 @@ interface ProposalData {
   status: string
   created_at: string
   updated_at: string
-  customers: Customer
+  customers: Customer // Single customer object, not array
 }
 
 interface PageProps {
@@ -54,7 +54,7 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
       status,
       created_at,
       updated_at,
-      customers (
+      customers!inner (
         id,
         name,
         email,
@@ -102,12 +102,15 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
   
   if (params.search) {
     const searchTerm = params.search.toLowerCase()
-    filteredProposals = filteredProposals.filter(proposal =>
-      proposal.proposal_number.toLowerCase().includes(searchTerm) ||
-      proposal.title.toLowerCase().includes(searchTerm) ||
-      proposal.customers.name.toLowerCase().includes(searchTerm) ||
-      proposal.customers.email.toLowerCase().includes(searchTerm)
-    )
+    filteredProposals = filteredProposals.filter(proposal => {
+      // Handle both array and object cases for customers
+      const customer = Array.isArray(proposal.customers) ? proposal.customers[0] : proposal.customers
+      
+      return proposal.proposal_number.toLowerCase().includes(searchTerm) ||
+             proposal.title.toLowerCase().includes(searchTerm) ||
+             (customer && customer.name.toLowerCase().includes(searchTerm)) ||
+             (customer && customer.email.toLowerCase().includes(searchTerm))
+    })
   }
 
   return (

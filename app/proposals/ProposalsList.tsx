@@ -347,10 +347,10 @@ export default function ProposalsList({ proposals, searchParams }: ProposalsList
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900">
-                          {proposal.customers.name}
+                          {Array.isArray(proposal.customers) ? proposal.customers[0]?.name : proposal.customers?.name}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {proposal.customers.email}
+                          {Array.isArray(proposal.customers) ? proposal.customers[0]?.email : proposal.customers?.email}
                         </div>
                       </div>
                     </td>
