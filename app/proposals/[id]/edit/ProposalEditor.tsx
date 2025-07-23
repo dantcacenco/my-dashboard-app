@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import CustomerSearch from '../../../new/CustomerSearch'
-import ServiceSearch from '../../../new/ServiceSearch'
+import CustomerSearch from '../../new/CustomerSearch'
+import ServiceSearch from '../../new/ServiceSearch'
 
 interface Customer {
   id: string
