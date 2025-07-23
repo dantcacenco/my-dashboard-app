@@ -221,7 +221,7 @@ export default function ProposalBuilder({ customers, pricingItems, userId }: Pro
               type="text"
               value={proposalTitle}
               onChange={(e) => setProposalTitle(e.target.value)}
-              placeholder="e.g., HVAC System Installation - Main Office"
+              placeholder='HVAC System Installation - Main Office'
               className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               required
             />
