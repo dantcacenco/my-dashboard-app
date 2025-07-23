@@ -20,7 +20,7 @@ interface ProposalData {
   status: string
   created_at: string
   updated_at: string
-  customers: Customer
+  customers: Customer[] // Array from Supabase
 }
 
 interface ProposalsListProps {
@@ -347,10 +347,10 @@ export default function ProposalsList({ proposals, searchParams }: ProposalsList
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900">
-                          {Array.isArray(proposal.customers) ? proposal.customers[0]?.name : proposal.customers?.name}
+                          {proposal.customers[0]?.name}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {Array.isArray(proposal.customers) ? proposal.customers[0]?.email : proposal.customers?.email}
+                          {proposal.customers[0]?.email}
                         </div>
                       </div>
                     </td>

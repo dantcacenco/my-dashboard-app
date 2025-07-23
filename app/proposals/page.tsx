@@ -18,7 +18,7 @@ interface ProposalData {
   status: string
   created_at: string
   updated_at: string
-  customers: Customer // Single customer object, not array
+  customers: Customer[] // Supabase returns as array even with !inner
 }
 
 interface PageProps {
@@ -103,8 +103,8 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
   if (params.search) {
     const searchTerm = params.search.toLowerCase()
     filteredProposals = filteredProposals.filter(proposal => {
-      // Handle both array and object cases for customers
-      const customer = Array.isArray(proposal.customers) ? proposal.customers[0] : proposal.customers
+      // Customers is always an array from Supabase
+      const customer = proposal.customers[0]
       
       return proposal.proposal_number.toLowerCase().includes(searchTerm) ||
              proposal.title.toLowerCase().includes(searchTerm) ||
