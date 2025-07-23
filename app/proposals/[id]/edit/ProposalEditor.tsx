@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import CustomerSearch from '../../new/CustomerSearch'
-import ServiceSearch from '../../new/ServiceSearch'
+import CustomerSearch from '../../../new/CustomerSearch'
+import ServiceSearch from '../../../new/ServiceSearch'
 
 interface Customer {
   id: string
@@ -45,6 +45,8 @@ interface ProposalData {
   tax_amount: number
   total: number
   status: string
+  created_at: string
+  updated_at: string
   customers: Customer
   proposal_items: Array<{
     id: string
@@ -454,4 +456,4 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
       </div>
     </div>
   )
-}
+}s
