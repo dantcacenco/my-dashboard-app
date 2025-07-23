@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import ProposalsList from '../ProposalsList'
+import ProposalsList from './ProposalsList'
 
 export default async function ProposalsPage() {
   const supabase = await createClient()
