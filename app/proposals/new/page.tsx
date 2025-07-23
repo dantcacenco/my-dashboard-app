@@ -1,16 +1,15 @@
-// app/proposals/new/page.tsx
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import ProposalBuilder from './ProposalBuilder'
+import ProposalsList from './ProposalsList'
 
-export default async function NewProposalPage() {
+export default async function ProposalsPage() {
   const supabase = await createClient()
   
   // Check if user is authenticated
   const { data: { user }, error } = await supabase.auth.getUser()
   
   if (error || !user) {
-    redirect('/login')
+    redirect('/sign-in')
   }
 
   // Get user profile to check role
@@ -20,37 +19,49 @@ export default async function NewProposalPage() {
     .eq('id', user.id)
     .single()
 
-  // Only boss can create proposals
+  // Only boss can view proposals
   if (profile?.role !== 'boss') {
     redirect('/unauthorized')
   }
 
-  // Get customers and pricing items
-  const [customersResult, pricingResult] = await Promise.all([
-    supabase
-      .from('customers')
-      .select('*')
-      .order('name'),
-    supabase
-      .from('pricing_items')
-      .select('*')
-      .eq('is_active', true)
-      .order('category, name')
-  ])
+  // Get all proposals with customer data
+  const { data: proposals, error: proposalsError } = await supabase
+    .from('proposals')
+    .select(`
+      *,
+      customers (
+        id,
+        name,
+        email,
+        phone,
+        address
+      )
+    `)
+    .order('created_at', { ascending: false })
+
+  if (proposalsError) {
+    console.error('Error fetching proposals:', proposalsError)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Create New Proposal</h1>
-          <p className="mt-2 text-gray-600">Build a professional proposal for your customer</p>
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Proposals</h1>
+              <p className="mt-2 text-gray-600">Manage your customer proposals and estimates</p>
+            </div>
+            <a
+              href="/proposals/new"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500"
+            >
+              New Proposal
+            </a>
+          </div>
         </div>
         
-        <ProposalBuilder 
-          customers={customersResult.data || []}
-          pricingItems={pricingResult.data || []}
-          userId={user.id}
-        />
+        <ProposalsList proposals={proposals || []} />
       </div>
     </div>
   )
