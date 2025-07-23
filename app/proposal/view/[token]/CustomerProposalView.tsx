@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import PaymentMethods from './PaymentMethods'
 
 interface Customer {
   id: string
@@ -41,7 +42,8 @@ interface CustomerProposalViewProps {
   proposal: ProposalData
 }
 
-export default function CustomerProposalView({ proposal }: CustomerProposalViewProps) {
+export default function CustomerProposalView({ proposal: initialProposal }: CustomerProposalViewProps) {
+  const [proposal, setProposal] = useState(initialProposal)
   const [isApproving, setIsApproving] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
   const [showApprovalForm, setShowApprovalForm] = useState(false)
@@ -118,8 +120,14 @@ export default function CustomerProposalView({ proposal }: CustomerProposalViewP
         })
       })
 
-      alert('Thank you! Your proposal has been approved. We will contact you soon to schedule the work.')
+      // Update the local proposal state to reflect the approval
+      setProposal({
+        ...proposal,
+        status: 'approved'
+      })
+
       setShowApprovalForm(false)
+      setCustomerNotes('')
       
     } catch (error) {
       console.error('Error approving proposal:', error)
@@ -336,8 +344,18 @@ export default function CustomerProposalView({ proposal }: CustomerProposalViewP
           </div>
         </div>
 
-        {/* Action Buttons - Only show if not already approved/rejected */}
-        {proposal.status !== 'approved' && proposal.status !== 'rejected' && (
+        {/* Action Buttons or Payment Methods - Dynamic based on status */}
+        {proposal.status === 'approved' ? (
+          <PaymentMethods
+            proposalId={proposal.id}
+            proposalNumber={proposal.proposal_number}
+            customerName={proposal.customers.name}
+            customerEmail={proposal.customers.email}
+            totalAmount={proposal.total}
+            depositAmount={proposal.total * 0.5} // 50% deposit
+            onPaymentSuccess={() => window.location.reload()}
+          />
+        ) : proposal.status !== 'rejected' ? (
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6 print:hidden">
             <h3 className="font-semibold text-gray-900 mb-4">Your Response</h3>
             <div className="flex gap-4 mb-4">
@@ -361,7 +379,7 @@ export default function CustomerProposalView({ proposal }: CustomerProposalViewP
               </button>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Status Message */}
         {proposal.status === 'approved' && (
