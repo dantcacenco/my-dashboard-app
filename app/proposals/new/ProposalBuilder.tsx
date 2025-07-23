@@ -109,7 +109,7 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
     ))
   }
 
-  // Save proposal
+// Save proposal
   const saveProposal = async () => {
     if (!selectedCustomer || !proposalTitle.trim() || proposalItems.length === 0) {
       alert('Please fill in all required fields and add at least one item.')
@@ -119,10 +119,14 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
     setIsLoading(true)
 
     try {
+      // Generate proposal number
+      const proposalNumber = `PROP-${Date.now()}`
+
       // Create proposal
       const { data: proposal, error: proposalError } = await supabase
         .from('proposals')
         .insert({
+          proposal_number: proposalNumber,
           customer_id: selectedCustomer.id,
           title: proposalTitle.trim(),
           description: proposalDescription.trim(),
