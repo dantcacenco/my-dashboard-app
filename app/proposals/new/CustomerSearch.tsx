@@ -146,11 +146,14 @@ export default function CustomerSearch({
   const handleCancelAdd = () => {
     setShowAddForm(false)
     setNewCustomer({ name: '', email: '', phone: '', address: '' })
+    setShowDropdown(true) // Show dropdown again when canceling
   }
 
   const handleClickOutside = () => {
-    setShowDropdown(false)
-    setShowAddForm(false)
+    // Only close dropdown if we're not showing the add form
+    if (!showAddForm) {
+      setShowDropdown(false)
+    }
   }
 
   const filteredCustomers = getFilteredCustomers()
@@ -167,7 +170,6 @@ export default function CustomerSearch({
         value={getSelectedCustomerName()}
         onChange={handleSearchChange}
         onFocus={handleSearchFocus}
-        onBlur={() => setTimeout(handleClickOutside, 150)} // Delay to allow clicks
         placeholder="Search customers..."
         className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         required
@@ -190,6 +192,7 @@ export default function CustomerSearch({
           
           {/* Add New Customer Option */}
           <div
+            onMouseDown={(e) => e.preventDefault()} // Prevent input blur
             onClick={handleAddNewClick}
             className="p-3 hover:bg-blue-50 cursor-pointer flex items-center text-blue-600 font-medium"
           >
