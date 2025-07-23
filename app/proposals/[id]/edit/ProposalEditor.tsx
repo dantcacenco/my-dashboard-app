@@ -343,49 +343,92 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
             {proposalItems.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No items added yet. Click Add Item to get started.</p>
             ) : (
-              proposalItems.map(item => (
-                <div key={item.id} className={`border rounded-lg p-4 ${item.is_addon ? 'border-orange-200 bg-orange-50' : 'border-gray-200'}`}>
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        {item.is_addon && (
-                          <input
-                            type="checkbox"
-                            checked={item.is_selected}
-                            onChange={() => toggleAddon(item.id)}
-                            className="w-4 h-4"
-                          />
-                        )}
-                        <h4 className="font-medium">{item.name}</h4>
-                        {item.is_addon && <span className="text-xs bg-orange-200 px-2 py-1 rounded">Add-on</span>}
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                      
-                      <div className="flex items-center gap-4 mt-2">
-                        <div className="flex items-center gap-2">
-                          <label className="text-sm">Qty:</label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
-                            className="w-16 p-1 border border-gray-300 rounded text-sm"
-                          />
+              <>
+                {/* Main Services */}
+                <div className="space-y-3">
+                  <h4 className="font-medium text-gray-900">Services & Materials:</h4>
+                  {proposalItems.filter(item => !item.is_addon).map(item => (
+                    <div key={item.id} className="border rounded-lg p-4 border-gray-200">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{item.name}</h4>
+                          <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                          
+                          <div className="flex items-center gap-4 mt-2">
+                            <div className="flex items-center gap-2">
+                              <label className="text-sm">Qty:</label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
+                                className="w-16 p-1 border border-gray-300 rounded text-sm"
+                              />
+                            </div>
+                            <span className="text-sm">@ ${item.unit_price.toFixed(2)}</span>
+                            <span className="font-bold text-green-600">${item.total_price.toFixed(2)}</span>
+                          </div>
                         </div>
-                        <span className="text-sm">@ ${item.unit_price.toFixed(2)}</span>
-                        <span className="font-bold text-green-600">${item.total_price.toFixed(2)}</span>
+                        
+                        <button
+                          onClick={() => removeItem(item.id)}
+                          className="text-red-600 hover:text-red-800 ml-4"
+                        >
+                          Remove
+                        </button>
                       </div>
                     </div>
-                    
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="text-red-600 hover:text-red-800 ml-4"
-                    >
-                      Remove
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              ))
+
+                {/* Add-ons */}
+                {proposalItems.filter(item => item.is_addon).length > 0 && (
+                  <div className="space-y-3 mt-6">
+                    <h4 className="font-medium text-gray-900">Add-ons:</h4>
+                    {proposalItems.filter(item => item.is_addon).map(item => (
+                      <div key={item.id} className="border rounded-lg p-4 border-orange-200 bg-orange-50">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={item.is_selected}
+                                onChange={() => toggleAddon(item.id)}
+                                className="w-4 h-4"
+                              />
+                              <h4 className="font-medium">{item.name}</h4>
+                              <span className="text-xs bg-orange-200 px-2 py-1 rounded">Add-on</span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1 ml-6">{item.description}</p>
+                            
+                            <div className="flex items-center gap-4 mt-2 ml-6">
+                              <div className="flex items-center gap-2">
+                                <label className="text-sm">Qty:</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
+                                  className="w-16 p-1 border border-gray-300 rounded text-sm"
+                                />
+                              </div>
+                              <span className="text-sm">@ ${item.unit_price.toFixed(2)}</span>
+                              <span className="font-bold text-green-600">${item.total_price.toFixed(2)}</span>
+                            </div>
+                          </div>
+                          
+                          <button
+                            onClick={() => removeItem(item.id)}
+                            className="text-red-600 hover:text-red-800 ml-4"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

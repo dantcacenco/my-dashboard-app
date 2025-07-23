@@ -71,20 +71,88 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
   const selectedItems = proposal.proposal_items
     .filter(item => !item.is_addon && item.is_selected)
   
-  const selectedAddons = proposal.proposal_items
-    .filter(item => item.is_addon && item.is_selected)
+  const allAddons = proposal.proposal_items
+    .filter(item => item.is_addon)
+  
+  const selectedAddons = allAddons.filter(item => item.is_selected)
+
+  // Calculate totals based on current selections
+  const calculateTotals = () => {
+    const itemsTotal = selectedItems.reduce((sum, item) => sum + item.total_price, 0)
+    const addonsTotal = allAddons
+      .filter(addon => addon.is_selected)
+      .reduce((sum, item) => sum + item.total_price, 0)
+    
+    const subtotal = itemsTotal + addonsTotal
+    const taxAmount = subtotal * proposal.tax_rate
+    const total = subtotal + taxAmount
+    
+    return { subtotal, taxAmount, total }
+  }
+
+  const { subtotal, taxAmount, total } = calculateTotals()
+
+  const toggleAddon = async (addonId: string) => {
+    try {
+      // Find the addon and toggle its selection
+      const updatedItems = proposal.proposal_items.map(item => 
+        item.id === addonId 
+          ? { ...item, is_selected: !item.is_selected }
+          : item
+      )
+
+      // Update the local state immediately for UI responsiveness
+      setProposal({
+        ...proposal,
+        proposal_items: updatedItems
+      })
+
+      // Update in database
+      const addon = proposal.proposal_items.find(item => item.id === addonId)
+      if (addon) {
+        await supabase
+          .from('proposal_items')
+          .update({ is_selected: !addon.is_selected })
+          .eq('id', addonId)
+
+        // Log the activity
+        await supabase
+          .from('proposal_activities')
+          .insert({
+            proposal_id: proposal.id,
+            activity_type: addon.is_selected ? 'addon_removed' : 'addon_added',
+            description: `Customer ${addon.is_selected ? 'removed' : 'added'} add-on: ${addon.name}`,
+            metadata: {
+              customer_email: proposal.customers.email,
+              addon_name: addon.name,
+              addon_price: addon.total_price
+            }
+          })
+      }
+    } catch (error) {
+      console.error('Error toggling addon:', error)
+      // Revert the UI change if database update fails
+      window.location.reload()
+    }
+  }
 
   const handleApprove = async () => {
     setIsApproving(true)
     
     try {
-      // Update proposal status
+      // Calculate current totals with add-on selections
+      const currentTotals = calculateTotals()
+      
+      // Update proposal status and current pricing
       await supabase
         .from('proposals')
         .update({ 
           status: 'approved',
           approved_at: new Date().toISOString(),
-          customer_notes: customerNotes || null
+          customer_notes: customerNotes || null,
+          subtotal: currentTotals.subtotal,
+          tax_amount: currentTotals.taxAmount,
+          total: currentTotals.total
         })
         .eq('id', proposal.id)
 
@@ -114,7 +182,7 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
           proposal_title: proposal.title,
           customer_name: proposal.customers.name,
           customer_email: proposal.customers.email,
-          total_amount: proposal.total,
+          total_amount: total, // Use the current calculated total
           customer_notes: customerNotes,
           action_type: 'approved'
         })
@@ -278,34 +346,57 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
           </div>
         </div>
 
-        {/* Add-ons if any */}
-        {selectedAddons.length > 0 && (
+        {/* Add-ons section - show ALL add-ons with checkboxes */}
+        {allAddons.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6 print:shadow-none print:rounded-none">
-            <h3 className="text-lg font-semibold mb-4">Additional Services (Included)</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-gray-300">
-                <thead>
-                  <tr className="bg-orange-50 print:bg-gray-100">
-                    <th className="border border-gray-300 px-4 py-2 text-left">Description</th>
-                    <th className="border border-gray-300 px-4 py-2 text-center">Qty</th>
-                    <th className="border border-gray-300 px-4 py-2 text-right">Unit Price</th>
-                    <th className="border border-gray-300 px-4 py-2 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedAddons.map((item) => (
-                    <tr key={item.id}>
-                      <td className="border border-gray-300 px-4 py-2">
-                        <div className="font-medium">{item.name}</div>
-                        <div className="text-sm text-gray-600">{item.description}</div>
-                      </td>
-                      <td className="border border-gray-300 px-4 py-2 text-center">{item.quantity}</td>
-                      <td className="border border-gray-300 px-4 py-2 text-right">{formatCurrency(item.unit_price)}</td>
-                      <td className="border border-gray-300 px-4 py-2 text-right font-medium">{formatCurrency(item.total_price)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <h3 className="text-lg font-semibold mb-4">Optional Add-ons</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Select additional services you'd like to include (pricing will update automatically):
+            </p>
+            <div className="space-y-3">
+              {allAddons.map((addon) => (
+                <div 
+                  key={addon.id} 
+                  className={`border rounded-lg p-4 transition-colors ${
+                    addon.is_selected 
+                      ? 'border-orange-300 bg-orange-50' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={addon.is_selected}
+                      onChange={() => toggleAddon(addon.id)}
+                      className="mt-1 w-5 h-5 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                    />
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-medium text-gray-900">{addon.name}</h4>
+                          <p className="text-sm text-gray-600 mt-1">{addon.description}</p>
+                          <div className="flex items-center gap-4 mt-2 text-sm">
+                            <span>Qty: {addon.quantity}</span>
+                            <span>@ {formatCurrency(addon.unit_price)}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-bold text-orange-600">
+                            {formatCurrency(addon.total_price)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-800">
+                💡 <strong>Tip:</strong> Add-ons can be selected or deselected at any time before payment. 
+                Your total will update automatically.
+              </p>
             </div>
           </div>
         )}
@@ -317,16 +408,21 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span>{formatCurrency(proposal.subtotal)}</span>
+                  <span>{formatCurrency(subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Tax ({(proposal.tax_rate * 100).toFixed(1)}%):</span>
-                  <span>{formatCurrency(proposal.tax_amount)}</span>
+                  <span>{formatCurrency(taxAmount)}</span>
                 </div>
                 <div className="border-t pt-2 flex justify-between font-bold text-lg">
                   <span>Total:</span>
-                  <span className="text-green-600">{formatCurrency(proposal.total)}</span>
+                  <span className="text-green-600">{formatCurrency(total)}</span>
                 </div>
+                {allAddons.some(addon => addon.is_selected) && (
+                  <div className="text-xs text-gray-500 mt-2">
+                    Includes selected add-ons
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -351,8 +447,8 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
             proposalNumber={proposal.proposal_number}
             customerName={proposal.customers.name}
             customerEmail={proposal.customers.email}
-            totalAmount={proposal.total}
-            depositAmount={proposal.total * 0.5} // 50% deposit
+            totalAmount={total} // Use current calculated total
+            depositAmount={total * 0.5} // 50% of current total
             onPaymentSuccess={() => window.location.reload()}
           />
         ) : proposal.status !== 'rejected' ? (
