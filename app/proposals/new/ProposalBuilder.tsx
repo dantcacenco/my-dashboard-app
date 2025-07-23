@@ -70,7 +70,7 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
     setShowAddItem(true) // Go back to the service search
   }
 
-  // Add item to proposal
+  // Add item to proposal (keeps search open)
   const addItem = (item: PricingItem, isAddon: boolean) => {
     const newItem: ProposalItem = {
       id: `temp-${Date.now()}`,
@@ -83,7 +83,7 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
       is_selected: !isAddon // Main items selected by default, add-ons not selected
     }
     setProposalItems([...proposalItems, newItem])
-    setShowAddItem(false)
+    // Don't close the search - let user add multiple items
   }
 
   // Update item quantity
@@ -109,7 +109,7 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
     ))
   }
 
-// Save proposal
+  // Save proposal
   const saveProposal = async () => {
     if (!selectedCustomer || !proposalTitle.trim() || proposalItems.length === 0) {
       alert('Please fill in all required fields and add at least one item.')
@@ -119,8 +119,13 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
     setIsLoading(true)
 
     try {
-      // Generate proposal number
-      const proposalNumber = `PROP-${Date.now()}`
+      // Generate professional proposal number (PROP-YYYYMMDD-XXX)
+      const today = new Date()
+      const dateStr = today.getFullYear().toString() + 
+                     (today.getMonth() + 1).toString().padStart(2, '0') + 
+                     today.getDate().toString().padStart(2, '0')
+      const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+      const proposalNumber = `PROP-${dateStr}-${randomNum}`
 
       // Create proposal
       const { data: proposal, error: proposalError } = await supabase
@@ -303,41 +308,43 @@ export default function ProposalBuilder({ customers: initialCustomers, pricingIt
                 ) : (
                   <>
                     {/* Main Services */}
-                    <div className="space-y-3">
-                      <h4 className="font-medium text-gray-900">Services & Materials:</h4>
-                      {proposalItems.filter(item => !item.is_addon).map(item => (
-                        <div key={item.id} className="border rounded-lg p-4 border-gray-200">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <h4 className="font-medium">{item.name}</h4>
-                              <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                              
-                              <div className="flex items-center gap-4 mt-2">
-                                <div className="flex items-center gap-2">
-                                  <label className="text-sm">Qty:</label>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    value={item.quantity}
-                                    onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
-                                    className="w-16 p-1 border border-gray-300 rounded text-sm"
-                                  />
+                    {proposalItems.filter(item => !item.is_addon).length > 0 && (
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-gray-900">Services & Materials:</h4>
+                        {proposalItems.filter(item => !item.is_addon).map(item => (
+                          <div key={item.id} className="border rounded-lg p-4 border-gray-200">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <h4 className="font-medium">{item.name}</h4>
+                                <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                                
+                                <div className="flex items-center gap-4 mt-2">
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-sm">Qty:</label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={item.quantity}
+                                      onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
+                                      className="w-16 p-1 border border-gray-300 rounded text-sm"
+                                    />
+                                  </div>
+                                  <span className="text-sm">@ ${item.unit_price.toFixed(2)}</span>
+                                  <span className="font-bold text-green-600">${item.total_price.toFixed(2)}</span>
                                 </div>
-                                <span className="text-sm">@ ${item.unit_price.toFixed(2)}</span>
-                                <span className="font-bold text-green-600">${item.total_price.toFixed(2)}</span>
                               </div>
+                              
+                              <button
+                                onClick={() => removeItem(item.id)}
+                                className="text-red-600 hover:text-red-800 ml-4"
+                              >
+                                Remove
+                              </button>
                             </div>
-                            
-                            <button
-                              onClick={() => removeItem(item.id)}
-                              className="text-red-600 hover:text-red-800 ml-4"
-                            >
-                              Remove
-                            </button>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Add-ons */}
                     {proposalItems.filter(item => item.is_addon).length > 0 && (
