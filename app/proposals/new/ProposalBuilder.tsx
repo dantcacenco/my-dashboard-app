@@ -291,7 +291,7 @@ export default function ProposalBuilder({ customers, pricingItems, userId }: Pro
           {/* Current Items */}
           <div className="space-y-3">
             {proposalItems.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No items added yet. Click "Add Item" to get started.</p>
+              <p className="text-gray-500 text-center py-8">No items added yet. Click 'Add Item' to get started.</p>
             ) : (
               proposalItems.map(item => (
                 <div key={item.id} className={`border rounded-lg p-4 ${item.is_addon ? 'border-orange-200 bg-orange-50' : 'border-gray-200'}`}>
