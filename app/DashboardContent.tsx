@@ -38,7 +38,7 @@ interface DashboardData {
     activity_type: string
     description: string
     created_at: string
-    proposals: { proposal_number: string; title: string } | null
+    proposals: Array<{ proposal_number: string; title: string }> | null
   }>
 }
 
@@ -328,9 +328,9 @@ export default function DashboardContent({ data }: DashboardContentProps) {
                       <div className="text-xl">{getActivityIcon(activity.activity_type)}</div>
                       <div className="flex-1">
                         <p className="text-sm text-gray-900">{activity.description}</p>
-                        {activity.proposals && (
+                        {activity.proposals && activity.proposals.length > 0 && (
                           <p className="text-xs text-gray-600">
-                            {activity.proposals.proposal_number} - {activity.proposals.title}
+                            {activity.proposals[0].proposal_number} - {activity.proposals[0].title}
                           </p>
                         )}
                         <p className="text-xs text-gray-500">{formatDate(activity.created_at)}</p>
