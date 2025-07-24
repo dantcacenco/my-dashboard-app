@@ -66,7 +66,9 @@ export default async function DashboardPage() {
 
   // Calculate key metrics
   const totalProposals = proposals.length
-  const totalRevenue = proposals.reduce((sum, p) => sum + (p.total || 0), 0)
+  const paidRevenue = proposals
+    .filter(p => p.status === 'paid')
+    .reduce((sum, p) => sum + (p.total || 0), 0)
   const approvedProposals = proposals.filter(p => p.status === 'approved').length
   const paidProposals = proposals.filter(p => p.status === 'paid').length
   
@@ -74,14 +76,14 @@ export default async function DashboardPage() {
   const conversionRate = totalProposals > 0 ? (approvedProposals / totalProposals) * 100 : 0
   const paymentRate = approvedProposals > 0 ? (paidProposals / approvedProposals) * 100 : 0
 
-  // Monthly revenue data for chart
+  // Monthly revenue data for chart (only paid proposals)
   const monthlyRevenue = Array.from({ length: 6 }, (_, i) => {
     const date = new Date()
     date.setMonth(date.getMonth() - (5 - i))
     const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
     
     const monthData = monthlyData.filter(p => 
-      p.created_at.startsWith(monthKey)
+      p.created_at.startsWith(monthKey) && p.status === 'paid'
     )
     
     return {
@@ -104,7 +106,7 @@ export default async function DashboardPage() {
   const dashboardData = {
     metrics: {
       totalProposals,
-      totalRevenue,
+      totalRevenue: paidRevenue, // Only revenue from paid proposals
       approvedProposals,
       conversionRate,
       paymentRate

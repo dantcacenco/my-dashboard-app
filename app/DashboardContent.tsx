@@ -145,7 +145,7 @@ export default function DashboardContent({ data }: DashboardContentProps) {
                 </svg>
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Revenue</p>
+                <p className="text-sm font-medium text-gray-600">Paid Revenue</p>
                 <p className="text-2xl font-bold text-gray-900">{formatCurrency(metrics.totalRevenue)}</p>
               </div>
             </div>
@@ -203,7 +203,7 @@ export default function DashboardContent({ data }: DashboardContentProps) {
           
           {/* Revenue Trend Chart */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trend (6 Months)</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Paid Revenue Trend (6 Months)</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={monthlyRevenue}>
