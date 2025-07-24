@@ -71,14 +71,17 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
 
   // Apply date range filter
   if (params.startDate) {
-    query = query.gte('created_at', new Date(params.startDate).toISOString())
+    // Start of the start date (00:00:00)
+    const startDate = new Date(params.startDate)
+    startDate.setHours(0, 0, 0, 0)
+    query = query.gte('created_at', startDate.toISOString())
   }
   
   if (params.endDate) {
-    // Add 1 day to include the entire end date
+    // End of the end date (23:59:59)
     const endDate = new Date(params.endDate)
-    endDate.setDate(endDate.getDate() + 1)
-    query = query.lt('created_at', endDate.toISOString())
+    endDate.setHours(23, 59, 59, 999)
+    query = query.lte('created_at', endDate.toISOString())
   }
 
   const { data: proposals, error } = await query
