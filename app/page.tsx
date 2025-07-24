@@ -1,51 +1,119 @@
-import { DeployButton } from "@/components/deploy-button";
-import { EnvVarWarning } from "@/components/env-var-warning";
-import { AuthButton } from "@/components/auth-button";
-import { Hero } from "@/components/hero";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { ConnectSupabaseSteps } from "@/components/tutorial/connect-supabase-steps";
-import { SignUpUserSteps } from "@/components/tutorial/sign-up-user-steps";
-import { hasEnvVars } from "@/lib/utils";
-import Link from "next/link";
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import DashboardContent from './DashboardContent'
 
-export default function Home() {
-  return (
-    <main className="min-h-screen flex flex-col items-center">
-      <div className="flex-1 w-full flex flex-col gap-20 items-center">
-        <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16">
-          <div className="w-full max-w-5xl flex justify-between items-center p-3 px-5 text-sm">
-            <div className="flex gap-5 items-center font-semibold">
-              <Link href={"/"}>Next.js Supabase Starter</Link>
-              <div className="flex items-center gap-2">
-                <DeployButton />
-              </div>
-            </div>
-            {!hasEnvVars ? <EnvVarWarning /> : <AuthButton />}
-          </div>
-        </nav>
-        <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
-          <Hero />
-          <main className="flex-1 flex flex-col gap-6 px-4">
-            <h2 className="font-medium text-xl mb-4">Next steps</h2>
-            {hasEnvVars ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
-          </main>
-        </div>
+export default async function DashboardPage() {
+  const supabase = await createClient()
 
-        <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-          <p>
-            Powered by{" "}
-            <a
-              href="https://supabase.com/?utm_source=create-next-app&utm_medium=template&utm_term=nextjs"
-              target="_blank"
-              className="font-bold hover:underline"
-              rel="noreferrer"
-            >
-              Supabase
-            </a>
-          </p>
-          <ThemeSwitcher />
-        </footer>
-      </div>
-    </main>
-  );
+  // Check authentication
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  
+  if (userError || !user) {
+    redirect('/auth/signin')
+  }
+
+  // Fetch dashboard data
+  const [
+    proposalsResult,
+    recentProposalsResult,
+    monthlyStatsResult,
+    recentActivitiesResult
+  ] = await Promise.all([
+    // All proposals for stats
+    supabase
+      .from('proposals')
+      .select('id, status, total, created_at'),
+
+    // Recent proposals
+    supabase
+      .from('proposals')
+      .select(`
+        id,
+        proposal_number,
+        title,
+        total,
+        status,
+        created_at,
+        customers (name, email)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(5),
+
+    // Monthly stats (last 6 months)
+    supabase
+      .from('proposals')
+      .select('created_at, total, status')
+      .gte('created_at', new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000).toISOString()),
+
+    // Recent activities
+    supabase
+      .from('proposal_activities')
+      .select(`
+        id,
+        activity_type,
+        description,
+        created_at,
+        proposals (proposal_number, title)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(10)
+  ])
+
+  const proposals = proposalsResult.data || []
+  const recentProposals = recentProposalsResult.data || []
+  const monthlyData = monthlyStatsResult.data || []
+  const recentActivities = recentActivitiesResult.data || []
+
+  // Calculate key metrics
+  const totalProposals = proposals.length
+  const totalRevenue = proposals.reduce((sum, p) => sum + (p.total || 0), 0)
+  const approvedProposals = proposals.filter(p => p.status === 'approved').length
+  const paidProposals = proposals.filter(p => p.status === 'paid').length
+  
+  // Calculate conversion rates
+  const conversionRate = totalProposals > 0 ? (approvedProposals / totalProposals) * 100 : 0
+  const paymentRate = approvedProposals > 0 ? (paidProposals / approvedProposals) * 100 : 0
+
+  // Monthly revenue data for chart
+  const monthlyRevenue = Array.from({ length: 6 }, (_, i) => {
+    const date = new Date()
+    date.setMonth(date.getMonth() - (5 - i))
+    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
+    
+    const monthData = monthlyData.filter(p => 
+      p.created_at.startsWith(monthKey)
+    )
+    
+    return {
+      month: date.toLocaleDateString('en-US', { month: 'short' }),
+      revenue: monthData.reduce((sum, p) => sum + (p.total || 0), 0),
+      proposals: monthData.length
+    }
+  })
+
+  // Status distribution
+  const statusCounts = {
+    draft: proposals.filter(p => p.status === 'draft').length,
+    sent: proposals.filter(p => p.status === 'sent').length,
+    viewed: proposals.filter(p => p.status === 'viewed').length,
+    approved: proposals.filter(p => p.status === 'approved').length,
+    rejected: proposals.filter(p => p.status === 'rejected').length,
+    paid: proposals.filter(p => p.status === 'paid').length
+  }
+
+  const dashboardData = {
+    metrics: {
+      totalProposals,
+      totalRevenue,
+      approvedProposals,
+      conversionRate,
+      paymentRate
+    },
+    monthlyRevenue,
+    statusCounts,
+    recentProposals,
+    recentActivities
+  }
+
+  return <DashboardContent data={dashboardData} />
 }
