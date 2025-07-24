@@ -1,5 +1,3 @@
-import { GeistSans } from 'geist/font/sans'
-import { ThemeProvider } from 'next-themes'
 import Layout from '@/components/Layout'
 import './globals.css'
 
@@ -19,18 +17,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={GeistSans.className} suppressHydrationWarning>
-      <body className="bg-background text-foreground">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <Layout>
-            {children}
-          </Layout>
-        </ThemeProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <Layout>
+          {children}
+        </Layout>
       </body>
     </html>
   )
