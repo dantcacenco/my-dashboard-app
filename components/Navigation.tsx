@@ -85,7 +85,7 @@ export default function Navigation() {
   }
 
   return (
-    <nav className="bg-white shadow-sm border-r border-gray-200 w-64 min-h-screen flex flex-col">
+    <nav className="bg-white shadow-sm border-r border-gray-200 w-64 flex flex-col">
       {/* Logo */}
       <div className="p-6 border-b border-gray-200">
         <Link href="/" className="flex items-center">

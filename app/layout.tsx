@@ -1,48 +1,37 @@
-import type { Metadata } from "next";
-import { Geist } from "next/font/google";
-import { ThemeProvider } from "next-themes";
-import "./globals.css";
-import Navigation from '@/components/Navigation'
-import { createClient } from '@/lib/supabase/server'
+import { GeistSans } from 'geist/font/sans'
+import { ThemeProvider } from 'next-themes'
+import Layout from '@/components/Layout'
+import './globals.css'
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+  : 'http://localhost:3000'
 
-export const metadata: Metadata = {
+export const metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Service Pro - HVAC Management",
-  description: "Professional HVAC field service management application",
-};
+  title: 'Service Pro - HVAC Management',
+  description: 'Professional HVAC proposal and job management system',
+}
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  display: "swap",
-  subsets: ["latin"],
-});
-
-export default async function RootLayout({
+export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.className} antialiased`}>
+    <html lang="en" className={GeistSans.className} suppressHydrationWarning>
+      <body className="bg-background text-foreground">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
-          {/* Show navigation only when user is authenticated */}
-          {user && <Navigation />}
-          {children}
+          <Layout>
+            {children}
+          </Layout>
         </ThemeProvider>
       </body>
     </html>
-  );
+  )
 }
