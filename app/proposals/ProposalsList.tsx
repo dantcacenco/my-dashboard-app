@@ -121,6 +121,31 @@ export default function ProposalsList({ proposals, searchParams }: ProposalsList
     })
   }, [proposals, sortConfig])
 
+  // Render sort icon
+  const getSortIcon = (columnKey: keyof ProposalData | 'customer_name' | 'customer_email') => {
+    if (!sortConfig || sortConfig.key !== columnKey) {
+      return (
+        <svg className="w-4 h-4 ml-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      )
+    }
+
+    if (sortConfig.direction === 'asc') {
+      return (
+        <svg className="w-4 h-4 ml-1 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        </svg>
+      )
+    }
+
+    return (
+      <svg className="w-4 h-4 ml-1 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    )
+  }
+
   // Apply filters
   const applyFilters = () => {
     const params = new URLSearchParams()
@@ -349,7 +374,7 @@ export default function ProposalsList({ proposals, searchParams }: ProposalsList
       )}
 
       {/* Proposals List */}
-      {proposals.length === 0 ? (
+      {sortedProposals.length === 0 ? (
         <div className="bg-white rounded-lg shadow-sm p-12 text-center">
           <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
