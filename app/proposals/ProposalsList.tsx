@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import * as React from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -45,6 +46,12 @@ export default function ProposalsList({ proposals, searchParams }: ProposalsList
     search: searchParams.search || ''
   })
 
+  // Sorting state
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof ProposalData | 'customer_name' | 'customer_email'
+    direction: 'asc' | 'desc'
+  } | null>(null)
+
   const [showFilters, setShowFilters] = useState(false)
 
   // Status options
@@ -57,6 +64,62 @@ export default function ProposalsList({ proposals, searchParams }: ProposalsList
     { value: 'rejected', label: 'Rejected', color: 'bg-red-100 text-red-800' },
     { value: 'paid', label: 'Paid', color: 'bg-emerald-100 text-emerald-800' }
   ]
+
+  // Sorting functionality
+  const handleSort = (key: keyof ProposalData | 'customer_name' | 'customer_email') => {
+    let direction: 'asc' | 'desc' = 'asc'
+    
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    }
+    
+    setSortConfig({ key, direction })
+  }
+
+  // Sort proposals
+  const sortedProposals = React.useMemo(() => {
+    if (!sortConfig) return proposals
+
+    return [...proposals].sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortConfig.key) {
+        case 'customer_name':
+          aValue = a.customers[0]?.name || ''
+          bValue = b.customers[0]?.name || ''
+          break
+        case 'customer_email':
+          aValue = a.customers[0]?.email || ''
+          bValue = b.customers[0]?.email || ''
+          break
+        case 'created_at':
+          aValue = new Date(a.created_at).getTime()
+          bValue = new Date(b.created_at).getTime()
+          break
+        case 'total':
+          aValue = a.total
+          bValue = b.total
+          break
+        default:
+          aValue = a[sortConfig.key as keyof ProposalData]
+          bValue = b[sortConfig.key as keyof ProposalData]
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = bValue.toLowerCase()
+      }
+
+      if (aValue < bValue) {
+        return sortConfig.direction === 'asc' ? -1 : 1
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'asc' ? 1 : -1
+      }
+      return 0
+    })
+  }, [proposals, sortConfig])
 
   // Apply filters
   const applyFilters = () => {
@@ -311,20 +374,50 @@ export default function ProposalsList({ proposals, searchParams }: ProposalsList
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Proposal
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('proposal_number')}
+                  >
+                    <div className="flex items-center">
+                      Proposal
+                      {getSortIcon('proposal_number')}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Customer
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('customer_name')}
+                  >
+                    <div className="flex items-center">
+                      Customer
+                      {getSortIcon('customer_name')}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('total')}
+                  >
+                    <div className="flex items-center">
+                      Amount
+                      {getSortIcon('total')}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('status')}
+                  >
+                    <div className="flex items-center">
+                      Status
+                      {getSortIcon('status')}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('created_at')}
+                  >
+                    <div className="flex items-center">
+                      Date
+                      {getSortIcon('created_at')}
+                    </div>
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -332,7 +425,7 @@ export default function ProposalsList({ proposals, searchParams }: ProposalsList
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {proposals.map((proposal) => (
+                {sortedProposals.map((proposal) => (
                   <tr key={proposal.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
