@@ -11,7 +11,7 @@ export default function Navigation() {
   const supabase = createClient()
 
   const navItems = [
-    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/', label: 'Dashboard' },
     { href: '/proposals', label: 'Proposals' },
     { href: '/customers', label: 'Customers' },
     { href: '/jobs', label: 'Jobs' },
