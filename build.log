@@ -1,0 +1,67 @@
+
+> build
+> next build
+
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+   ▲ Next.js 15.4.3
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (108kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ⚠ Compiled with warnings in 0ms
+
+./node_modules/@supabase/supabase-js/dist/module/index.js
+A Node.js API is used (process.version at line: 17) which is not supported in the Edge Runtime.
+Learn more: https://nextjs.org/docs/api-reference/edge-runtime
+
+Import trace for requested module:
+./node_modules/@supabase/supabase-js/dist/module/index.js
+./node_modules/@supabase/ssr/dist/module/createServerClient.js
+./node_modules/@supabase/ssr/dist/module/index.js
+./lib/supabase/middleware.ts
+
+./node_modules/@supabase/supabase-js/dist/module/index.js
+A Node.js API is used (process.version at line: 18) which is not supported in the Edge Runtime.
+Learn more: https://nextjs.org/docs/api-reference/edge-runtime
+
+Import trace for requested module:
+./node_modules/@supabase/supabase-js/dist/module/index.js
+./node_modules/@supabase/ssr/dist/module/createServerClient.js
+./node_modules/@supabase/ssr/dist/module/index.js
+./lib/supabase/middleware.ts
+
+./node_modules/@supabase/supabase-js/dist/module/index.js
+A Node.js API is used (process.version at line: 21) which is not supported in the Edge Runtime.
+Learn more: https://nextjs.org/docs/api-reference/edge-runtime
+
+Import trace for requested module:
+./node_modules/@supabase/supabase-js/dist/module/index.js
+./node_modules/@supabase/ssr/dist/module/createServerClient.js
+./node_modules/@supabase/ssr/dist/module/index.js
+./lib/supabase/middleware.ts
+
+ ✓ Compiled successfully in 5.0s
+   Skipping linting
+   Checking validity of types ...
+Failed to compile.
+
+./app/proposal/payment-success/page-stage-update.tsx:4:22
+Type error: Cannot find name 'session'.
+
+[0m [90m 2 |[39m
+ [90m 3 |[39m [90m// After successful payment verification, update the correct stage:[39m
+[31m[1m>[22m[39m[90m 4 |[39m [36mconst[39m paymentStage [33m=[39m session[33m.[39mmetadata[33m?[39m[33m.[39mpayment_stage [33m||[39m [32m'deposit'[39m
+ [90m   |[39m                      [31m[1m^[22m[39m
+ [90m 5 |[39m [36mconst[39m updateData[33m:[39m any [33m=[39m {
+ [90m 6 |[39m   payment_status[33m:[39m [32m'partial'[39m[33m,[39m
+ [90m 7 |[39m   payment_method[33m:[39m session[33m.[39mmetadata[33m?[39m[33m.[39mpayment_type [33m||[39m [32m'card'[39m[33m,[39m[0m
+Next.js build worker exited with code: 1 and signal: null
+npm notice
+npm notice New minor version of npm available! 11.3.0 -> 11.5.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.5.2
+npm notice To update run: npm install -g npm@11.5.2
+npm notice
