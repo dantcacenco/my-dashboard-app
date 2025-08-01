@@ -65,7 +65,6 @@ export default function MultiStagePayment({
   }, [proposal])
 
   const getCurrentStage = () => {
-    // Find the first unpaid stage
     return paymentStages.find(stage => !stage.paid) || null
   }
 
@@ -79,7 +78,6 @@ export default function MultiStagePayment({
     setIsProcessing(true)
     
     try {
-      // Create Stripe checkout session
       const response = await fetch('/api/create-payment', {
         method: 'POST',
         headers: {
@@ -107,7 +105,6 @@ export default function MultiStagePayment({
         throw new Error(error)
       }
 
-      // Update proposal to track current payment stage
       await supabase
         .from('proposals')
         .update({ 
@@ -115,7 +112,6 @@ export default function MultiStagePayment({
         })
         .eq('id', proposalId)
 
-      // Redirect to Stripe checkout
       window.location.href = checkout_url
       
     } catch (error) {

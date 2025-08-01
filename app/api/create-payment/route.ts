@@ -14,7 +14,9 @@ export async function POST(request: NextRequest) {
       customer_email,
       amount,
       payment_type,
-      description
+      description,
+      payment_stage,
+      metadata = {}
     } = await request.json()
 
     if (!proposal_id || !amount || !customer_email) {
@@ -24,12 +26,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Define payment method types based on selection
     const paymentMethodTypes = payment_type === 'ach' 
       ? ['us_bank_account' as const] 
       : ['card' as const]
 
-    // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: paymentMethodTypes,
       line_items: [
@@ -38,10 +38,10 @@ export async function POST(request: NextRequest) {
             currency: 'usd',
             product_data: {
               name: `Service Pro - ${description}`,
-              description: `Deposit payment for HVAC services proposal ${proposal_number}`,
-              images: [] // Add your logo URL here if you have one
+              description: `Payment for HVAC services proposal ${proposal_number}`,
+              images: []
             },
-            unit_amount: Math.round(amount * 100) // Convert to cents
+            unit_amount: Math.round(amount * 100)
           },
           quantity: 1
         }
@@ -54,13 +54,14 @@ export async function POST(request: NextRequest) {
         proposal_id,
         proposal_number,
         customer_name,
-        payment_type: payment_type || 'card'
+        payment_type: payment_type || 'card',
+        payment_stage: payment_stage || 'deposit',
+        ...metadata
       },
       billing_address_collection: 'required',
       phone_number_collection: {
         enabled: true
       },
-      // For ACH payments, add additional configuration
       ...(payment_type === 'ach' && {
         payment_method_options: {
           us_bank_account: {
