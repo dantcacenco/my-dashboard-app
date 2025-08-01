@@ -18,7 +18,7 @@ interface ProposalData {
   status: string
   created_at: string
   updated_at: string
-  customers: Customer[] // Supabase returns as array even with !inner
+  customers: Customer[]
 }
 
 interface PageProps {
@@ -33,54 +33,30 @@ interface PageProps {
 export default async function ProposalsPage({ searchParams }: PageProps) {
   const supabase = await createClient()
 
-  // Check authentication
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   
   if (userError || !user) {
     redirect('/auth/signin')
   }
 
-  // Await searchParams in Next.js 15
   const params = await searchParams
 
-  // Build query with filters
   let query = supabase
     .from('proposals')
-    .select(`
-      id,
-      proposal_number,
-      title,
-      total,
-      status,
-      created_at,
-      updated_at,
-      customers (
-        id,
-        name,
-        email,
-        phone,
-        address
-      )
-    `)
+    .select('*, customers(*)')
     .order('created_at', { ascending: false })
 
-
-console.log('Query:', query.toSql())
-  // Apply status filter
   if (params.status && params.status !== 'all') {
     query = query.eq('status', params.status)
   }
 
-  // Apply date range filter
   if (params.startDate) {
-    // Start of the start date (00:00:00)
     const startDate = new Date(params.startDate)
     startDate.setHours(0, 0, 0, 0)
     query = query.gte('created_at', startDate.toISOString())
   }
   
   if (params.endDate) {
-    // End of the end date (23:59:59)
     const endDate = new Date(params.endDate)
     endDate.setHours(23, 59, 59, 999)
     query = query.lte('created_at', endDate.toISOString())
@@ -102,14 +78,12 @@ console.log('Query:', query.toSql())
     )
   }
 
-  // Apply search filter (client-side for simplicity)
   let filteredProposals = proposals || []
   
   if (params.search) {
     const searchTerm = params.search.toLowerCase()
     filteredProposals = filteredProposals.filter(proposal => {
-      // Customers is always an array from Supabase
-      const customer = proposal.customers[0]
+      const customer = proposal.customers?.[0]
       
       return proposal.proposal_number.toLowerCase().includes(searchTerm) ||
              proposal.title.toLowerCase().includes(searchTerm) ||
@@ -118,9 +92,15 @@ console.log('Query:', query.toSql())
     })
   }
 
-  return ( 
+  return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {proposals && proposals[0] && (
+          <div className="bg-yellow-100 p-4 mb-4 rounded text-xs overflow-auto">
+            <strong>Debug - First Proposal:</strong>
+            <pre>{JSON.stringify(proposals[0], null, 2)}</pre>
+          </div>
+        )}
         <ProposalsList 
           proposals={filteredProposals} 
           searchParams={params}
