@@ -162,7 +162,7 @@ return sortConfig.direction === 'asc'
 
 // Apply filters
 const handleFilterChange = (key: string, value: string) => {
-const newFilters = { …filters, [key]: value }
+const newFilters = { ...filters, [key]: value }
 setFilters(newFilters)
 
 ```
