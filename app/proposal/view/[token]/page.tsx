@@ -41,7 +41,7 @@ export default async function CustomerViewProposalPage({ params }: PageProps) {
       activity_type: 'viewed_by_customer',
       description: `Proposal viewed by customer`,
       metadata: {
-        customer_email: proposal.customers.email,
+        customer_email: proposal.customers[0]?.email,
         view_token: token,
         viewed_at: new Date().toISOString()
       }

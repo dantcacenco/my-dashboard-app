@@ -34,7 +34,7 @@ interface ProposalData {
   total: number
   status: string
   created_at: string
-  customers: Customer
+  customers: Customer[][][][]
   proposal_items: ProposalItem[]
 }
 
@@ -123,7 +123,7 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
             activity_type: addon.is_selected ? 'addon_removed' : 'addon_added',
             description: `Customer ${addon.is_selected ? 'removed' : 'added'} add-on: ${addon.name}`,
             metadata: {
-              customer_email: proposal.customers.email,
+              customer_email: proposal.customers[0].email,
               addon_name: addon.name,
               addon_price: addon.total_price
             }
@@ -162,9 +162,9 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
         .insert({
           proposal_id: proposal.id,
           activity_type: 'approved_by_customer',
-          description: `Proposal approved by ${proposal.customers.name}`,
+          description: `Proposal approved by ${proposal.customers[0].name}`,
           metadata: {
-            customer_email: proposal.customers.email,
+            customer_email: proposal.customers[0].email,
             customer_notes: customerNotes,
             approved_at: new Date().toISOString()
           }
@@ -180,8 +180,8 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
           proposal_id: proposal.id,
           proposal_number: proposal.proposal_number,
           proposal_title: proposal.title,
-          customer_name: proposal.customers.name,
-          customer_email: proposal.customers.email,
+          customer_name: proposal.customers[0].name,
+          customer_email: proposal.customers[0].email,
           total_amount: total, // Use the current calculated total
           customer_notes: customerNotes,
           action_type: 'approved'
@@ -225,9 +225,9 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
         .insert({
           proposal_id: proposal.id,
           activity_type: 'rejected_by_customer',
-          description: `Proposal rejected by ${proposal.customers.name}`,
+          description: `Proposal rejected by ${proposal.customers[0].name}`,
           metadata: {
-            customer_email: proposal.customers.email,
+            customer_email: proposal.customers[0].email,
             customer_notes: customerNotes,
             rejected_at: new Date().toISOString()
           }
@@ -243,8 +243,8 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
           proposal_id: proposal.id,
           proposal_number: proposal.proposal_number,
           proposal_title: proposal.title,
-          customer_name: proposal.customers.name,
-          customer_email: proposal.customers.email,
+          customer_name: proposal.customers[0].name,
+          customer_email: proposal.customers[0].email,
           total_amount: proposal.total,
           customer_notes: customerNotes,
           action_type: 'rejected'
@@ -293,11 +293,11 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Proposal For:</h3>
               <div className="text-gray-700">
-                <p className="font-medium">{proposal.customers.name}</p>
-                <p>{proposal.customers.email}</p>
-                <p>{proposal.customers.phone}</p>
-                {proposal.customers.address && (
-                  <p className="mt-1">{proposal.customers.address}</p>
+                <p className="font-medium">{proposal.customers[0].name}</p>
+                <p>{proposal.customers[0].email}</p>
+                <p>{proposal.customers[0].phone}</p>
+                {proposal.customers[0].address && (
+                  <p className="mt-1">{proposal.customers[0].address}</p>
                 )}
               </div>
             </div>
@@ -445,8 +445,8 @@ export default function CustomerProposalView({ proposal: initialProposal }: Cust
           <PaymentMethods
             proposalId={proposal.id}
             proposalNumber={proposal.proposal_number}
-            customerName={proposal.customers.name}
-            customerEmail={proposal.customers.email}
+            customerName={proposal.customers[0].name}
+            customerEmail={proposal.customers[0].email}
             totalAmount={total} // Use current calculated total
             depositAmount={total * 0.5} // 50% of current total
             onPaymentSuccess={() => window.location.reload()}

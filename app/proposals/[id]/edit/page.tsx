@@ -73,7 +73,7 @@ export default async function EditProposalPage({ params }: PageProps) {
             Edit Proposal {proposal.proposal_number}
           </h1>
           <p className="mt-2 text-gray-600">
-            Update proposal details for {proposal.customers.name}
+            Update proposal details for {proposal.customers[0].name}
           </p>
         </div>
         

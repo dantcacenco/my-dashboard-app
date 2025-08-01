@@ -85,7 +85,7 @@ export default function PaymentSuccessView({
             </div>
             <div>
               <span className="text-sm font-medium text-gray-700">Customer:</span>
-              <p className="text-gray-900">{proposal.customers.name}</p>
+              <p className="text-gray-900">{proposal.customers[0].name}</p>
             </div>
             <div>
               <span className="text-sm font-medium text-gray-700">Payment Method:</span>
@@ -200,7 +200,7 @@ export default function PaymentSuccessView({
             Print Receipt
           </button>
           <a
-            href={`mailto:${proposal.customers.email}?subject=Payment Receipt - ${proposal.proposal_number}&body=Thank you for your payment! Your receipt is attached.`}
+            href={`mailto:${proposal.customers[0].email}?subject=Payment Receipt - ${proposal.proposal_number}&body=Thank you for your payment! Your receipt is attached.`}
             className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
           >
             Email Receipt

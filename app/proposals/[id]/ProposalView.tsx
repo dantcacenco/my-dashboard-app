@@ -122,11 +122,11 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
           <div>
             <h3 className="font-semibold text-gray-900 mb-2">Proposal For:</h3>
             <div className="text-gray-700">
-              <p className="font-medium">{proposal.customers.name}</p>
-              <p>{proposal.customers.email}</p>
-              <p>{proposal.customers.phone}</p>
-              {proposal.customers.address && (
-                <p className="mt-1">{proposal.customers.address}</p>
+              <p className="font-medium">{proposal.customers[0].name}</p>
+              <p>{proposal.customers[0].email}</p>
+              <p>{proposal.customers[0].phone}</p>
+              {proposal.customers[0].address && (
+                <p className="mt-1">{proposal.customers[0].address}</p>
               )}
             </div>
           </div>
@@ -301,15 +301,15 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
               <h2 className="text-xl font-semibold mb-4">Customer Information</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <h3 className="font-medium text-gray-900">{proposal.customers.name}</h3>
-                  <p className="text-gray-600">{proposal.customers.email}</p>
-                  <p className="text-gray-600">{proposal.customers.phone}</p>
+                  <h3 className="font-medium text-gray-900">{proposal.customers[0].name}</h3>
+                  <p className="text-gray-600">{proposal.customers[0].email}</p>
+                  <p className="text-gray-600">{proposal.customers[0].phone}</p>
                 </div>
                 <div>
-                  {proposal.customers.address && (
+                  {proposal.customers[0].address && (
                     <div>
                       <h4 className="font-medium text-gray-900 mb-1">Address:</h4>
-                      <p className="text-gray-600">{proposal.customers.address}</p>
+                      <p className="text-gray-600">{proposal.customers[0].address}</p>
                     </div>
                   )}
                 </div>

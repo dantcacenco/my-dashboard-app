@@ -7,7 +7,7 @@ interface PaymentMethodsProps {
   proposalId: string
   proposalNumber: string
   customerName: string
-  customerEmail: string
+  customerEmail: string | undefined | undefined | undefined | undefined
   totalAmount: number
   depositAmount: number // 50% deposit
   onPaymentSuccess: () => void

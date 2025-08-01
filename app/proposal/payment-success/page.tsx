@@ -47,16 +47,52 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
       redirect('/proposals')
     }
 
+    // Get payment stage from metadata
+    const paymentStage = session.metadata?.payment_stage || 'deposit'
+    const updateData: any = {
+      payment_method: session.metadata?.payment_type || 'card',
+      stripe_session_id: session_id,
+    }
+
+    // Update the correct timestamp and amount based on stage
+    if (paymentStage === 'deposit') {
+      updateData.deposit_paid_at = new Date().toISOString()
+      updateData.deposit_amount = session.amount_total ? session.amount_total / 100 : 0
+      updateData.current_payment_stage = 'progress'
+      updateData.payment_status = 'deposit_paid'
+    } else if (paymentStage === 'progress') {
+      updateData.progress_paid_at = new Date().toISOString()
+      updateData.progress_amount = session.amount_total ? session.amount_total / 100 : 0
+      updateData.current_payment_stage = 'final'
+      updateData.payment_status = 'progress_paid'
+    } else if (paymentStage === 'final') {
+      updateData.final_paid_at = new Date().toISOString()
+      updateData.final_amount = session.amount_total ? session.amount_total / 100 : 0
+      updateData.current_payment_stage = 'completed'
+      updateData.payment_status = 'paid'
+    }
+
+    // Calculate total paid
+    const { data: currentProposal } = await supabase
+      .from('proposals')
+      .select('deposit_amount, progress_amount, final_amount')
+      .eq('id', proposal_id)
+      .single()
+
+    if (currentProposal) {
+      const totalPaid = 
+        (currentProposal.deposit_amount || 0) +
+        (currentProposal.progress_amount || 0) +
+        (currentProposal.final_amount || 0) +
+        (session.amount_total ? session.amount_total / 100 : 0)
+      
+      updateData.total_paid = totalPaid
+    }
+
     // Update proposal with payment information
     await supabase
       .from('proposals')
-      .update({
-        payment_status: 'deposit_paid',
-        payment_method: session.metadata?.payment_type || 'card',
-        stripe_session_id: session_id,
-        deposit_paid_at: new Date().toISOString(),
-        deposit_amount: session.amount_total ? session.amount_total / 100 : 0
-      })
+      .update(updateData)
       .eq('id', proposal_id)
 
     // Log the payment activity
@@ -64,13 +100,14 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
       .from('proposal_activities')
       .insert({
         proposal_id: proposal_id,
-        activity_type: 'deposit_payment_received',
-        description: `Deposit payment received via ${session.metadata?.payment_type || 'card'}`,
+        activity_type: `${paymentStage}_payment_received`,
+        description: `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment received via ${session.metadata?.payment_type || 'card'}`,
         metadata: {
           stripe_session_id: session_id,
           amount: session.amount_total ? session.amount_total / 100 : 0,
           payment_method: session.metadata?.payment_type || 'card',
-          customer_email: proposal.customers.email
+          customer_email: proposal.customers[0]?.email,
+          payment_stage: paymentStage
         }
       })
 
@@ -84,16 +121,27 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
         body: JSON.stringify({
           proposal_id: proposal_id,
           proposal_number: proposal.proposal_number,
-          customer_name: proposal.customers.name,
-          customer_email: proposal.customers.email,
+          customer_name: proposal.customers[0]?.name,
+          customer_email: proposal.customers[0]?.email,
           amount: session.amount_total ? session.amount_total / 100 : 0,
           payment_method: session.metadata?.payment_type || 'card',
-          stripe_session_id: session_id
+          stripe_session_id: session_id,
+          payment_stage: paymentStage
         })
       })
     } catch (emailError) {
       console.error('Failed to send payment notification email:', emailError)
-      // Don't fail the whole process if email fails
+    }
+
+    // Get the customer view token to redirect back to proposal
+    const { data: proposalData } = await supabase
+      .from('proposals')
+      .select('customer_view_token')
+      .eq('id', proposal_id)
+      .single()
+
+    if (proposalData?.customer_view_token) {
+      redirect(`/proposal/view/${proposalData.customer_view_token}?payment=success&stage=${paymentStage}`)
     }
 
     return (
