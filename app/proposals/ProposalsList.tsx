@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from ‘react’
-import * as React from ‘react’
-import { useRouter, useSearchParams } from ‘next/navigation’
-import Link from ‘next/link’
+import { useState } from 'react'
+import * as React from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 
 interface Customer {
 id: string
@@ -40,34 +40,34 @@ const currentSearchParams = useSearchParams()
 
 // Filter states
 const [filters, setFilters] = useState({
-status: searchParams.status || ‘all’,
-startDate: searchParams.startDate || ‘’,
-endDate: searchParams.endDate || ‘’,
-search: searchParams.search || ‘’
+status: searchParams.status || 'all',
+startDate: searchParams.startDate || '',
+endDate: searchParams.endDate || '',
+search: searchParams.search || ''
 })
 
 // Sorting state
 const [sortConfig, setSortConfig] = useState<{
-key: keyof ProposalData | ‘customer_name’ | ‘customer_email’
-direction: ‘asc’ | ‘desc’
+key: keyof ProposalData | 'customer_name' | 'customer_email'
+direction: 'asc' | 'desc'
 } | null>(null)
 
 const [showFilters, setShowFilters] = useState(false)
 
 // Status options
 const statusOptions = [
-{ value: ‘all’, label: ‘All Statuses’, color: ‘bg-gray-100 text-gray-800’ },
-{ value: ‘draft’, label: ‘Draft’, color: ‘bg-gray-100 text-gray-800’ },
-{ value: ‘sent’, label: ‘Sent’, color: ‘bg-blue-100 text-blue-800’ },
-{ value: ‘viewed’, label: ‘Viewed’, color: ‘bg-purple-100 text-purple-800’ },
-{ value: ‘approved’, label: ‘Approved’, color: ‘bg-green-100 text-green-800’ },
-{ value: ‘rejected’, label: ‘Rejected’, color: ‘bg-red-100 text-red-800’ },
-{ value: ‘paid’, label: ‘Paid’, color: ‘bg-emerald-100 text-emerald-800’ }
+{ value: 'all', label: 'All Statuses', color: 'bg-gray-100 text-gray-800' },
+{ value: 'draft', label: 'Draft', color: 'bg-gray-100 text-gray-800' },
+{ value: 'sent', label: 'Sent', color: 'bg-blue-100 text-blue-800' },
+{ value: 'viewed', label: 'Viewed', color: 'bg-purple-100 text-purple-800' },
+{ value: 'approved', label: 'Approved', color: 'bg-green-100 text-green-800' },
+{ value: 'rejected', label: 'Rejected', color: 'bg-red-100 text-red-800' },
+{ value: 'paid', label: 'Paid', color: 'bg-emerald-100 text-emerald-800' }
 ]
 
 // Sorting functionality
-const handleSort = (key: keyof ProposalData | ‘customer_name’ | ‘customer_email’) => {
-let direction: ‘asc’ | ‘desc’ = ‘asc’
+const handleSort = (key: keyof ProposalData | 'customer_name' | 'customer_email') => {
+let direction: 'asc' | 'desc' = 'asc'
 
 ```
 if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -129,25 +129,25 @@ return [...proposals].sort((a, b) => {
 
 // Format currency
 const formatCurrency = (amount: number) => {
-return new Intl.NumberFormat(‘en-US’, {
-style: ‘currency’,
-currency: ‘USD’
+return new Intl.NumberFormat('en-US', {
+style: 'currency',
+currency: 'USD'
 }).format(amount)
 }
 
 // Format date
 const formatDate = (dateString: string) => {
-return new Date(dateString).toLocaleDateString(‘en-US’, {
-year: ‘numeric’,
-month: ‘short’,
-day: ‘numeric’
+return new Date(dateString).toLocaleDateString('en-US', {
+year: 'numeric',
+month: 'short',
+day: 'numeric'
 })
 }
 
 // Get status color
 const getStatusColor = (status: string) => {
 const statusOption = statusOptions.find(opt => opt.value === status)
-return statusOption?.color || ‘bg-gray-100 text-gray-800’
+return statusOption?.color || 'bg-gray-100 text-gray-800'
 }
 
 // Sort icon
@@ -155,7 +155,7 @@ const getSortIcon = (key: string) => {
 if (!sortConfig || sortConfig.key !== key) {
 return <span className="ml-1 text-gray-400">↕</span>
 }
-return sortConfig.direction === ‘asc’
+return sortConfig.direction === 'asc'
 ? <span className="ml-1 text-gray-700">↑</span>
 : <span className="ml-1 text-gray-700">↓</span>
 }
