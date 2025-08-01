@@ -64,6 +64,8 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
     `)
     .order('created_at', { ascending: false })
 
+
+console.log('Query:', query.toSql())
   // Apply status filter
   if (params.status && params.status !== 'all') {
     query = query.eq('status', params.status)
