@@ -54,7 +54,7 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
       status,
       created_at,
       updated_at,
-      customers!inner (
+      customers (
         id,
         name,
         email,
