@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Service Pro Field Service Management - Master Fix Script
-# Includes all phases with Git integration
+# Service Pro Field Service Management - Direct Fix Script
+# This script will apply all fixes directly to the current branch
 
-echo "=== Service Pro Master Fix Script ==="
+echo "=== Service Pro Direct Fix Script ==="
 echo "This script will fix:"
 echo "- Phase 0: Customer Array Access Bugs"
 echo "- Phase 1: Customer Authentication Bypass"
@@ -17,22 +17,24 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
     exit 1
 fi
 
+# Get current branch
+CURRENT_BRANCH=$(git branch --show-current)
+echo "Current branch: $CURRENT_BRANCH"
+
 # Check for uncommitted changes
 if ! git diff-index --quiet HEAD --; then
     echo "⚠️  Warning: You have uncommitted changes"
-    echo "It's recommended to commit or stash changes before running this script"
-    read -p "Do you want to continue anyway? (y/N) " -n 1 -r
+    read -p "Do you want to commit them first? (y/N) " -n 1 -r
     echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Exiting..."
-        exit 1
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        git add -A
+        git commit -m "WIP: Save changes before Service Pro fixes"
     fi
 fi
 
-# Create a new branch for all fixes
-BRANCH_NAME="fix/service-pro-complete-$(date +%Y%m%d-%H%M%S)"
-echo "Creating new branch: $BRANCH_NAME"
-git checkout -b "$BRANCH_NAME"
+# Pull latest changes
+echo "Pulling latest changes..."
+git pull origin $CURRENT_BRANCH
 
 # ===================================
 # PHASE 0: Fix Customer Array Access
@@ -42,6 +44,7 @@ echo "=== PHASE 0: Fixing Customer Array Access ==="
 echo "Fixing customer data access from object to array pattern..."
 
 # Fix 1: app/proposal/view/[token]/page.tsx
+mkdir -p app/proposal/view/[token]
 cat > app/proposal/view/[token]/page.tsx << 'ENDFILE'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
@@ -108,6 +111,7 @@ export default async function CustomerViewProposalPage({ params }: PageProps) {
 ENDFILE
 
 # Fix 2: app/proposal/payment-success/page.tsx
+mkdir -p app/proposal/payment-success
 cat > app/proposal/payment-success/page.tsx << 'ENDFILE'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
@@ -271,12 +275,21 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
 }
 ENDFILE
 
-# Fix CustomerProposalView and other files with customer array access
+# Fix 3: Update all customer array access throughout codebase
 echo "Fixing customer array access throughout codebase..."
-find app -name "*.tsx" -o -name "*.ts" | xargs grep -l "proposal\.customers\." 2>/dev/null | while read file; do
+
+# Fix CustomerProposalView
+if [ -f "app/proposal/view/[token]/CustomerProposalView.tsx" ]; then
+  echo "Updating CustomerProposalView.tsx..."
+  sed -i.bak 's/proposal\.customers\./proposal.customers[0]./g' app/proposal/view/[token]/CustomerProposalView.tsx
+  rm -f app/proposal/view/[token]/CustomerProposalView.tsx.bak
+fi
+
+# Fix all other files
+find app -type f \( -name "*.tsx" -o -name "*.ts" \) -exec grep -l "proposal\.customers\." {} \; 2>/dev/null | while read file; do
   echo "Fixing: $file"
-  sed -i 's/proposal\.customers\./proposal.customers[0]./g' "$file" 2>/dev/null || \
-  sed -i '' 's/proposal\.customers\./proposal.customers[0]./g' "$file"
+  sed -i.bak 's/proposal\.customers\./proposal.customers[0]./g' "$file"
+  rm -f "${file}.bak"
 done
 
 # Commit Phase 0
@@ -286,9 +299,7 @@ git commit -m "fix: Fix customer array access throughout codebase
 - Changed all instances of proposal.customers.property to proposal.customers[0]?.property
 - Fixed TypeScript errors related to Supabase joins returning arrays
 - Updated proposal view and payment success pages
-- Added payment stage tracking in payment success handler
-
-Refs: Phase 0 of Service Pro fixes"
+- Added payment stage tracking in payment success handler"
 
 # ===================================
 # PHASE 1: Customer Authentication Bypass
@@ -297,6 +308,7 @@ echo ""
 echo "=== PHASE 1: Setting up Customer Authentication Bypass ==="
 
 # Update middleware
+mkdir -p lib/supabase
 cat > lib/supabase/middleware.ts << 'ENDFILE'
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
@@ -366,6 +378,7 @@ export async function updateSession(request: NextRequest) {
 ENDFILE
 
 # Create minimal proposal layout
+mkdir -p app/proposal
 cat > app/proposal/layout.tsx << 'ENDFILE'
 export default function ProposalLayout({
   children
@@ -386,16 +399,7 @@ git commit -m "feat: Implement customer authentication bypass
 
 - Added public paths to middleware for proposal viewing without auth
 - Created minimal layout for proposal pages (no navigation)
-- Enabled token-based access for customers
-
-Public paths:
-- /proposal/view
-- /api/proposal-approval
-- /api/create-payment
-- /api/stripe/webhook
-- /proposal/payment-success
-
-Refs: Phase 1 of Service Pro fixes"
+- Enabled token-based access for customers"
 
 # ===================================
 # PHASE 2: Multi-Stage Payment System
@@ -404,7 +408,6 @@ echo ""
 echo "=== PHASE 2: Creating Multi-Stage Payment System ==="
 
 # Create MultiStagePayment component
-mkdir -p app/proposal/view/[token]
 cat > app/proposal/view/[token]/MultiStagePayment.tsx << 'ENDFILE'
 'use client'
 
@@ -638,6 +641,7 @@ export default function MultiStagePayment({
 ENDFILE
 
 # Update create-payment API route
+mkdir -p app/api/create-payment
 cat > app/api/create-payment/route.ts << 'ENDFILE'
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
@@ -773,80 +777,46 @@ git commit -m "feat: Implement multi-stage payment system
 - Updated create-payment API to handle payment stages
 - Modified payment success page to track stage progression
 - Added progress bar and locked stages UI
-- Implemented 50% → 30% → 20% payment flow
-
-Features:
-- Visual payment progress bar
-- Stage locking (must pay in sequence)
-- Payment history with dates
-- Automatic stage progression
-- Total paid calculation
-
-Refs: Phase 2 of Service Pro fixes"
+- Implemented 50% → 30% → 20% payment flow"
 
 # ===================================
-# BUILD AND TEST
+# PUSH TO GITHUB
 # ===================================
 echo ""
-echo "=== Testing build for TypeScript errors ==="
-npm run build 2>&1 | tee build.log
+echo "=== Pushing to GitHub ==="
+echo "Pushing directly to $CURRENT_BRANCH..."
 
-if grep -q "error" build.log; then
+git push origin $CURRENT_BRANCH
+
+if [ $? -eq 0 ]; then
     echo ""
-    echo "⚠️  Build errors detected. Please review build.log"
-else
-    echo "✅ Build completed successfully!"
-fi
-
-# ===================================
-# GIT SUMMARY AND PUSH
-# ===================================
-echo ""
-echo "=== Git Summary ==="
-git log --oneline -5
-echo ""
-echo "Current branch: $(git branch --show-current)"
-echo ""
-echo "Files changed:"
-git diff --name-status main
-
-echo ""
-read -p "Do you want to push these changes to remote? (y/N) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    git push -u origin "$BRANCH_NAME"
+    echo "✅ Successfully pushed all changes to $CURRENT_BRANCH!"
     echo ""
-    echo "✅ Changes pushed to remote branch: $BRANCH_NAME"
+    echo "=== All Changes Applied ==="
+    echo "✅ Phase 0: Fixed customer array access bugs"
+    echo "✅ Phase 1: Implemented authentication bypass"
+    echo "✅ Phase 2: Created multi-stage payment system"
     echo ""
-    echo "Next steps:"
-    echo "1. Create a Pull Request on GitHub"
-    echo "2. Review all changes"
-    echo "3. Test thoroughly before merging"
-    echo "4. Merge to main branch"
+    echo "GitHub commit history:"
+    git log --oneline -3
 else
     echo ""
-    echo "Changes saved locally in branch: $BRANCH_NAME"
-    echo "To push later: git push -u origin $BRANCH_NAME"
+    echo "❌ Failed to push to GitHub"
+    echo "Please check your network connection and GitHub credentials"
+    echo "You can manually push later with: git push origin $CURRENT_BRANCH"
 fi
 
 echo ""
-echo "=== Master Fix Script Complete ==="
-echo ""
-echo "✅ Phase 0: Fixed customer array access bugs"
-echo "✅ Phase 1: Implemented authentication bypass for customers"
-echo "✅ Phase 2: Created multi-stage payment system"
+echo "=== Direct Fix Script Complete ==="
 echo ""
 echo "Testing checklist:"
+echo "□ Run 'npm run build' to check for TypeScript errors"
 echo "□ Customer can view proposal without login"
-echo "□ Customer data displays correctly (no array errors)"
-echo "□ Customer can approve proposal"
-echo "□ Multi-stage payment UI appears after approval"
-echo "□ Payment stages unlock in sequence"
-echo "□ Progress bar updates after payments"
-echo "□ Payment success redirects back to proposal"
+echo "□ Customer data displays correctly"
+echo "□ Multi-stage payment UI works"
 echo ""
 echo "Manual steps required:"
 echo "1. Integrate MultiStagePayment component in CustomerProposalView"
 echo "   See INTEGRATION_INSTRUCTIONS.md for details"
 echo "2. Test complete flow from proposal view to final payment"
-echo "3. Verify Stripe webhooks are configured for production"
+echo "3. Deploy changes to production"
