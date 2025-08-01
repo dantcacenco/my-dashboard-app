@@ -165,22 +165,11 @@ const handleFilterChange = (key: string, value: string) => {
 const newFilters = { ...filters, [key]: value }
 setFilters(newFilters)
 
-```
-// Update URL params
-const params = new URLSearchParams()
-Object.entries(newFilters).forEach(([k, v]) => {
-  if (v && v !== 'all') params.set(k, v)
-})
-
-router.push(`/proposals?${params.toString()}`)
-
-
-}
 
 
 return (
 <>
-```
+
 {/* Header */}
 <div className="mb-8">
 <div className="flex justify-between items-center">
