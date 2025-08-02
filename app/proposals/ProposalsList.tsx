@@ -6,11 +6,11 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 interface Customer {
-id: string
-name: string
-email: string
-phone: string
-address: string
+  id: string
+  name: string
+  email: string
+  phone: string
+  address: string
 }
 
 interface ProposalData {
@@ -25,13 +25,13 @@ interface ProposalData {
 }
 
 interface ProposalsListProps {
-proposals: ProposalData[]
-searchParams: {
-status?: string
-startDate?: string
-endDate?: string
-search?: string
-}
+  proposals: ProposalData[]
+  searchParams: {
+    status?: string
+    startDate?: string
+    endDate?: string
+    search?: string
+  }
 }
 
 export default function ProposalsList({ proposals, searchParams }: ProposalsListProps) {
@@ -50,7 +50,7 @@ export default function ProposalsList({ proposals, searchParams }: ProposalsList
     direction: 'asc' | 'desc'
   } | null>(null)
 
-const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
 
   const statusOptions = [
     { value: 'all', label: 'All Statuses', color: 'bg-gray-100 text-gray-800' },
@@ -75,10 +75,9 @@ const [showFilters, setShowFilters] = useState(false)
   const sortedProposals = React.useMemo(() => {
     if (!sortConfig) return proposals
 
-```
-return [...proposals].sort((a, b) => {
-  let aValue: any
-  let bValue: any
+    return [...proposals].sort((a, b) => {
+      let aValue: any
+      let bValue: any
 
       switch (sortConfig.key) {
         case 'customer_name':
@@ -102,22 +101,20 @@ return [...proposals].sort((a, b) => {
           bValue = b[sortConfig.key as keyof ProposalData]
       }
 
-  if (typeof aValue === 'string' && typeof bValue === 'string') {
-    aValue = aValue.toLowerCase()
-    bValue = bValue.toLowerCase()
-  }
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = bValue.toLowerCase()
+      }
 
-  if (aValue < bValue) {
-    return sortConfig.direction === 'asc' ? -1 : 1
-  }
-  if (aValue > bValue) {
-    return sortConfig.direction === 'asc' ? 1 : -1
-  }
-  return 0
-})
-```
-
-}, [proposals, sortConfig])
+      if (aValue < bValue) {
+        return sortConfig.direction === 'asc' ? -1 : 1
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'asc' ? 1 : -1
+      }
+      return 0
+    })
+  }, [proposals, sortConfig])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
