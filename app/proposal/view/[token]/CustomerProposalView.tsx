@@ -8,10 +8,11 @@ import { useSearchParams } from 'next/navigation'
 
 interface ProposalItem {
   id: string
+  name: string
   description: string
   quantity: number
   unit_price: number
-  total: number
+  total_price: number
   is_addon: boolean
   is_selected: boolean
 }
@@ -107,6 +108,9 @@ export default function CustomerProposalView({
       alert('Payment was cancelled. You can try again when ready.')
     } else if (paymentStatus === 'error') {
       alert('There was an error processing your payment. Please try again.')
+    } else if (paymentStatus === 'success') {
+      const stage = searchParams.get('stage')
+      alert(`Payment successful! Your ${stage} payment has been processed.`)
     }
   }, [searchParams])
 
@@ -132,7 +136,7 @@ export default function CustomerProposalView({
     )
     
     const subtotal = [...baseItems, ...selectedAddonItems].reduce(
-      (sum, item) => sum + item.total,
+      (sum, item) => sum + item.total_price,
       0
     )
     
@@ -401,12 +405,15 @@ export default function CustomerProposalView({
               .map(item => (
                 <div key={item.id} className="flex justify-between py-2 border-b">
                   <div className="flex-1">
-                    <p className="font-medium">{item.description}</p>
+                    <p className="font-medium">{item.name || item.description}</p>
+                    {item.description && item.name && (
+                      <p className="text-sm text-gray-600">{item.description}</p>
+                    )}
                     <p className="text-sm text-gray-600">
                       {item.quantity} × {formatCurrency(item.unit_price)}
                     </p>
                   </div>
-                  <p className="font-medium">{formatCurrency(item.total)}</p>
+                  <p className="font-medium">{formatCurrency(item.total_price)}</p>
                 </div>
               ))}
 
@@ -428,13 +435,16 @@ export default function CustomerProposalView({
                           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                         />
                         <label htmlFor={`addon-${item.id}`} className="ml-3">
-                          <p className="font-medium">{item.description}</p>
+                          <p className="font-medium">{item.name || item.description}</p>
+                          {item.description && item.name && (
+                            <p className="text-sm text-gray-600">{item.description}</p>
+                          )}
                           <p className="text-sm text-gray-600">
                             {item.quantity} × {formatCurrency(item.unit_price)}
                           </p>
                         </label>
                       </div>
-                      <p className="font-medium">{formatCurrency(item.total)}</p>
+                      <p className="font-medium">{formatCurrency(item.total_price)}</p>
                     </div>
                   ))}
               </>
