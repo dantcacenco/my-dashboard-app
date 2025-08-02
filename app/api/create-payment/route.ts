@@ -19,6 +19,8 @@ export async function POST(request: NextRequest) {
       payment_stage
     } = await request.json()
 
+    console.log('Creating payment for stage:', payment_stage, 'amount:', amount)
+
     if (!proposal_id || !amount || !customer_email) {
       return NextResponse.json(
         { error: 'Missing required fields' },
@@ -91,6 +93,8 @@ export async function POST(request: NextRequest) {
         }
       })
     })
+
+    console.log('Stripe session created:', session.id)
 
     return NextResponse.json({ 
       checkout_url: session.url,
