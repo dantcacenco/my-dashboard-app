@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-11-20.acacia'
+  apiVersion: '2025-06-30.basil'
 })
 
 export async function POST(request: NextRequest) {
@@ -14,8 +14,7 @@ export async function POST(request: NextRequest) {
       customer_email,
       amount,
       payment_type,
-      description,
-      payment_stage
+      description
     } = await request.json()
 
     if (!proposal_id || !amount || !customer_email) {
@@ -39,7 +38,7 @@ export async function POST(request: NextRequest) {
             currency: 'usd',
             product_data: {
               name: `Service Pro - ${description}`,
-              description: `${description} for HVAC services proposal ${proposal_number}`,
+              description: `Deposit payment for HVAC services proposal ${proposal_number}`,
               images: [] // Add your logo URL here if you have one
             },
             unit_amount: Math.round(amount * 100) // Convert to cents
@@ -55,8 +54,7 @@ export async function POST(request: NextRequest) {
         proposal_id,
         proposal_number,
         customer_name,
-        payment_type: payment_type || 'card',
-        payment_stage: payment_stage || 'deposit'
+        payment_type: payment_type || 'card'
       },
       billing_address_collection: 'required',
       phone_number_collection: {
