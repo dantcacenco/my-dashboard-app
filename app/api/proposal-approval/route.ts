@@ -1,176 +1,299 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Resend } from 'resend'
-import { EMAIL_CONFIG, getEmailSender, getBusinessEmail } from '@/lib/config/email'
-
-const resend = new Resend(process.env.RESEND_API_KEY)
+import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json()
     const {
-      proposal_id,
-      proposal_number,
-      customer_name,
-      customer_email,
-      total_amount,
-      customer_notes,
-      action_type, // 'approved' or 'rejected'
-      proposal_title
-    } = await request.json()
+      proposalId,
+      approved,
+      customerName,
+      selectedAddons,
+      finalTotal,
+      customerNotes
+    } = body
 
-    if (!proposal_id || !proposal_number || !customer_name || !action_type) {
+    if (!proposalId) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Proposal ID is required' },
         { status: 400 }
       )
     }
 
-    const isApproved = action_type === 'approved'
-    const actionEmoji = isApproved ? '✅' : '❌'
-    const actionText = isApproved ? 'APPROVED' : 'DECLINED'
-    const actionColor = isApproved ? '#059669' : '#dc2626'
+    const supabase = await createClient()
 
-    // Create email subject
-    const subject = isApproved 
-      ? EMAIL_CONFIG.subjects.approvalToBusinesss(proposal_number, customer_name)
-      : EMAIL_CONFIG.subjects.rejectionToBusiness(proposal_number, customer_name)
+    // Get the current proposal to verify it exists
+    const { data: proposal, error: fetchError } = await supabase
+      .from('proposals')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          email,
+          phone,
+          address
+        ),
+        proposal_items (
+          id,
+          name,
+          description,
+          quantity,
+          unit_price,
+          total_price,
+          is_addon,
+          is_selected
+        )
+      `)
+      .eq('id', proposalId)
+      .single()
 
-    // Create HTML email template for business notification
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${subject}</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: ${actionColor}; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; background: #f9fafb; }
-            .status-badge { 
-              display: inline-block; 
-              padding: 8px 16px; 
-              background: ${actionColor}; 
-              color: white; 
-              border-radius: 6px; 
-              font-weight: bold;
-              margin: 10px 0;
-            }
-            .details-box { 
-              background: white; 
-              padding: 15px; 
-              border-radius: 6px; 
-              margin: 15px 0; 
-              border-left: 4px solid ${actionColor};
-            }
-            .footer { padding: 20px; text-align: center; color: #666; font-size: 14px; }
-            .customer-notes { 
-              background: #f3f4f6; 
-              padding: 12px; 
-              border-radius: 6px; 
-              font-style: italic;
-              margin: 10px 0;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>${actionEmoji} Proposal ${actionText}</h1>
-              <p>Customer Response Received</p>
-            </div>
-            
-            <div class="content">
-              <div class="status-badge">
-                ${actionText}
-              </div>
-              
-              <div class="details-box">
-                <h3>Proposal Details:</h3>
-                <p><strong>Proposal Number:</strong> ${proposal_number}</p>
-                <p><strong>Project:</strong> ${proposal_title || 'N/A'}</p>
-                <p><strong>Customer:</strong> ${customer_name}</p>
-                <p><strong>Email:</strong> ${customer_email}</p>
-                ${total_amount ? `<p><strong>Total Amount:</strong> $${total_amount.toFixed(2)}</p>` : ''}
-                <p><strong>Action Date:</strong> ${new Date().toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}</p>
-              </div>
+    if (fetchError || !proposal) {
+      console.error('Error fetching proposal:', fetchError)
+      return NextResponse.json(
+        { error: 'Proposal not found' },
+        { status: 404 }
+      )
+    }
 
-              ${customer_notes ? `
-                <div class="details-box">
-                  <h3>Customer Notes:</h3>
-                  <div class="customer-notes">
-                    "${customer_notes}"
-                  </div>
-                </div>
-              ` : ''}
+    // Check if proposal is already approved or rejected
+    if (proposal.status === 'approved' || proposal.status === 'rejected') {
+      return NextResponse.json(
+        { error: 'Proposal has already been processed' },
+        { status: 400 }
+      )
+    }
 
-              ${isApproved ? `
-                <div class="details-box" style="border-left-color: #059669; background: #f0fdf4;">
-                  <h3>🎉 Next Steps:</h3>
-                  <ul>
-                    <li>Contact customer to schedule work</li>
-                    <li>Prepare materials and equipment</li>
-                    <li>Send contract for signature</li>
-                    <li>Collect deposit payment</li>
-                  </ul>
-                </div>
-              ` : `
-                <div class="details-box" style="border-left-color: #dc2626; background: #fef2f2;">
-                  <h3>📝 Follow-up Actions:</h3>
-                  <ul>
-                    <li>Review customer feedback</li>
-                    <li>Consider reaching out to discuss alternatives</li>
-                    <li>Update proposal if needed</li>
-                    <li>Follow up in a few weeks</li>
-                  </ul>
-                </div>
-              `}
-            </div>
-            
-            <div class="footer">
-              <p><strong>${EMAIL_CONFIG.company.name}</strong> - Business Notification</p>
-              <p>This is an automated notification from your proposal system</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `
+    if (approved) {
+      // Handle approval
+      if (!customerName) {
+        return NextResponse.json(
+          { error: 'Customer signature is required for approval' },
+          { status: 400 }
+        )
+      }
 
-    // Send notification email to business
-    const emailResult = await resend.emails.send({
-      from: getEmailSender(),
-      to: [getBusinessEmail()],
-      subject: subject,
-      html: htmlContent,
-      text: `
-${actionEmoji} PROPOSAL ${actionText}
+      // Update selected addons if any
+      if (selectedAddons && selectedAddons.length > 0) {
+        const { error: addonError } = await supabase
+          .from('proposal_items')
+          .update({ is_selected: true })
+          .eq('proposal_id', proposalId)
+          .in('id', selectedAddons)
 
-Proposal: ${proposal_number}
-Customer: ${customer_name} (${customer_email})
-${proposal_title ? `Project: ${proposal_title}` : ''}
-${total_amount ? `Amount: $${total_amount.toFixed(2)}` : ''}
+        if (addonError) {
+          console.error('Error updating addons:', addonError)
+        }
+      }
 
-${customer_notes ? `Customer Notes: "${customer_notes}"` : ''}
+      // Calculate final total based on selected items
+      const selectedItems = proposal.proposal_items.filter((item: any) => 
+        !item.is_addon || (item.is_addon && selectedAddons?.includes(item.id))
+      )
+      
+      const subtotal = selectedItems.reduce((sum: number, item: any) => 
+        sum + item.total_price, 0
+      )
+      
+      const taxAmount = subtotal * proposal.tax_rate
+      const total = subtotal + taxAmount
 
-Action taken: ${new Date().toLocaleString()}
-      `
-    })
+      // Update proposal with approval
+      const { data: updatedProposal, error: updateError } = await supabase
+        .from('proposals')
+        .update({
+          status: 'approved',
+          approved_at: new Date().toISOString(),
+          signed_at: new Date().toISOString(),
+          signature_data: customerName,
+          customer_notes: customerNotes,
+          subtotal: subtotal,
+          tax_amount: taxAmount,
+          total: total,
+          // Set payment amounts for the 50/30/20 split
+          deposit_amount: total * 0.5,
+          progress_amount: total * 0.3,
+          final_amount: total * 0.2,
+          deposit_percentage: 0.5,
+          progress_percentage: 0.3,
+          final_percentage: 0.2,
+          current_payment_stage: 'pending_deposit',
+          payment_status: 'pending'
+        })
+        .eq('id', proposalId)
+        .select(`
+          *,
+          customers (
+            id,
+            name,
+            email,
+            phone,
+            address
+          ),
+          proposal_items (
+            id,
+            name,
+            description,
+            quantity,
+            unit_price,
+            total_price,
+            is_addon,
+            is_selected
+          )
+        `)
+        .single()
 
-    return NextResponse.json({ 
-      success: true, 
-      emailId: emailResult.data?.id 
-    })
+      if (updateError) {
+        console.error('Error updating proposal:', updateError)
+        return NextResponse.json(
+          { error: 'Failed to approve proposal' },
+          { status: 500 }
+        )
+      }
+
+      // Log the approval activity
+      await supabase
+        .from('proposal_activities')
+        .insert({
+          proposal_id: proposalId,
+          activity_type: 'proposal_approved',
+          description: `Proposal approved by ${customerName}`,
+          metadata: {
+            customer_name: customerName,
+            customer_notes: customerNotes,
+            selected_addons: selectedAddons,
+            final_total: total
+          }
+        })
+
+      // Send notification email to business owner
+      try {
+        const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/proposal-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'approved',
+            proposalId: proposalId,
+            proposalNumber: proposal.proposal_number,
+            customerName: proposal.customers.name,
+            customerEmail: proposal.customers.email,
+            signedBy: customerName,
+            total: total,
+            notes: customerNotes
+          }),
+        })
+
+        if (!emailResponse.ok) {
+          console.error('Failed to send approval notification email')
+        }
+      } catch (emailError) {
+        console.error('Error sending email notification:', emailError)
+        // Don't fail the approval if email fails
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        proposal: updatedProposal,
+        message: 'Proposal approved successfully' 
+      })
+
+    } else {
+      // Handle rejection
+      if (!customerNotes) {
+        return NextResponse.json(
+          { error: 'Reason for rejection is required' },
+          { status: 400 }
+        )
+      }
+
+      const { data: updatedProposal, error: updateError } = await supabase
+        .from('proposals')
+        .update({
+          status: 'rejected',
+          rejected_at: new Date().toISOString(),
+          customer_notes: customerNotes
+        })
+        .eq('id', proposalId)
+        .select(`
+          *,
+          customers (
+            id,
+            name,
+            email,
+            phone,
+            address
+          ),
+          proposal_items (
+            id,
+            name,
+            description,
+            quantity,
+            unit_price,
+            total_price,
+            is_addon,
+            is_selected
+          )
+        `)
+        .single()
+
+      if (updateError) {
+        console.error('Error rejecting proposal:', updateError)
+        return NextResponse.json(
+          { error: 'Failed to reject proposal' },
+          { status: 500 }
+        )
+      }
+
+      // Log the rejection activity
+      await supabase
+        .from('proposal_activities')
+        .insert({
+          proposal_id: proposalId,
+          activity_type: 'proposal_rejected',
+          description: 'Proposal rejected by customer',
+          metadata: {
+            reason: customerNotes
+          }
+        })
+
+      // Send notification email to business owner
+      try {
+        const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/proposal-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'rejected',
+            proposalId: proposalId,
+            proposalNumber: proposal.proposal_number,
+            customerName: proposal.customers.name,
+            customerEmail: proposal.customers.email,
+            reason: customerNotes
+          }),
+        })
+
+        if (!emailResponse.ok) {
+          console.error('Failed to send rejection notification email')
+        }
+      } catch (emailError) {
+        console.error('Error sending email notification:', emailError)
+        // Don't fail the rejection if email fails
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        proposal: updatedProposal,
+        message: 'Proposal rejected' 
+      })
+    }
 
   } catch (error) {
-    console.error('Error sending approval notification:', error)
+    console.error('Error processing proposal approval:', error)
     return NextResponse.json(
-      { error: 'Failed to send notification email' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
