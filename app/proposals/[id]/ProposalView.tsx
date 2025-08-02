@@ -15,6 +15,7 @@ interface ProposalItem {
   unit_price: number
   total_price: number
   is_addon: boolean
+  is_selected: boolean
 }
 
 interface Customer {
@@ -88,7 +89,8 @@ export default function ProposalView({ proposalId }: { proposalId: string }) {
             quantity,
             unit_price,
             total_price,
-            is_addon
+            is_addon,
+            is_selected
           )
         `)
         .eq('id', proposalId)
@@ -230,6 +232,16 @@ export default function ProposalView({ proposalId }: { proposalId: string }) {
     )
   }
 
+  // Helper function to get base items and selected addons
+  const getDisplayItems = () => {
+    if (!proposal) return { baseItems: [], selectedAddons: [] }
+    
+    const baseItems = proposal.proposal_items.filter(item => !item.is_addon)
+    const selectedAddons = proposal.proposal_items.filter(item => item.is_addon && item.is_selected)
+    
+    return { baseItems, selectedAddons }
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -241,6 +253,9 @@ export default function ProposalView({ proposalId }: { proposalId: string }) {
   if (!proposal) {
     return <div>Proposal not found</div>
   }
+
+  const { baseItems, selectedAddons } = getDisplayItems()
+  const allAddons = proposal.proposal_items.filter(item => item.is_addon)
 
   return (
     <div>
@@ -356,6 +371,9 @@ export default function ProposalView({ proposalId }: { proposalId: string }) {
                   Type
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Quantity
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -367,7 +385,8 @@ export default function ProposalView({ proposalId }: { proposalId: string }) {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {proposal.proposal_items.map((item) => (
+              {/* Base Items */}
+              {baseItems.map((item) => (
                 <tr key={item.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <p className="font-medium">{item.name}</p>
@@ -376,7 +395,12 @@ export default function ProposalView({ proposalId }: { proposalId: string }) {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.is_addon ? 'Add-on' : 'Service'}
+                    Service
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                      Included
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {item.quantity}
@@ -389,6 +413,52 @@ export default function ProposalView({ proposalId }: { proposalId: string }) {
                   </td>
                 </tr>
               ))}
+
+              {/* All Add-ons (showing selected status) */}
+              {allAddons.length > 0 && (
+                <>
+                  <tr>
+                    <td colSpan={6} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                      Optional Add-ons
+                    </td>
+                  </tr>
+                  {allAddons.map((item) => (
+                    <tr key={item.id} className={item.is_selected ? 'bg-blue-50' : ''}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <p className="font-medium">{item.name}</p>
+                        {item.description && (
+                          <p className="text-gray-500">{item.description}</p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        Add-on
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {item.is_selected ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            Selected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                            Not Selected
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {item.quantity}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatCurrency(item.unit_price)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <span className={item.is_selected ? 'text-gray-900' : 'text-gray-400'}>
+                          {formatCurrency(item.total_price)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </>
+              )}
             </tbody>
           </table>
         </div>
