@@ -1,9 +1,21 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import SendProposal from './SendProposal'
+
+interface ProposalItem {
+  id: string
+  name: string
+  description: string
+  quantity: number
+  unit_price: number
+  total_price: number
+  is_addon: boolean
+}
 
 interface Customer {
   id: string
@@ -13,22 +25,10 @@ interface Customer {
   address: string
 }
 
-interface ProposalItem {
-  id: string
-  pricing_item_id: string
-  name: string
-  description: string
-  quantity: number
-  unit_price: number
-  total_price: number
-  is_addon: boolean
-  is_selected: boolean
-  sort_order: number
-}
-
-interface ProposalData {
+interface Proposal {
   id: string
   proposal_number: string
+  customer_id: string
   title: string
   description: string
   subtotal: number
@@ -36,445 +36,374 @@ interface ProposalData {
   tax_amount: number
   total: number
   status: string
+  valid_until: string | null
+  signed_at: string | null
+  signature_data: string | null
   created_at: string
-  updated_at: string
+  sent_at: string | null
+  approved_at: string | null
+  rejected_at: string | null
+  customer_notes: string | null
+  customer_view_token: string
+  payment_status: string | null
+  deposit_paid_at: string | null
+  deposit_amount: number | null
+  progress_paid_at: string | null
+  progress_payment_amount: number | null
+  final_paid_at: string | null
+  final_payment_amount: number | null
+  total_paid: number | null
   customers: Customer
   proposal_items: ProposalItem[]
 }
 
-interface ProposalViewProps {
-  proposal: ProposalData
-  userRole: string
-}
-
-export default function ProposalView({ proposal, userRole }: ProposalViewProps) {
-  const [showPrintView, setShowPrintView] = useState(false)
+export default function ProposalView({ proposalId }: { proposalId: string }) {
+  const [proposal, setProposal] = useState<Proposal | null>(null)
+  const [loading, setLoading] = useState(true)
   const [showSendModal, setShowSendModal] = useState(false)
   const router = useRouter()
+  const supabase = createClient()
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
-  }
+  useEffect(() => {
+    fetchProposal()
+  }, [proposalId])
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
+  const fetchProposal = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('proposals')
+        .select(`
+          *,
+          customers (
+            id,
+            name,
+            email,
+            phone,
+            address
+          ),
+          proposal_items (
+            id,
+            name,
+            description,
+            quantity,
+            unit_price,
+            total_price,
+            is_addon
+          )
+        `)
+        .eq('id', proposalId)
+        .single()
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'draft':
-        return 'bg-gray-100 text-gray-800'
-      case 'sent':
-        return 'bg-blue-100 text-blue-800'
-      case 'viewed':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'approved':
-        return 'bg-green-100 text-green-800'
-      case 'rejected':
-        return 'bg-red-100 text-red-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
+      if (error) throw error
+      setProposal(data)
+    } catch (error) {
+      console.error('Error fetching proposal:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
-  // Separate selected items and add-ons
-  const selectedItems = proposal.proposal_items
-    .filter(item => !item.is_addon && item.is_selected)
-    .sort((a, b) => a.sort_order - b.sort_order)
-  
-  const selectedAddons = proposal.proposal_items
-    .filter(item => item.is_addon && item.is_selected)
-    .sort((a, b) => a.sort_order - b.sort_order)
+  const handleDelete = async () => {
+    if (!confirm('Are you sure you want to delete this proposal?')) return
 
-  const handlePrint = () => {
-    window.print()
+    try {
+      const { error } = await supabase
+        .from('proposals')
+        .delete()
+        .eq('id', proposalId)
+
+      if (error) throw error
+      router.push('/proposals')
+    } catch (error) {
+      console.error('Error deleting proposal:', error)
+      alert('Failed to delete proposal')
+    }
   }
 
-  if (showPrintView) {
+  const getStatusBadge = () => {
+    if (!proposal) return null
+
+    // Check payment status first if approved
+    if (proposal.status === 'approved' && proposal.payment_status) {
+      switch (proposal.payment_status) {
+        case 'paid':
+          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">Final Payment Complete</span>
+        case 'roughin_paid':
+          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">Rough-In Payment Received</span>
+        case 'deposit_paid':
+          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">Deposit Payment Received</span>
+        default:
+          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">Approved - Awaiting Payment</span>
+      }
+    }
+
+    switch (proposal.status) {
+      case 'draft':
+        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">Draft</span>
+      case 'sent':
+        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">Sent</span>
+      case 'viewed':
+        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">Viewed by Customer</span>
+      case 'approved':
+        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">Approved</span>
+      case 'rejected':
+        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">Rejected</span>
+      default:
+        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">{proposal.status}</span>
+    }
+  }
+
+  const getPaymentProgress = () => {
+    if (!proposal || proposal.status !== 'approved' || !proposal.total) return null
+
+    const depositAmount = proposal.total * 0.5
+    const roughInAmount = proposal.total * 0.3
+    const finalAmount = proposal.total * 0.2
+    const totalPaid = proposal.total_paid || 0
+    const percentage = (totalPaid / proposal.total) * 100
+
     return (
-      <div className="max-w-4xl mx-auto bg-white p-8 print:p-0 print:shadow-none">
-        {/* Print Header */}
-        <div className="flex justify-between items-start mb-8 print:mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-blue-600 print:text-black">Service Pro</h1>
-            <p className="text-gray-600 print:text-gray-800">Professional HVAC Services</p>
-            <div className="mt-2 text-sm text-gray-600 print:text-gray-800">
-              <p>Email: info@servicepro.com</p>
-              <p>Phone: (555) 123-4567</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <h2 className="text-2xl font-bold print:text-black">PROPOSAL</h2>
-            <p className="text-lg font-semibold text-blue-600 print:text-black">{proposal.proposal_number}</p>
-            <p className="text-sm text-gray-600 print:text-gray-800">{formatDate(proposal.created_at)}</p>
-          </div>
-        </div>
-
-        {/* Customer Information */}
-        <div className="grid grid-cols-2 gap-8 mb-8 print:mb-6">
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-2">Proposal For:</h3>
-            <div className="text-gray-700">
-              <p className="font-medium">{proposal.customers.name}</p>
-              <p>{proposal.customers.email}</p>
-              <p>{proposal.customers.phone}</p>
-              {proposal.customers.address && (
-                <p className="mt-1">{proposal.customers.address}</p>
-              )}
-            </div>
-          </div>
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-2">Proposal Details:</h3>
-            <div className="text-gray-700">
-              <p><span className="font-medium">Title:</span> {proposal.title}</p>
-              <p><span className="font-medium">Status:</span> {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}</p>
-              {proposal.description && (
-                <p className="mt-2"><span className="font-medium">Description:</span></p>
-              )}
-            </div>
-            {proposal.description && (
-              <p className="text-gray-600 text-sm mt-1">{proposal.description}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Services Table */}
+      <div className="bg-white shadow sm:rounded-lg p-6 mb-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Progress</h3>
+        
+        {/* Progress Bar */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold mb-4">Services & Materials</h3>
-          <table className="w-full border-collapse border border-gray-300">
-            <thead>
-              <tr className="bg-gray-50 print:bg-gray-100">
-                <th className="border border-gray-300 px-4 py-2 text-left">Description</th>
-                <th className="border border-gray-300 px-4 py-2 text-center">Qty</th>
-                <th className="border border-gray-300 px-4 py-2 text-right">Unit Price</th>
-                <th className="border border-gray-300 px-4 py-2 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selectedItems.map((item) => (
-                <tr key={item.id}>
-                  <td className="border border-gray-300 px-4 py-2">
-                    <div className="font-medium">{item.name}</div>
-                    <div className="text-sm text-gray-600">{item.description}</div>
-                  </td>
-                  <td className="border border-gray-300 px-4 py-2 text-center">{item.quantity}</td>
-                  <td className="border border-gray-300 px-4 py-2 text-right">{formatCurrency(item.unit_price)}</td>
-                  <td className="border border-gray-300 px-4 py-2 text-right font-medium">{formatCurrency(item.total_price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Add-ons Table */}
-        {selectedAddons.length > 0 && (
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-4">Optional Add-ons (Selected)</h3>
-            <table className="w-full border-collapse border border-gray-300">
-              <thead>
-                <tr className="bg-orange-50 print:bg-gray-100">
-                  <th className="border border-gray-300 px-4 py-2 text-left">Description</th>
-                  <th className="border border-gray-300 px-4 py-2 text-center">Qty</th>
-                  <th className="border border-gray-300 px-4 py-2 text-right">Unit Price</th>
-                  <th className="border border-gray-300 px-4 py-2 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedAddons.map((item) => (
-                  <tr key={item.id}>
-                    <td className="border border-gray-300 px-4 py-2">
-                      <div className="font-medium">{item.name}</div>
-                      <div className="text-sm text-gray-600">{item.description}</div>
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">{item.quantity}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">{formatCurrency(item.unit_price)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right font-medium">{formatCurrency(item.total_price)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex justify-between text-sm text-gray-600 mb-2">
+            <span>Overall Progress</span>
+            <span>{percentage.toFixed(0)}% Complete</span>
           </div>
-        )}
-
-        {/* Totals */}
-        <div className="flex justify-end mb-8 print:mb-6">
-          <div className="w-64">
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span>{formatCurrency(proposal.subtotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tax ({(proposal.tax_rate * 100).toFixed(1)}%):</span>
-                <span>{formatCurrency(proposal.tax_amount)}</span>
-              </div>
-              <div className="border-t pt-2 flex justify-between font-bold text-lg">
-                <span>Total:</span>
-                <span>{formatCurrency(proposal.total)}</span>
-              </div>
-            </div>
+          <div className="w-full bg-gray-200 rounded-full h-3">
+            <div 
+              className="bg-green-600 h-3 rounded-full transition-all duration-300"
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-sm text-gray-600 mt-2">
+            <span>Paid: {formatCurrency(totalPaid)}</span>
+            <span>Remaining: {formatCurrency(proposal.total - totalPaid)}</span>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="border-t pt-6 print:pt-4 text-sm text-gray-600 print:text-gray-800">
-          <p className="font-medium mb-2">Terms & Conditions:</p>
-          <ul className="space-y-1 text-xs">
-            <li>• This proposal is valid for 30 days from the date above</li>
-            <li>• Work will begin upon signed approval and initial payment</li>
-            <li>• All materials and workmanship are guaranteed for 1 year</li>
-            <li>• Payment terms: 50% deposit, 30% at substantial completion, 20% final payment</li>
-          </ul>
-          <div className="mt-4 text-center">
-            <p className="font-medium">Thank you for choosing Service Pro!</p>
+        {/* Payment Stages */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className={`border rounded-lg p-4 ${proposal.deposit_paid_at ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
+            <h4 className="font-medium text-gray-900">50% Deposit</h4>
+            <p className="text-xl font-bold mt-1">{formatCurrency(depositAmount)}</p>
+            <p className="text-sm text-gray-600 mt-2">
+              {proposal.deposit_paid_at ? (
+                <span className="text-green-600">✓ Paid on {formatDate(proposal.deposit_paid_at)}</span>
+              ) : (
+                <span className="text-gray-500">Pending</span>
+              )}
+            </p>
+          </div>
+
+          <div className={`border rounded-lg p-4 ${proposal.progress_paid_at ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
+            <h4 className="font-medium text-gray-900">30% Rough-In</h4>
+            <p className="text-xl font-bold mt-1">{formatCurrency(roughInAmount)}</p>
+            <p className="text-sm text-gray-600 mt-2">
+              {proposal.progress_paid_at ? (
+                <span className="text-green-600">✓ Paid on {formatDate(proposal.progress_paid_at)}</span>
+              ) : (
+                <span className="text-gray-500">Pending</span>
+              )}
+            </p>
+          </div>
+
+          <div className={`border rounded-lg p-4 ${proposal.final_paid_at ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
+            <h4 className="font-medium text-gray-900">20% Final</h4>
+            <p className="text-xl font-bold mt-1">{formatCurrency(finalAmount)}</p>
+            <p className="text-sm text-gray-600 mt-2">
+              {proposal.final_paid_at ? (
+                <span className="text-green-600">✓ Paid on {formatDate(proposal.final_paid_at)}</span>
+              ) : (
+                <span className="text-gray-500">Pending</span>
+              )}
+            </p>
           </div>
         </div>
 
-        {/* Print buttons */}
-        <div className="print:hidden mt-8 flex gap-4 justify-center">
-          <button
-            onClick={handlePrint}
-            className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Print Proposal
-          </button>
-          <button
-            onClick={() => setShowPrintView(false)}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
-          >
-            Back to View
-          </button>
+        <div className="mt-4 text-sm text-gray-600">
+          <p>To manually update payment status, use the Edit button above.</p>
         </div>
       </div>
     )
   }
 
-  return (
-    <div className="py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Link
-                href="/proposals"
-                className="text-blue-600 hover:text-blue-800 flex items-center"
-              >
-                <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Back to Proposals
-              </Link>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">{proposal.proposal_number}</h1>
-                <p className="text-gray-600">{proposal.title}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(proposal.status)}`}>
-                {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
-              </span>
-              {userRole === 'boss' && (
-                <Link
-                  href={`/proposals/${proposal.id}/edit`}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  Edit Proposal
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Customer Information */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">Customer Information</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h3 className="font-medium text-gray-900">{proposal.customers.name}</h3>
-                  <p className="text-gray-600">{proposal.customers.email}</p>
-                  <p className="text-gray-600">{proposal.customers.phone}</p>
-                </div>
-                <div>
-                  {proposal.customers.address && (
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-1">Address:</h4>
-                      <p className="text-gray-600">{proposal.customers.address}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Proposal Details */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">Proposal Details</h2>
-              {proposal.description && (
-                <div className="mb-4">
-                  <h3 className="font-medium text-gray-900 mb-2">Description:</h3>
-                  <p className="text-gray-600">{proposal.description}</p>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="font-medium">Created:</span> {formatDate(proposal.created_at)}
-                </div>
-                <div>
-                  <span className="font-medium">Last Updated:</span> {formatDate(proposal.updated_at)}
-                </div>
-              </div>
-            </div>
-
-            {/* Services & Materials */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">Services & Materials</h2>
-              <div className="space-y-4">
-                {selectedItems.map((item) => (
-                  <div key={item.id} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h4 className="font-medium">{item.name}</h4>
-                        <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                        <div className="flex items-center gap-4 mt-2 text-sm">
-                          <span>Qty: {item.quantity}</span>
-                          <span>@ {formatCurrency(item.unit_price)}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-bold text-green-600">{formatCurrency(item.total_price)}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add-ons */}
-              {selectedAddons.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="font-medium text-gray-900 mb-3">Selected Add-ons</h3>
-                  <div className="space-y-3">
-                    {selectedAddons.map((item) => (
-                      <div key={item.id} className="border rounded-lg p-3 bg-orange-50 border-orange-200">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-medium">{item.name}</h4>
-                              <span className="text-xs bg-orange-200 px-2 py-1 rounded">Add-on</span>
-                            </div>
-                            <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                            <div className="flex items-center gap-4 mt-2 text-sm">
-                              <span>Qty: {item.quantity}</span>
-                              <span>@ {formatCurrency(item.unit_price)}</span>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span className="font-bold text-green-600">{formatCurrency(item.total_price)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Proposal Summary */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-4">Proposal Summary</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>{formatCurrency(proposal.subtotal)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tax ({(proposal.tax_rate * 100).toFixed(1)}%):</span>
-                  <span>{formatCurrency(proposal.tax_amount)}</span>
-                </div>
-                <div className="border-t pt-2 flex justify-between font-bold text-lg">
-                  <span>Total:</span>
-                  <span className="text-green-600">{formatCurrency(proposal.total)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-4">Actions</h3>
-              <div className="space-y-3">
-                <button
-                  onClick={() => setShowPrintView(true)}
-                  className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  Print/PDF View
-                </button>
-                {userRole === 'boss' && (
-                  <>
-                    <Link
-                      href={`/proposals/${proposal.id}/edit`}
-                      className="block w-full px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 text-center"
-                    >
-                      Edit Proposal
-                    </Link>
-                    <button
-                      onClick={() => setShowSendModal(true)}
-                      className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                    >
-                      Send to Customer
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="bg-blue-50 rounded-lg p-4">
-              <h3 className="font-medium text-blue-900 mb-2">Quick Stats</h3>
-              <div className="text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span>Total Items:</span>
-                  <span>{selectedItems.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Add-ons:</span>
-                  <span>{selectedAddons.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Proposal Number:</span>
-                  <span>{proposal.proposal_number}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Send Proposal Modal */}
-        {showSendModal && (
-          <SendProposal
-            proposalId={proposal.id}
-            proposalNumber={proposal.proposal_number}
-            customer={proposal.customers}
-            total={proposal.total}
-            onSent={() => {
-              setShowSendModal(false)
-              window.location.reload()
-            }}
-            onCancel={() => setShowSendModal(false)}
-          />
-        )}
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
       </div>
+    )
+  }
+
+  if (!proposal) {
+    return <div>Proposal not found</div>
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Proposal #{proposal.proposal_number}
+          </h1>
+          <div className="mt-2">{getStatusBadge()}</div>
+        </div>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowSendModal(true)}
+            className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            Send to Customer
+          </button>
+          <Link
+            href={`/proposals/${proposalId}/edit`}
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Edit
+          </Link>
+          <button
+            onClick={handleDelete}
+            className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+
+      {/* Payment Progress - Show for approved proposals */}
+      {proposal.status === 'approved' && getPaymentProgress()}
+
+      {/* Proposal Details */}
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+        <div className="px-4 py-5 sm:px-6">
+          <h3 className="text-lg leading-6 font-medium text-gray-900">
+            {proposal.title}
+          </h3>
+          {proposal.description && (
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">
+              {proposal.description}
+            </p>
+          )}
+        </div>
+        <div className="border-t border-gray-200">
+          <dl>
+            <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+              <dt className="text-sm font-medium text-gray-500">Customer</dt>
+              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                <Link href={`/customers/${proposal.customers.id}`} className="text-blue-600 hover:text-blue-900">
+                  {proposal.customers.name}
+                </Link>
+                <p className="text-gray-500">{proposal.customers.email}</p>
+                <p className="text-gray-500">{proposal.customers.phone}</p>
+              </dd>
+            </div>
+            <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+              <dt className="text-sm font-medium text-gray-500">Status Timeline</dt>
+              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                <p>Created: {formatDate(proposal.created_at)}</p>
+                {proposal.sent_at && <p>Sent: {formatDate(proposal.sent_at)}</p>}
+                {proposal.approved_at && <p>Approved: {formatDate(proposal.approved_at)}</p>}
+                {proposal.rejected_at && <p>Rejected: {formatDate(proposal.rejected_at)}</p>}
+                {proposal.signed_at && (
+                  <p>Signed by: {proposal.signature_data} on {formatDate(proposal.signed_at)}</p>
+                )}
+              </dd>
+            </div>
+            {proposal.customer_notes && (
+              <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                <dt className="text-sm font-medium text-gray-500">Customer Notes</dt>
+                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                  {proposal.customer_notes}
+                </dd>
+              </div>
+            )}
+            <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+              <dt className="text-sm font-medium text-gray-500">Valid Until</dt>
+              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                {proposal.valid_until ? formatDate(proposal.valid_until) : 'No expiration'}
+              </dd>
+            </div>
+            <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+              <dt className="text-sm font-medium text-gray-500">Total Amount</dt>
+              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                <p className="text-xl font-bold">{formatCurrency(proposal.total)}</p>
+                <p className="text-gray-500">Subtotal: {formatCurrency(proposal.subtotal)}</p>
+                <p className="text-gray-500">Tax ({(proposal.tax_rate * 100).toFixed(2)}%): {formatCurrency(proposal.tax_amount)}</p>
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+
+      {/* Line Items */}
+      <div className="mt-6 bg-white shadow overflow-hidden sm:rounded-lg">
+        <div className="px-4 py-5 sm:px-6">
+          <h3 className="text-lg leading-6 font-medium text-gray-900">
+            Services & Items
+          </h3>
+        </div>
+        <div className="border-t border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Item
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Type
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Quantity
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Unit Price
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {proposal.proposal_items.map((item) => (
+                <tr key={item.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <p className="font-medium">{item.name}</p>
+                    {item.description && (
+                      <p className="text-gray-500">{item.description}</p>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.is_addon ? 'Add-on' : 'Service'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.quantity}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatCurrency(item.unit_price)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                    {formatCurrency(item.total_price)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showSendModal && (
+        <SendProposal
+          proposal={proposal}
+          onClose={() => setShowSendModal(false)}
+          onSent={() => {
+            setShowSendModal(false)
+            fetchProposal()
+          }}
+        />
+      )}
     </div>
   )
 }
