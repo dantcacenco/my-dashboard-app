@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
+import { createClient } from '@/lib/supabase/server'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-07-30.basil'
@@ -22,6 +23,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
+      )
+    }
+
+    // Get the customer_view_token for the proposal
+    const supabase = await createClient()
+    const { data: proposal, error: fetchError } = await supabase
+      .from('proposals')
+      .select('customer_view_token')
+      .eq('id', proposal_id)
+      .single()
+
+    if (fetchError || !proposal || !proposal.customer_view_token) {
+      console.error('Error fetching proposal:', fetchError)
+      return NextResponse.json(
+        { error: 'Proposal not found' },
+        { status: 404 }
       )
     }
 
@@ -50,13 +67,14 @@ export async function POST(request: NextRequest) {
       mode: 'payment',
       customer_email: customer_email,
       success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposal_id}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/view/${proposal_id}?payment=cancelled`,
+      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/view/${proposal.customer_view_token}?payment=cancelled`,
       metadata: {
         proposal_id,
         proposal_number,
         customer_name,
         payment_type: payment_type || 'card',
-        payment_stage: payment_stage || 'deposit'
+        payment_stage: payment_stage || 'deposit',
+        customer_view_token: proposal.customer_view_token
       },
       billing_address_collection: 'required',
       phone_number_collection: {

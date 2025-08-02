@@ -118,7 +118,14 @@ export async function POST(request: NextRequest) {
           progress_percentage: 0.3,
           final_percentage: 0.2,
           current_payment_stage: 'pending_deposit',
-          payment_status: 'pending'
+          payment_status: 'pending',
+          // Initialize payment tracking to 0
+          total_paid: 0,
+          deposit_paid_at: null,
+          progress_paid_at: null,
+          final_paid_at: null,
+          progress_payment_amount: null,
+          final_payment_amount: null
         })
         .eq('id', proposalId)
         .select(`

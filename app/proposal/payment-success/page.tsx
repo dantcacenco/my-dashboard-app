@@ -24,7 +24,14 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
     const session = await stripe.checkout.sessions.retrieve(session_id)
     
     if (session.payment_status !== 'paid') {
-      redirect(`/proposal/view/${proposal_id}?payment=failed`)
+      // Get customer_view_token for redirect
+      const { data: proposal } = await supabase
+        .from('proposals')
+        .select('customer_view_token')
+        .eq('id', proposal_id)
+        .single()
+      
+      redirect(`/proposal/view/${proposal?.customer_view_token || proposal_id}?payment=failed`)
     }
 
     // Get proposal details
@@ -56,35 +63,34 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
       stripe_session_id: session_id,
     }
 
+    // Get the actual paid amount
+    const paidAmount = session.amount_total ? session.amount_total / 100 : 0
+
     switch (paymentStage) {
       case 'deposit':
         updateData.payment_status = 'deposit_paid'
         updateData.deposit_paid_at = now
-        updateData.deposit_amount = session.amount_total ? session.amount_total / 100 : 0
+        updateData.deposit_amount = paidAmount
         updateData.current_payment_stage = 'deposit'
+        updateData.total_paid = paidAmount
         break
       case 'progress':
         updateData.payment_status = 'progress_paid'
         updateData.progress_paid_at = now
-        updateData.progress_payment_amount = session.amount_total ? session.amount_total / 100 : 0
+        updateData.progress_payment_amount = paidAmount
         updateData.current_payment_stage = 'progress'
+        updateData.total_paid = (proposal.deposit_amount || 0) + paidAmount
         break
       case 'final':
         updateData.payment_status = 'paid'
         updateData.final_paid_at = now
-        updateData.final_payment_amount = session.amount_total ? session.amount_total / 100 : 0
+        updateData.final_payment_amount = paidAmount
         updateData.current_payment_stage = 'final'
+        updateData.total_paid = (proposal.deposit_amount || 0) + 
+                               (proposal.progress_payment_amount || 0) + 
+                               paidAmount
         break
     }
-
-    // Calculate total paid
-    const totalPaid = (proposal.deposit_amount || 0) + 
-                     (proposal.progress_payment_amount || 0) + 
-                     (updateData.final_payment_amount || 0) +
-                     (updateData.deposit_amount || 0) +
-                     (updateData.progress_payment_amount || 0)
-    
-    updateData.total_paid = totalPaid
 
     await supabase
       .from('proposals')
@@ -100,7 +106,7 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
         description: `${paymentStage.charAt(0).toUpperCase() + paymentStage.slice(1)} payment received via ${session.metadata?.payment_type || 'card'}`,
         metadata: {
           stripe_session_id: session_id,
-          amount: session.amount_total ? session.amount_total / 100 : 0,
+          amount: paidAmount,
           payment_method: session.metadata?.payment_type || 'card',
           customer_email: proposal.customers.email,
           payment_stage: paymentStage
@@ -119,7 +125,7 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
           proposal_number: proposal.proposal_number,
           customer_name: proposal.customers.name,
           customer_email: proposal.customers.email,
-          amount: session.amount_total ? session.amount_total / 100 : 0,
+          amount: paidAmount,
           payment_method: session.metadata?.payment_type || 'card',
           stripe_session_id: session_id,
           payment_stage: paymentStage
@@ -135,6 +141,14 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
 
   } catch (error) {
     console.error('Error processing payment success:', error)
-    redirect(`/proposal/view/${proposal_id}?payment=error`)
+    
+    // Get customer_view_token for error redirect
+    const { data: proposal } = await supabase
+      .from('proposals')
+      .select('customer_view_token')
+      .eq('id', proposal_id)
+      .single()
+    
+    redirect(`/proposal/view/${proposal?.customer_view_token || proposal_id}?payment=error`)
   }
 }
