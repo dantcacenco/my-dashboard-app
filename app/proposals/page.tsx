@@ -95,12 +95,6 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {proposals && proposals[0] && (
-          <div className="bg-yellow-100 p-4 mb-4 rounded text-xs overflow-auto">
-            <strong>Debug - First Proposal:</strong>
-            <pre>{JSON.stringify(proposals[0], null, 2)}</pre>
-          </div>
-        )}
         <ProposalsList 
           proposals={filteredProposals} 
           searchParams={params}
