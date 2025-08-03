@@ -25,7 +25,7 @@ export default async function EditProposalPage({ params }: PageProps) {
     .single()
 
   // Only boss can edit proposals
-  if (profile?.role !== 'boss') {
+  if (profile?.role !== 'admin') {
     redirect('/unauthorized')
   }
 

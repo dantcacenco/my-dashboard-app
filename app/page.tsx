@@ -22,7 +22,7 @@ export default async function DashboardPage() {
     // All proposals for stats
     supabase
       .from('proposals')
-      .select('id, status, total, created_at'),
+      .select('id, status, total, created_at, deposit_amount, progress_amount, final_amount, deposit_paid_at, progress_paid_at, final_paid_at'),
 
     // Recent proposals
     supabase
@@ -42,7 +42,7 @@ export default async function DashboardPage() {
     // Monthly stats (last 6 months)
     supabase
       .from('proposals')
-      .select('created_at, total, status')
+      .select('created_at, total, status, deposit_amount, progress_amount, final_amount, deposit_paid_at, progress_paid_at, final_paid_at')
       .gte('created_at', new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000).toISOString()),
 
     // Recent activities
@@ -66,55 +66,95 @@ export default async function DashboardPage() {
 
   // Calculate key metrics
   const totalProposals = proposals.length
-  const paidRevenue = proposals
-    .filter(p => p.status === 'paid')
-    .reduce((sum, p) => sum + (p.total || 0), 0)
+  
+  // Calculate paid revenue including partial payments
+  const paidRevenue = proposals.reduce((sum, p) => {
+    let proposalRevenue = 0
+    if (p.deposit_paid_at && p.deposit_amount) proposalRevenue += p.deposit_amount
+    if (p.progress_paid_at && p.progress_amount) proposalRevenue += p.progress_amount
+    if (p.final_paid_at && p.final_amount) proposalRevenue += p.final_amount
+    // If no staged payments, check if it's fully paid
+    if (proposalRevenue === 0 && p.status === 'paid') proposalRevenue = p.total || 0
+    return sum + proposalRevenue
+  }, 0)
+  
   const approvedProposals = proposals.filter(p => p.status === 'approved').length
-  const paidProposals = proposals.filter(p => p.status === 'paid').length
+  const paidProposals = proposals.filter(p => {
+    // Count as paid if any payment has been made
+    return p.status === 'paid' || p.deposit_paid_at || p.progress_paid_at || p.final_paid_at
+  }).length
   
   // Calculate conversion rates
   const conversionRate = totalProposals > 0 ? (approvedProposals / totalProposals) * 100 : 0
   const paymentRate = approvedProposals > 0 ? (paidProposals / approvedProposals) * 100 : 0
 
-  // Monthly revenue data for chart (only paid proposals)
-  const monthlyRevenue = Array.from({ length: 6 }, (_, i) => {
-    const date = new Date()
-    date.setMonth(date.getMonth() - (5 - i))
-    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
+  // Process monthly data for charts
+  const monthlyRevenue = new Map()
+  const currentDate = new Date()
+  
+  // Initialize last 6 months
+  for (let i = 5; i >= 0; i--) {
+    const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1)
+    const key = date.toISOString().slice(0, 7) // YYYY-MM format
+    monthlyRevenue.set(key, 0)
+  }
+
+  // Add revenue from all payments
+  monthlyData.forEach(proposal => {
+    // Add deposit payments
+    if (proposal.deposit_paid_at && proposal.deposit_amount) {
+      const month = proposal.deposit_paid_at.slice(0, 7)
+      if (monthlyRevenue.has(month)) {
+        monthlyRevenue.set(month, monthlyRevenue.get(month) + proposal.deposit_amount)
+      }
+    }
     
-    const monthData = monthlyData.filter(p => 
-      p.created_at.startsWith(monthKey) && p.status === 'paid'
-    )
+    // Add progress payments
+    if (proposal.progress_paid_at && proposal.progress_amount) {
+      const month = proposal.progress_paid_at.slice(0, 7)
+      if (monthlyRevenue.has(month)) {
+        monthlyRevenue.set(month, monthlyRevenue.get(month) + proposal.progress_amount)
+      }
+    }
     
-    return {
-      month: date.toLocaleDateString('en-US', { month: 'short' }),
-      revenue: monthData.reduce((sum, p) => sum + (p.total || 0), 0),
-      proposals: monthData.length
+    // Add final payments
+    if (proposal.final_paid_at && proposal.final_amount) {
+      const month = proposal.final_paid_at.slice(0, 7)
+      if (monthlyRevenue.has(month)) {
+        monthlyRevenue.set(month, monthlyRevenue.get(month) + proposal.final_amount)
+      }
+    }
+    
+    // For backward compatibility - if status is 'paid' but no staged payments
+    if (proposal.status === 'paid' && !proposal.deposit_paid_at && !proposal.progress_paid_at && !proposal.final_paid_at) {
+      const month = proposal.created_at.slice(0, 7)
+      if (monthlyRevenue.has(month)) {
+        monthlyRevenue.set(month, monthlyRevenue.get(month) + (proposal.total || 0))
+      }
     }
   })
 
+  const revenueData = Array.from(monthlyRevenue.entries()).map(([month, revenue]) => ({
+    month,
+    revenue
+  }))
+
   // Status distribution
-  const statusCounts = {
-    draft: proposals.filter(p => p.status === 'draft').length,
-    sent: proposals.filter(p => p.status === 'sent').length,
-    viewed: proposals.filter(p => p.status === 'viewed').length,
-    approved: proposals.filter(p => p.status === 'approved').length,
-    rejected: proposals.filter(p => p.status === 'rejected').length,
-    paid: proposals.filter(p => p.status === 'paid').length
-  }
+  const statusCounts = proposals.reduce((acc: Record<string, number>, proposal) => {
+    acc[proposal.status] = (acc[proposal.status] || 0) + 1
+    return acc
+  }, {})
 
   const dashboardData = {
-    metrics: {
-      totalProposals,
-      totalRevenue: paidRevenue, // Only revenue from paid proposals
-      approvedProposals,
-      conversionRate,
-      paymentRate
-    },
-    monthlyRevenue,
-    statusCounts,
+    totalProposals,
+    paidRevenue,
+    approvedProposals,
+    conversionRate,
+    paymentRate,
     recentProposals,
-    recentActivities
+    recentActivities,
+    revenueData,
+    statusCounts
   }
 
   return <DashboardContent data={dashboardData} />

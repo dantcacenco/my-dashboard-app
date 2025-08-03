@@ -25,7 +25,7 @@ export default async function ViewProposalPage({ params }: PageProps) {
     .single()
 
   // Only boss can view proposals (for now - later customers can view their own)
-  if (profile?.role !== 'boss') {
+  if (profile?.role !== 'admin') {
     redirect('/unauthorized')
   }
 
