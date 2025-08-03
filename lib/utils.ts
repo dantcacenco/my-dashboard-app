@@ -39,3 +39,5 @@ export function formatShortDate(dateString: string): string {
     year: 'numeric',
   }).format(new Date(dateString))
 }
+
+export const hasEnvVars = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
