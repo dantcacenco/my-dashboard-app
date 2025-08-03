@@ -1,22 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import Link from 'next/link'
 import SendProposal from './SendProposal'
-
-interface ProposalItem {
-  id: string
-  name: string
-  description: string
-  quantity: number
-  unit_price: number
-  total_price: number
-  is_addon: boolean
-  is_selected: boolean
-}
 
 interface Customer {
   id: string
@@ -26,10 +13,22 @@ interface Customer {
   address: string
 }
 
-interface Proposal {
+interface ProposalItem {
+  id: string
+  pricing_item_id: string
+  name: string
+  description: string
+  quantity: number
+  unit_price: number
+  total_price: number
+  is_addon: boolean
+  is_selected: boolean
+  sort_order: number
+}
+
+interface ProposalData {
   id: string
   proposal_number: string
-  customer_id: string
   title: string
   description: string
   subtotal: number
@@ -37,441 +36,395 @@ interface Proposal {
   tax_amount: number
   total: number
   status: string
-  valid_until: string | null
-  signed_at: string | null
-  signature_data: string | null
   created_at: string
-  sent_at: string | null
-  approved_at: string | null
-  rejected_at: string | null
-  customer_notes: string | null
-  customer_view_token: string
-  payment_status: string | null
-  deposit_paid_at: string | null
-  deposit_amount: number | null
-  progress_paid_at: string | null
-  progress_payment_amount: number | null
-  final_paid_at: string | null
-  final_payment_amount: number | null
-  total_paid: number | null
+  updated_at: string
   customers: Customer
   proposal_items: ProposalItem[]
 }
 
-export default function ProposalView({ proposalId }: { proposalId: string }) {
-  const [proposal, setProposal] = useState<Proposal | null>(null)
-  const [loading, setLoading] = useState(true)
+interface ProposalViewProps {
+  proposal: ProposalData
+  userRole: string
+}
+
+export default function ProposalView({ proposal, userRole }: ProposalViewProps) {
+  const [showPrintView, setShowPrintView] = useState(false)
   const [showSendModal, setShowSendModal] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
-  useEffect(() => {
-    fetchProposal()
-  }, [proposalId])
-
-  const fetchProposal = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('proposals')
-        .select(`
-          *,
-          customers (
-            id,
-            name,
-            email,
-            phone,
-            address
-          ),
-          proposal_items (
-            id,
-            name,
-            description,
-            quantity,
-            unit_price,
-            total_price,
-            is_addon,
-            is_selected
-          )
-        `)
-        .eq('id', proposalId)
-        .single()
-
-      if (error) throw error
-      setProposal(data)
-    } catch (error) {
-      console.error('Error fetching proposal:', error)
-    } finally {
-      setLoading(false)
-    }
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
   }
 
-  const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this proposal?')) return
-
-    try {
-      const { error } = await supabase
-        .from('proposals')
-        .delete()
-        .eq('id', proposalId)
-
-      if (error) throw error
-      router.push('/proposals')
-    } catch (error) {
-      console.error('Error deleting proposal:', error)
-      alert('Failed to delete proposal')
-    }
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount)
   }
 
-  const getStatusBadge = () => {
-    if (!proposal) return null
-
-    // Check payment status first if approved
-    if (proposal.status === 'approved' && proposal.payment_status) {
-      switch (proposal.payment_status) {
-        case 'paid':
-          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">Final Payment Complete</span>
-        case 'roughin_paid':
-          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">Rough-In Payment Received</span>
-        case 'deposit_paid':
-          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">Deposit Payment Received</span>
-        default:
-          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">Approved - Awaiting Payment</span>
-      }
-    }
-
-    switch (proposal.status) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
       case 'draft':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">Draft</span>
+        return 'bg-gray-100 text-gray-800'
       case 'sent':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">Sent</span>
+        return 'bg-blue-100 text-blue-800'
       case 'viewed':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">Viewed by Customer</span>
+        return 'bg-yellow-100 text-yellow-800'
       case 'approved':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">Approved</span>
+        return 'bg-green-100 text-green-800'
       case 'rejected':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">Rejected</span>
+        return 'bg-red-100 text-red-800'
       default:
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">{proposal.status}</span>
+        return 'bg-gray-100 text-gray-800'
     }
   }
 
-  const getPaymentProgress = () => {
-    if (!proposal || proposal.status !== 'approved' || !proposal.total) return null
+  // Separate selected items and add-ons
+  const selectedItems = proposal.proposal_items
+    .filter(item => !item.is_addon && item.is_selected)
+    .sort((a, b) => a.sort_order - b.sort_order)
+  
+  const selectedAddons = proposal.proposal_items
+    .filter(item => item.is_addon && item.is_selected)
+    .sort((a, b) => a.sort_order - b.sort_order)
 
-    const depositAmount = proposal.total * 0.5
-    const roughInAmount = proposal.total * 0.3
-    const finalAmount = proposal.total * 0.2
-    const totalPaid = proposal.total_paid || 0
-    const percentage = (totalPaid / proposal.total) * 100
+  const handlePrint = () => {
+    window.print()
+  }
 
+  if (showPrintView) {
     return (
-      <div className="bg-white shadow sm:rounded-lg p-6 mb-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Progress</h3>
-        
-        {/* Progress Bar */}
-        <div className="mb-6">
-          <div className="flex justify-between text-sm text-gray-600 mb-2">
-            <span>Overall Progress</span>
-            <span>{percentage.toFixed(0)}% Complete</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3">
-            <div 
-              className="bg-green-600 h-3 rounded-full transition-all duration-300"
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-sm text-gray-600 mt-2">
-            <span>Paid: {formatCurrency(totalPaid)}</span>
-            <span>Remaining: {formatCurrency(proposal.total - totalPaid)}</span>
+      <div className="max-w-4xl mx-auto bg-white p-8 print:p-0 print:shadow-none">
+        {/* Print Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Service Pro HVAC</h1>
+          <p className="text-gray-600">123 Main Street, Anytown, USA 12345</p>
+          <p className="text-gray-600">Phone: (555) 123-4567 | Email: info@servicepro.com</p>
+        </div>
+
+        {/* Proposal Header */}
+        <div className="mb-8 pb-4 border-b">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">PROPOSAL</h2>
+              <p className="text-gray-600">#{proposal.proposal_number}</p>
+              <p className="text-gray-600">{formatDate(proposal.created_at)}</p>
+            </div>
+            <div className="text-right">
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(proposal.status)}`}>
+                {proposal.status.toUpperCase()}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Payment Stages */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className={`border rounded-lg p-4 ${proposal.deposit_paid_at ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
-            <h4 className="font-medium text-gray-900">50% Deposit</h4>
-            <p className="text-xl font-bold mt-1">{formatCurrency(depositAmount)}</p>
-            <p className="text-sm text-gray-600 mt-2">
-              {proposal.deposit_paid_at ? (
-                <span className="text-green-600">✓ Paid on {formatDate(proposal.deposit_paid_at)}</span>
-              ) : (
-                <span className="text-gray-500">Pending</span>
-              )}
-            </p>
-          </div>
-
-          <div className={`border rounded-lg p-4 ${proposal.progress_paid_at ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
-            <h4 className="font-medium text-gray-900">30% Rough-In</h4>
-            <p className="text-xl font-bold mt-1">{formatCurrency(roughInAmount)}</p>
-            <p className="text-sm text-gray-600 mt-2">
-              {proposal.progress_paid_at ? (
-                <span className="text-green-600">✓ Paid on {formatDate(proposal.progress_paid_at)}</span>
-              ) : (
-                <span className="text-gray-500">Pending</span>
-              )}
-            </p>
-          </div>
-
-          <div className={`border rounded-lg p-4 ${proposal.final_paid_at ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
-            <h4 className="font-medium text-gray-900">20% Final</h4>
-            <p className="text-xl font-bold mt-1">{formatCurrency(finalAmount)}</p>
-            <p className="text-sm text-gray-600 mt-2">
-              {proposal.final_paid_at ? (
-                <span className="text-green-600">✓ Paid on {formatDate(proposal.final_paid_at)}</span>
-              ) : (
-                <span className="text-gray-500">Pending</span>
-              )}
-            </p>
+        {/* Customer Information */}
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Bill To:</h3>
+          <div className="text-gray-600">
+            <p className="font-semibold text-gray-900">{proposal.customers.name}</p>
+            <p>{proposal.customers.email}</p>
+            <p>{proposal.customers.phone}</p>
+            <p>{proposal.customers.address}</p>
           </div>
         </div>
 
-        <div className="mt-4 text-sm text-gray-600">
-          <p>To manually update payment status, use the Edit button above.</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Helper function to get base items and selected addons
-  const getDisplayItems = () => {
-    if (!proposal) return { baseItems: [], selectedAddons: [] }
-    
-    const baseItems = proposal.proposal_items.filter(item => !item.is_addon)
-    const selectedAddons = proposal.proposal_items.filter(item => item.is_addon && item.is_selected)
-    
-    return { baseItems, selectedAddons }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-      </div>
-    )
-  }
-
-  if (!proposal) {
-    return <div>Proposal not found</div>
-  }
-
-  const { baseItems, selectedAddons } = getDisplayItems()
-  const allAddons = proposal.proposal_items.filter(item => item.is_addon)
-
-  return (
-    <div>
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
-            Proposal #{proposal.proposal_number}
-          </h1>
-          <div className="mt-2">{getStatusBadge()}</div>
-        </div>
-        <div className="flex space-x-3">
-          <button
-            onClick={() => setShowSendModal(true)}
-            className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-          >
-            Send to Customer
-          </button>
-          <Link
-            href={`/proposals/${proposalId}/edit`}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Edit
-          </Link>
-          <button
-            onClick={handleDelete}
-            className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-
-      {/* Payment Progress - Show for approved proposals */}
-      {proposal.status === 'approved' && getPaymentProgress()}
-
-      {/* Proposal Details */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">
-            {proposal.title}
-          </h3>
+        {/* Proposal Details */}
+        <div className="mb-8">
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">{proposal.title}</h3>
           {proposal.description && (
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              {proposal.description}
-            </p>
+            <p className="text-gray-600 whitespace-pre-wrap">{proposal.description}</p>
           )}
         </div>
-        <div className="border-t border-gray-200">
-          <dl>
-            <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500">Customer</dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                <Link href={`/customers/${proposal.customers.id}`} className="text-blue-600 hover:text-blue-900">
-                  {proposal.customers.name}
-                </Link>
-                <p className="text-gray-500">{proposal.customers.email}</p>
-                <p className="text-gray-500">{proposal.customers.phone}</p>
-              </dd>
+
+        {/* Line Items */}
+        <div className="mb-8">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-2">Item</th>
+                <th className="text-center py-2">Qty</th>
+                <th className="text-right py-2">Price</th>
+                <th className="text-right py-2">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedItems.map((item, index) => (
+                <tr key={item.id} className={index < selectedItems.length - 1 ? 'border-b' : ''}>
+                  <td className="py-2">
+                    <div>
+                      <p className="font-medium">{item.name}</p>
+                      {item.description && (
+                        <p className="text-sm text-gray-600">{item.description}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="text-center py-2">{item.quantity}</td>
+                  <td className="text-right py-2">{formatCurrency(item.unit_price)}</td>
+                  <td className="text-right py-2">{formatCurrency(item.total_price)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Add-ons */}
+        {selectedAddons.length > 0 && (
+          <div className="mb-8">
+            <h4 className="font-semibold text-gray-900 mb-3">Selected Add-ons</h4>
+            <table className="w-full">
+              <tbody>
+                {selectedAddons.map((addon, index) => (
+                  <tr key={addon.id} className={index < selectedAddons.length - 1 ? 'border-b' : ''}>
+                    <td className="py-2">
+                      <div>
+                        <p className="font-medium">{addon.name}</p>
+                        {addon.description && (
+                          <p className="text-sm text-gray-600">{addon.description}</p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-center py-2">{addon.quantity}</td>
+                    <td className="text-right py-2">{formatCurrency(addon.unit_price)}</td>
+                    <td className="text-right py-2">{formatCurrency(addon.total_price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Totals */}
+        <div className="border-t pt-4">
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Subtotal</span>
+              <span className="font-medium">{formatCurrency(proposal.subtotal)}</span>
             </div>
-            <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500">Status Timeline</dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                <p>Created: {formatDate(proposal.created_at)}</p>
-                {proposal.sent_at && <p>Sent: {formatDate(proposal.sent_at)}</p>}
-                {proposal.approved_at && <p>Approved: {formatDate(proposal.approved_at)}</p>}
-                {proposal.rejected_at && <p>Rejected: {formatDate(proposal.rejected_at)}</p>}
-                {proposal.signed_at && (
-                  <p>Signed by: {proposal.signature_data} on {formatDate(proposal.signed_at)}</p>
-                )}
-              </dd>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Tax ({(proposal.tax_rate * 100).toFixed(1)}%)</span>
+              <span className="font-medium">{formatCurrency(proposal.tax_amount)}</span>
             </div>
-            {proposal.customer_notes && (
-              <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt className="text-sm font-medium text-gray-500">Customer Notes</dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                  {proposal.customer_notes}
-                </dd>
-              </div>
-            )}
-            <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500">Valid Until</dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                {proposal.valid_until ? formatDate(proposal.valid_until) : 'No expiration'}
-              </dd>
+            <div className="flex justify-between border-t pt-2">
+              <span className="text-lg font-semibold">Total</span>
+              <span className="text-lg font-semibold">{formatCurrency(proposal.total)}</span>
             </div>
-            <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500">Total Amount</dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                <p className="text-xl font-bold">{formatCurrency(proposal.total)}</p>
-                <p className="text-gray-500">Subtotal: {formatCurrency(proposal.subtotal)}</p>
-                <p className="text-gray-500">Tax ({(proposal.tax_rate * 100).toFixed(2)}%): {formatCurrency(proposal.tax_amount)}</p>
-              </dd>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-12 pt-8 border-t text-center text-gray-600 text-sm">
+          <p>Thank you for considering Service Pro HVAC for your needs.</p>
+          <p>This proposal is valid for 30 days from the date above.</p>
+        </div>
+
+        {/* Close Print View Button (hidden in print) */}
+        <div className="mt-8 print:hidden">
+          <button
+            onClick={() => setShowPrintView(false)}
+            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+          >
+            Close Print View
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Proposal #{proposal.proposal_number}</h1>
+          <p className="text-gray-600">Created on {formatDate(proposal.created_at)}</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(proposal.status)}`}>
+            {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
+          </span>
+          {userRole === 'admin' && (
+            <div className="flex gap-2">
+              {proposal.status === 'draft' && (
+                <>
+                  <Link
+                    href={`/proposals/${proposal.id}/edit`}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Edit
+                  </Link>
+                  <button
+                    onClick={() => setShowSendModal(true)}
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                  >
+                    Send Proposal
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setShowPrintView(true)}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Print
+              </button>
+              <button
+                onClick={handlePrint}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Download PDF
+              </button>
             </div>
-          </dl>
+          )}
+        </div>
+      </div>
+
+      {/* Customer Information */}
+      <div className="bg-white rounded-lg shadow mb-6">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Customer Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-600">Name</p>
+              <p className="font-medium">{proposal.customers.name}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Email</p>
+              <p className="font-medium">{proposal.customers.email}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Phone</p>
+              <p className="font-medium">{proposal.customers.phone}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Address</p>
+              <p className="font-medium">{proposal.customers.address}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Proposal Details */}
+      <div className="bg-white rounded-lg shadow mb-6">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">{proposal.title}</h2>
+          {proposal.description && (
+            <p className="text-gray-600 whitespace-pre-wrap">{proposal.description}</p>
+          )}
         </div>
       </div>
 
       {/* Line Items */}
-      <div className="mt-6 bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">
-            Services & Items
-          </h3>
-        </div>
-        <div className="border-t border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Item
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Quantity
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Unit Price
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {/* Base Items */}
-              {baseItems.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <p className="font-medium">{item.name}</p>
-                    {item.description && (
-                      <p className="text-gray-500">{item.description}</p>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    Service
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                      Included
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.quantity}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatCurrency(item.unit_price)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                    {formatCurrency(item.total_price)}
-                  </td>
+      <div className="bg-white rounded-lg shadow mb-6">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Services</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-3">Item</th>
+                  <th className="text-center py-3">Quantity</th>
+                  <th className="text-right py-3">Unit Price</th>
+                  <th className="text-right py-3">Total</th>
                 </tr>
-              ))}
-
-              {/* All Add-ons (showing selected status) */}
-              {allAddons.length > 0 && (
-                <>
-                  <tr>
-                    <td colSpan={6} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
-                      Optional Add-ons
-                    </td>
-                  </tr>
-                  {allAddons.map((item) => (
-                    <tr key={item.id} className={item.is_selected ? 'bg-blue-50' : ''}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+              </thead>
+              <tbody>
+                {selectedItems.map((item) => (
+                  <tr key={item.id} className="border-b">
+                    <td className="py-3">
+                      <div>
                         <p className="font-medium">{item.name}</p>
                         {item.description && (
-                          <p className="text-gray-500">{item.description}</p>
+                          <p className="text-sm text-gray-600">{item.description}</p>
                         )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        Add-on
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {item.is_selected ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                            Selected
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                            Not Selected
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {item.quantity}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatCurrency(item.unit_price)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <span className={item.is_selected ? 'text-gray-900' : 'text-gray-400'}>
-                          {formatCurrency(item.total_price)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </>
-              )}
-            </tbody>
-          </table>
+                      </div>
+                    </td>
+                    <td className="text-center py-3">{item.quantity}</td>
+                    <td className="text-right py-3">{formatCurrency(item.unit_price)}</td>
+                    <td className="text-right py-3">{formatCurrency(item.total_price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
+      {/* Add-ons */}
+      {selectedAddons.length > 0 && (
+        <div className="bg-white rounded-lg shadow mb-6">
+          <div className="p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Selected Add-ons</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3">Add-on</th>
+                    <th className="text-center py-3">Quantity</th>
+                    <th className="text-right py-3">Unit Price</th>
+                    <th className="text-right py-3">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedAddons.map((addon) => (
+                    <tr key={addon.id} className="border-b">
+                      <td className="py-3">
+                        <div>
+                          <p className="font-medium">{addon.name}</p>
+                          {addon.description && (
+                            <p className="text-sm text-gray-600">{addon.description}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="text-center py-3">{addon.quantity}</td>
+                      <td className="text-right py-3">{formatCurrency(addon.unit_price)}</td>
+                      <td className="text-right py-3">{formatCurrency(addon.total_price)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pricing Summary */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Pricing Summary</h2>
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Subtotal</span>
+              <span className="font-medium">{formatCurrency(proposal.subtotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Tax ({(proposal.tax_rate * 100).toFixed(1)}%)</span>
+              <span className="font-medium">{formatCurrency(proposal.tax_amount)}</span>
+            </div>
+            <div className="flex justify-between border-t pt-3">
+              <span className="text-lg font-semibold">Total</span>
+              <span className="text-lg font-semibold">{formatCurrency(proposal.total)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Send Proposal Modal */}
       {showSendModal && (
         <SendProposal
-          proposal={proposal}
-          onClose={() => setShowSendModal(false)}
+          proposalId={proposal.id}
+          proposalNumber={proposal.proposal_number}
+          customer={proposal.customers}
+          total={proposal.total}
           onSent={() => {
             setShowSendModal(false)
-            fetchProposal()
+            router.refresh()
           }}
+          onCancel={() => setShowSendModal(false)}
         />
       )}
     </div>
