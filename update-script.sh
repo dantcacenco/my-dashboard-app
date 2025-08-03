@@ -1,17 +1,12 @@
 #!/bin/bash
-echo "🔧 Fixing ProposalView build error - incorrect props passed to SendProposal..."
+echo "🔧 Fixing proposals page and ProposalsList component build errors..."
 
-# Create backup
-cp app/proposals/[id]/ProposalView.tsx app/proposals/[id]/ProposalView.tsx.backup
-
-# Write corrected file
-cat > app/proposals/[id]/ProposalView.tsx << 'EOF'
-'use client'
-
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import SendProposal from './SendProposal'
+# First, fix the proposals/page.tsx to use correct types
+echo "📝 Updating proposals/page.tsx..."
+cat > app/proposals/page.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import ProposalsList from './ProposalsList'
 
 interface Customer {
   id: string
@@ -21,53 +16,256 @@ interface Customer {
   address: string
 }
 
-interface ProposalItem {
+interface ProposalData {
   id: string
-  pricing_item_id: string
+  proposal_number: string
+  title: string
+  total: number
+  status: string
+  created_at: string
+  updated_at: string
+  customers: Customer // Changed from Customer[] to Customer (single object)
+}
+
+interface PageProps {
+  searchParams: Promise<{
+    status?: string
+    startDate?: string
+    endDate?: string
+    search?: string
+  }>
+}
+
+export default async function ProposalsPage({ searchParams }: PageProps) {
+  const supabase = await createClient()
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  
+  if (userError || !user) {
+    redirect('/auth/signin')
+  }
+
+  const params = await searchParams
+
+  let query = supabase
+    .from('proposals')
+    .select('*, customers(*)')
+    .order('created_at', { ascending: false })
+
+  if (params.status && params.status !== 'all') {
+    query = query.eq('status', params.status)
+  }
+
+  if (params.startDate) {
+    const startDate = new Date(params.startDate)
+    startDate.setHours(0, 0, 0, 0)
+    query = query.gte('created_at', startDate.toISOString())
+  }
+  
+  if (params.endDate) {
+    const endDate = new Date(params.endDate)
+    endDate.setHours(23, 59, 59, 999)
+    query = query.lte('created_at', endDate.toISOString())
+  }
+
+  const { data: proposals, error } = await query
+
+  if (error) {
+    console.error('Error fetching proposals:', error)
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900 mb-4">Error Loading Proposals</h1>
+            <p className="text-gray-600">Please try again later.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  let filteredProposals = proposals || []
+  
+  if (params.search) {
+    const searchTerm = params.search.toLowerCase()
+    filteredProposals = filteredProposals.filter(proposal => {
+      const customer = proposal.customers // Now it's an object, not array
+      
+      return proposal.proposal_number.toLowerCase().includes(searchTerm) ||
+             proposal.title.toLowerCase().includes(searchTerm) ||
+             (customer && customer.name.toLowerCase().includes(searchTerm)) ||
+             (customer && customer.email.toLowerCase().includes(searchTerm))
+    })
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <ProposalsList 
+          proposals={filteredProposals} 
+          searchParams={params}
+        />
+      </div>
+    </div>
+  )
+}
+EOF
+
+# Now ensure ProposalsList.tsx is complete and properly exported
+echo "📝 Creating complete ProposalsList.tsx..."
+cat > app/proposals/ProposalsList.tsx << 'EOF'
+'use client'
+
+import { useState } from 'react'
+import * as React from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+
+interface Customer {
+  id: string
   name: string
-  description: string
-  quantity: number
-  unit_price: number
-  total_price: number
-  is_addon: boolean
-  is_selected: boolean
-  sort_order: number
+  email: string
+  phone: string
+  address: string
 }
 
 interface ProposalData {
   id: string
   proposal_number: string
   title: string
-  description: string
-  subtotal: number
-  tax_rate: number
-  tax_amount: number
   total: number
   status: string
   created_at: string
   updated_at: string
-  customers: Customer
-  proposal_items: ProposalItem[]
+  customers: Customer // Single object, not array
 }
 
-interface ProposalViewProps {
-  proposal: ProposalData
-  userRole: string
+interface ProposalsListProps {
+  proposals: ProposalData[]
+  searchParams: {
+    status?: string
+    startDate?: string
+    endDate?: string
+    search?: string
+  }
 }
 
-export default function ProposalView({ proposal, userRole }: ProposalViewProps) {
-  const [showPrintView, setShowPrintView] = useState(false)
-  const [showSendModal, setShowSendModal] = useState(false)
+export default function ProposalsList({ proposals, searchParams }: ProposalsListProps) {
   const router = useRouter()
+  const currentSearchParams = useSearchParams()
+  
+  // Filter states
+  const [filters, setFilters] = useState({
+    status: searchParams.status || 'all',
+    startDate: searchParams.startDate || '',
+    endDate: searchParams.endDate || '',
+    search: searchParams.search || ''
+  })
 
+  // Sorting state
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof ProposalData | 'customer_name' | 'customer_email'
+    direction: 'asc' | 'desc'
+  } | null>(null)
+
+  const [showFilters, setShowFilters] = useState(false)
+
+  // Status options
+  const statusOptions = [
+    { value: 'all', label: 'All Statuses', color: 'bg-gray-100 text-gray-800' },
+    { value: 'draft', label: 'Draft', color: 'bg-gray-100 text-gray-800' },
+    { value: 'sent', label: 'Sent', color: 'bg-blue-100 text-blue-800' },
+    { value: 'viewed', label: 'Viewed', color: 'bg-purple-100 text-purple-800' },
+    { value: 'approved', label: 'Approved', color: 'bg-green-100 text-green-800' },
+    { value: 'rejected', label: 'Rejected', color: 'bg-red-100 text-red-800' },
+    { value: 'paid', label: 'Paid', color: 'bg-emerald-100 text-emerald-800' }
+  ]
+
+  // Sorting functionality
+  const handleSort = (key: keyof ProposalData | 'customer_name' | 'customer_email') => {
+    let direction: 'asc' | 'desc' = 'asc'
+    
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    }
+    
+    setSortConfig({ key, direction })
+  }
+
+  // Sort proposals
+  const sortedProposals = React.useMemo(() => {
+    if (!sortConfig) return proposals
+
+    return [...proposals].sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortConfig.key) {
+        case 'customer_name':
+          aValue = a.customers?.name || ''
+          bValue = b.customers?.name || ''
+          break
+        case 'customer_email':
+          aValue = a.customers?.email || ''
+          bValue = b.customers?.email || ''
+          break
+        default:
+          aValue = a[sortConfig.key as keyof ProposalData]
+          bValue = b[sortConfig.key as keyof ProposalData]
+      }
+
+      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1
+      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [proposals, sortConfig])
+
+  // Apply filters
+  const handleFilterChange = () => {
+    const params = new URLSearchParams()
+    
+    if (filters.status !== 'all') params.set('status', filters.status)
+    if (filters.startDate) params.set('startDate', filters.startDate)
+    if (filters.endDate) params.set('endDate', filters.endDate)
+    if (filters.search) params.set('search', filters.search)
+    
+    router.push(`/proposals?${params.toString()}`)
+  }
+
+  // Reset filters
+  const handleResetFilters = () => {
+    setFilters({
+      status: 'all',
+      startDate: '',
+      endDate: '',
+      search: ''
+    })
+    router.push('/proposals')
+  }
+
+  // Quick date filters
+  const setDateRange = (days: number) => {
+    const end = new Date()
+    const start = new Date()
+    start.setDate(start.getDate() - days)
+    
+    setFilters({
+      ...filters,
+      startDate: start.toISOString().split('T')[0],
+      endDate: end.toISOString().split('T')[0]
+    })
+  }
+
+  // Format date
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
-      month: 'long',
+      month: 'short',
       day: 'numeric'
     })
   }
 
+  // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -75,380 +273,293 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
     }).format(amount)
   }
 
+  // Get status color
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'draft':
-        return 'bg-gray-100 text-gray-800'
-      case 'sent':
-        return 'bg-blue-100 text-blue-800'
-      case 'viewed':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'approved':
-        return 'bg-green-100 text-green-800'
-      case 'rejected':
-        return 'bg-red-100 text-red-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
+    const option = statusOptions.find(opt => opt.value === status)
+    return option ? option.color : 'bg-gray-100 text-gray-800'
+  }
+
+  // Sort icon
+  const getSortIcon = (column: string) => {
+    if (!sortConfig || sortConfig.key !== column) {
+      return <span className="text-gray-400 ml-1">↕</span>
     }
-  }
-
-  // Separate selected items and add-ons
-  const selectedItems = proposal.proposal_items
-    .filter(item => !item.is_addon && item.is_selected)
-    .sort((a, b) => a.sort_order - b.sort_order)
-  
-  const selectedAddons = proposal.proposal_items
-    .filter(item => item.is_addon && item.is_selected)
-    .sort((a, b) => a.sort_order - b.sort_order)
-
-  const handlePrint = () => {
-    window.print()
-  }
-
-  if (showPrintView) {
-    return (
-      <div className="max-w-4xl mx-auto bg-white p-8 print:p-0 print:shadow-none">
-        {/* Print Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Service Pro HVAC</h1>
-          <p className="text-gray-600">123 Main Street, Anytown, USA 12345</p>
-          <p className="text-gray-600">Phone: (555) 123-4567 | Email: info@servicepro.com</p>
-        </div>
-
-        {/* Proposal Header */}
-        <div className="mb-8 pb-4 border-b">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-1">PROPOSAL</h2>
-              <p className="text-gray-600">#{proposal.proposal_number}</p>
-              <p className="text-gray-600">{formatDate(proposal.created_at)}</p>
-            </div>
-            <div className="text-right">
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(proposal.status)}`}>
-                {proposal.status.toUpperCase()}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Customer Information */}
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Bill To:</h3>
-          <div className="text-gray-600">
-            <p className="font-semibold text-gray-900">{proposal.customers.name}</p>
-            <p>{proposal.customers.email}</p>
-            <p>{proposal.customers.phone}</p>
-            <p>{proposal.customers.address}</p>
-          </div>
-        </div>
-
-        {/* Proposal Details */}
-        <div className="mb-8">
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">{proposal.title}</h3>
-          {proposal.description && (
-            <p className="text-gray-600 whitespace-pre-wrap">{proposal.description}</p>
-          )}
-        </div>
-
-        {/* Line Items */}
-        <div className="mb-8">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-2">Item</th>
-                <th className="text-center py-2">Qty</th>
-                <th className="text-right py-2">Price</th>
-                <th className="text-right py-2">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selectedItems.map((item, index) => (
-                <tr key={item.id} className={index < selectedItems.length - 1 ? 'border-b' : ''}>
-                  <td className="py-2">
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      {item.description && (
-                        <p className="text-sm text-gray-600">{item.description}</p>
-                      )}
-                    </div>
-                  </td>
-                  <td className="text-center py-2">{item.quantity}</td>
-                  <td className="text-right py-2">{formatCurrency(item.unit_price)}</td>
-                  <td className="text-right py-2">{formatCurrency(item.total_price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Add-ons */}
-        {selectedAddons.length > 0 && (
-          <div className="mb-8">
-            <h4 className="font-semibold text-gray-900 mb-3">Selected Add-ons</h4>
-            <table className="w-full">
-              <tbody>
-                {selectedAddons.map((addon, index) => (
-                  <tr key={addon.id} className={index < selectedAddons.length - 1 ? 'border-b' : ''}>
-                    <td className="py-2">
-                      <div>
-                        <p className="font-medium">{addon.name}</p>
-                        {addon.description && (
-                          <p className="text-sm text-gray-600">{addon.description}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="text-center py-2">{addon.quantity}</td>
-                    <td className="text-right py-2">{formatCurrency(addon.unit_price)}</td>
-                    <td className="text-right py-2">{formatCurrency(addon.total_price)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Totals */}
-        <div className="border-t pt-4">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Subtotal</span>
-              <span className="font-medium">{formatCurrency(proposal.subtotal)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Tax ({(proposal.tax_rate * 100).toFixed(1)}%)</span>
-              <span className="font-medium">{formatCurrency(proposal.tax_amount)}</span>
-            </div>
-            <div className="flex justify-between border-t pt-2">
-              <span className="text-lg font-semibold">Total</span>
-              <span className="text-lg font-semibold">{formatCurrency(proposal.total)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-12 pt-8 border-t text-center text-gray-600 text-sm">
-          <p>Thank you for considering Service Pro HVAC for your needs.</p>
-          <p>This proposal is valid for 30 days from the date above.</p>
-        </div>
-
-        {/* Close Print View Button (hidden in print) */}
-        <div className="mt-8 print:hidden">
-          <button
-            onClick={() => setShowPrintView(false)}
-            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-          >
-            Close Print View
-          </button>
-        </div>
-      </div>
-    )
+    return sortConfig.direction === 'asc' 
+      ? <span className="text-blue-600 ml-1">↑</span>
+      : <span className="text-blue-600 ml-1">↓</span>
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <>
       {/* Header */}
       <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Proposal #{proposal.proposal_number}</h1>
-          <p className="text-gray-600">Created on {formatDate(proposal.created_at)}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(proposal.status)}`}>
-            {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
-          </span>
-          {userRole === 'admin' && (
-            <div className="flex gap-2">
-              {proposal.status === 'draft' && (
-                <>
-                  <Link
-                    href={`/proposals/${proposal.id}/edit`}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                  >
-                    Edit
-                  </Link>
-                  <button
-                    onClick={() => setShowSendModal(true)}
-                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                  >
-                    Send Proposal
-                  </button>
-                </>
-              )}
-              <button
-                onClick={() => setShowPrintView(true)}
-                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-              >
-                Print
-              </button>
-              <button
-                onClick={handlePrint}
-                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-              >
-                Download PDF
-              </button>
-            </div>
-          )}
+        <h1 className="text-2xl font-bold text-gray-900">Proposals</h1>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filters
+            {(searchParams.status !== 'all' || searchParams.startDate || searchParams.endDate || searchParams.search) && (
+              <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full">Active</span>
+            )}
+          </button>
+          <Link
+            href="/proposals/new"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            New Proposal
+          </Link>
         </div>
       </div>
 
-      {/* Customer Information */}
-      <div className="bg-white rounded-lg shadow mb-6">
-        <div className="p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Customer Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Filters */}
+      {showFilters && (
+        <div className="mb-6 bg-white p-6 rounded-lg shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            {/* Search */}
             <div>
-              <p className="text-sm text-gray-600">Name</p>
-              <p className="font-medium">{proposal.customers.name}</p>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Search
+              </label>
+              <input
+                type="text"
+                placeholder="Search proposals..."
+                value={filters.search}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && handleFilterChange()}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
             </div>
+            
+            {/* Status */}
             <div>
-              <p className="text-sm text-gray-600">Email</p>
-              <p className="font-medium">{proposal.customers.email}</p>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Status
+              </label>
+              <select
+                value={filters.status}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {statusOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
+
+            {/* Start Date */}
             <div>
-              <p className="text-sm text-gray-600">Phone</p>
-              <p className="font-medium">{proposal.customers.phone}</p>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Start Date
+              </label>
+              <input
+                type="date"
+                value={filters.startDate}
+                onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
             </div>
+
+            {/* End Date */}
             <div>
-              <p className="text-sm text-gray-600">Address</p>
-              <p className="font-medium">{proposal.customers.address}</p>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                End Date
+              </label>
+              <input
+                type="date"
+                value={filters.endDate}
+                onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
             </div>
           </div>
+
+          {/* Quick Date Ranges */}
+          <div className="mb-4">
+            <span className="text-sm text-gray-600 mr-3">Quick filters:</span>
+            <button onClick={() => setDateRange(7)} className="text-sm text-blue-600 hover:underline mr-3">Last 7 days</button>
+            <button onClick={() => setDateRange(30)} className="text-sm text-blue-600 hover:underline mr-3">Last 30 days</button>
+            <button onClick={() => setDateRange(90)} className="text-sm text-blue-600 hover:underline">Last 90 days</button>
+          </div>
+
+          {/* Filter Actions */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleFilterChange}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Apply Filters
+            </button>
+            <button
+              onClick={handleResetFilters}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Reset
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* Results Summary */}
+      <div className="mb-4 text-sm text-gray-600">
+        Showing {sortedProposals.length} proposal{sortedProposals.length !== 1 ? 's' : ''}
+        {searchParams.search && ` matching "${searchParams.search}"`}
       </div>
 
-      {/* Proposal Details */}
-      <div className="bg-white rounded-lg shadow mb-6">
-        <div className="p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">{proposal.title}</h2>
-          {proposal.description && (
-            <p className="text-gray-600 whitespace-pre-wrap">{proposal.description}</p>
-          )}
+      {/* Proposals Table */}
+      {sortedProposals.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-lg shadow-sm">
+          <p className="text-gray-500 mb-4">
+            {searchParams.search || searchParams.status !== 'all' 
+              ? 'No proposals found matching your filters. Try adjusting your filters or create a new proposal.'
+              : 'Get started by creating your first proposal.'
+            }
+          </p>
+          <Link
+            href="/proposals/new"
+            className="inline-flex px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Create Proposal
+          </Link>
         </div>
-      </div>
-
-      {/* Line Items */}
-      <div className="bg-white rounded-lg shadow mb-6">
-        <div className="p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Services</h2>
+      ) : (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3">Item</th>
-                  <th className="text-center py-3">Quantity</th>
-                  <th className="text-right py-3">Unit Price</th>
-                  <th className="text-right py-3">Total</th>
+              <thead className="bg-gray-50">
+                <tr>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('proposal_number')}
+                  >
+                    <div className="flex items-center">
+                      Proposal
+                      {getSortIcon('proposal_number')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('customer_name')}
+                  >
+                    <div className="flex items-center">
+                      Customer
+                      {getSortIcon('customer_name')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('total')}
+                  >
+                    <div className="flex items-center">
+                      Amount
+                      {getSortIcon('total')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('status')}
+                  >
+                    <div className="flex items-center">
+                      Status
+                      {getSortIcon('status')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('created_at')}
+                  >
+                    <div className="flex items-center">
+                      Date
+                      {getSortIcon('created_at')}
+                    </div>
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
-              <tbody>
-                {selectedItems.map((item) => (
-                  <tr key={item.id} className="border-b">
-                    <td className="py-3">
+              <tbody className="bg-white divide-y divide-gray-200">
+                {sortedProposals.map((proposal) => (
+                  <tr key={proposal.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div>
-                        <p className="font-medium">{item.name}</p>
-                        {item.description && (
-                          <p className="text-sm text-gray-600">{item.description}</p>
-                        )}
+                        <div className="text-sm font-medium text-gray-900">
+                          {proposal.proposal_number}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {proposal.title}
+                        </div>
                       </div>
                     </td>
-                    <td className="text-center py-3">{item.quantity}</td>
-                    <td className="text-right py-3">{formatCurrency(item.unit_price)}</td>
-                    <td className="text-right py-3">{formatCurrency(item.total_price)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div>
+                        <div className="text-sm text-gray-900">
+                          {proposal.customers?.name || 'No customer'}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {proposal.customers?.email || ''}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {formatCurrency(proposal.total)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(proposal.status)}`}>
+                        {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(proposal.created_at)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <Link
+                        href={`/proposals/${proposal.id}`}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        View
+                      </Link>
+                      {proposal.status === 'draft' && (
+                        <>
+                          <span className="text-gray-300 mx-2">|</span>
+                          <Link
+                            href={`/proposals/${proposal.id}/edit`}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            Edit
+                          </Link>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </div>
-      </div>
-
-      {/* Add-ons */}
-      {selectedAddons.length > 0 && (
-        <div className="bg-white rounded-lg shadow mb-6">
-          <div className="p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Selected Add-ons</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3">Add-on</th>
-                    <th className="text-center py-3">Quantity</th>
-                    <th className="text-right py-3">Unit Price</th>
-                    <th className="text-right py-3">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedAddons.map((addon) => (
-                    <tr key={addon.id} className="border-b">
-                      <td className="py-3">
-                        <div>
-                          <p className="font-medium">{addon.name}</p>
-                          {addon.description && (
-                            <p className="text-sm text-gray-600">{addon.description}</p>
-                          )}
-                        </div>
-                      </td>
-                      <td className="text-center py-3">{addon.quantity}</td>
-                      <td className="text-right py-3">{formatCurrency(addon.unit_price)}</td>
-                      <td className="text-right py-3">{formatCurrency(addon.total_price)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
       )}
-
-      {/* Pricing Summary */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Pricing Summary</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Subtotal</span>
-              <span className="font-medium">{formatCurrency(proposal.subtotal)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Tax ({(proposal.tax_rate * 100).toFixed(1)}%)</span>
-              <span className="font-medium">{formatCurrency(proposal.tax_amount)}</span>
-            </div>
-            <div className="flex justify-between border-t pt-3">
-              <span className="text-lg font-semibold">Total</span>
-              <span className="text-lg font-semibold">{formatCurrency(proposal.total)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Send Proposal Modal */}
-      {showSendModal && (
-        <SendProposal
-          proposalId={proposal.id}
-          proposalNumber={proposal.proposal_number}
-          customer={proposal.customers}
-          total={proposal.total}
-          onSent={() => {
-            setShowSendModal(false)
-            router.refresh()
-          }}
-          onCancel={() => setShowSendModal(false)}
-        />
-      )}
-    </div>
+    </>
   )
 }
 EOF
 
 # Check for errors
 if [ $? -ne 0 ]; then
-    echo "❌ Error writing file"
+    echo "❌ Error writing files"
     exit 1
 fi
 
 # Commit and push
 git add .
-git commit -m "fix: correct SendProposal props in ProposalView component"
+git commit -m "fix: correct type mismatches and ensure ProposalsList component is properly exported"
 git push origin main
 
-echo "✅ Build error fixed! SendProposal now receives correct props."
+echo "✅ Build errors fixed! Both files now use consistent types (customers as object, not array)"

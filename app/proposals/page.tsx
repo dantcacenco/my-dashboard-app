@@ -18,7 +18,7 @@ interface ProposalData {
   status: string
   created_at: string
   updated_at: string
-  customers: Customer[]
+  customers: Customer // Changed from Customer[] to Customer (single object)
 }
 
 interface PageProps {
@@ -83,7 +83,7 @@ export default async function ProposalsPage({ searchParams }: PageProps) {
   if (params.search) {
     const searchTerm = params.search.toLowerCase()
     filteredProposals = filteredProposals.filter(proposal => {
-      const customer = proposal.customers?.[0]
+      const customer = proposal.customers // Now it's an object, not array
       
       return proposal.proposal_number.toLowerCase().includes(searchTerm) ||
              proposal.title.toLowerCase().includes(searchTerm) ||
