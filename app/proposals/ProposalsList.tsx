@@ -6,15 +6,17 @@ import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 
+interface Customer {
+  id: string
+  name: string
+  email: string
+  phone: string
+}
+
 interface Proposal {
   id: string
   proposal_number: string
-  customers: {
-    id: string
-    name: string
-    email: string
-    phone: string
-  }
+  customers: Customer
   title: string
   total: number
   status: string
@@ -117,7 +119,7 @@ export default function ProposalsList() {
           progress_paid_at,
           final_paid_at,
           total_paid,
-          customers (
+          customers!inner (
             id,
             name,
             email,
@@ -127,7 +129,14 @@ export default function ProposalsList() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setProposals(data || [])
+      
+      // Transform the data to ensure customers is a single object
+      const transformedData = (data || []).map(proposal => ({
+        ...proposal,
+        customers: Array.isArray(proposal.customers) ? proposal.customers[0] : proposal.customers
+      }))
+      
+      setProposals(transformedData)
     } catch (error) {
       console.error('Error fetching proposals:', error)
     } finally {
