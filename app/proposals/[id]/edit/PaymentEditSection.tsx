@@ -1,7 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { formatCurrency } from '@/lib/utils'
+
+// Define formatCurrency locally to avoid import issues
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
 
 interface PaymentEditSectionProps {
   proposal: any

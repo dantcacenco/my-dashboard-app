@@ -1,226 +1,222 @@
 #!/bin/bash
-echo "🔧 Updating edit proposal page to include payment editing..."
+echo "🔧 Adding formatCurrency and formatDate functions to utils..."
 
-# First, let's find the edit page and add the PaymentEditSection import and usage
-# We'll use a more targeted approach to add the import and component
+# Create or update the utils file with the missing functions
+cat > lib/utils.ts << 'EOF'
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
 
-# Add import at the top of the edit page after other imports
-sed -i '/^import.*from.*$/a\import PaymentEditSection from '\''./PaymentEditSection'\''' app/proposals/\[id\]/edit/page.tsx 2>/dev/null || true
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
 
-# Now we need to add the PaymentEditSection component to the form
-# We'll add it before the submit buttons section
-# First, let's create a temporary script to do the complex insertion
-cat > /tmp/add_payment_section.sh << 'SCRIPT_EOF'
-#!/bin/bash
-FILE="app/proposals/[id]/edit/page.tsx"
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
 
-# Read the file
-if [ -f "$FILE" ]; then
-    # Find the line with submit buttons (usually has "Save" or "Cancel")
-    # and insert the PaymentEditSection before it
-    awk '
-    /type="submit"/ && !done {
-        print "          {/* Payment Management Section */}"
-        print "          {formData.status === '\''approved'\'' && ("
-        print "            <PaymentEditSection"
-        print "              proposal={formData}"
-        print "              onUpdate={(updates) => {"
-        print "                setFormData({ ...formData, ...updates })"
-        print "              }}"
-        print "            />"
-        print "          )}"
-        print ""
-        done = 1
-    }
-    { print }
-    ' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+export function formatDate(dateString: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date(dateString))
+}
+
+export function formatDateTime(dateString: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(dateString))
+}
+
+export function formatShortDate(dateString: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(dateString))
+}
+EOF
+
+# Check for errors
+if [ $? -ne 0 ]; then
+    echo "❌ Error writing utils.ts"
+    exit 1
 fi
-SCRIPT_EOF
 
-chmod +x /tmp/add_payment_section.sh
-/tmp/add_payment_section.sh
-rm /tmp/add_payment_section.sh
-
-echo "✅ Edit proposal page updated with payment section"
-
-# Now let's fix the ProposalView to show selected addons
-echo "🔧 Updating ProposalView to display selected addons..."
-
-cat > app/proposals/\[id\]/ProposalView.tsx << 'EOF'
+# Also add these functions to PaymentEditSection which imports from utils
+cat > app/proposals/\[id\]/edit/PaymentEditSection.tsx << 'EOF'
 'use client'
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate } from '@/lib/utils'
-import SendProposal from './SendProposal'
+import { useState } from 'react'
 
-interface ProposalItem {
-  id: string
-  name: string
-  description: string
-  quantity: number
-  unit_price: number
-  total_price: number
-  is_addon: boolean
-  is_selected: boolean
+// Define formatCurrency locally to avoid import issues
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
 }
 
-interface Customer {
-  id: string
-  name: string
-  email: string
-  phone: string
-  address: string
+interface PaymentEditSectionProps {
+  proposal: any
+  onUpdate: (updates: any) => void
 }
 
-interface Proposal {
-  id: string
-  proposal_number: string
-  customer_id: string
-  title: string
-  description: string
-  subtotal: number
-  tax_rate: number
-  tax_amount: number
-  total: number
-  status: string
-  valid_until: string | null
-  signed_at: string | null
-  signature_data: string | null
-  created_at: string
-  sent_at: string | null
-  approved_at: string | null
-  rejected_at: string | null
-  customer_notes: string | null
-  customer_view_token: string
-  payment_status: string | null
-  deposit_paid_at: string | null
-  deposit_amount: number | null
-  progress_paid_at: string | null
-  progress_payment_amount: number | null
-  final_paid_at: string | null
-  final_payment_amount: number | null
-  total_paid: number | null
-  customers: Customer
-  proposal_items: ProposalItem[]
-}
+export default function PaymentEditSection({ proposal, onUpdate }: PaymentEditSectionProps) {
+  const [paymentData, setPaymentData] = useState({
+    deposit_paid: !!proposal.deposit_paid_at,
+    deposit_amount: proposal.deposit_amount || proposal.total * 0.5,
+    roughin_paid: !!proposal.progress_paid_at,
+    roughin_amount: proposal.progress_payment_amount || proposal.total * 0.3,
+    final_paid: !!proposal.final_paid_at,
+    final_amount: proposal.final_payment_amount || proposal.total * 0.2,
+    payment_method: proposal.payment_method || 'card'
+  })
 
-export default function ProposalView({ proposalId }: { proposalId: string }) {
-  const [proposal, setProposal] = useState<Proposal | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [showSendModal, setShowSendModal] = useState(false)
-  const router = useRouter()
-  const supabase = createClient()
+  const handlePaymentToggle = (stage: 'deposit' | 'roughin' | 'final') => {
+    const updates: any = {}
+    const now = new Date().toISOString()
 
-  useEffect(() => {
-    fetchProposal()
-  }, [proposalId])
+    switch (stage) {
+      case 'deposit':
+        if (!paymentData.deposit_paid) {
+          updates.deposit_paid_at = now
+          updates.deposit_amount = paymentData.deposit_amount
+          updates.payment_status = 'deposit_paid'
+        } else {
+          updates.deposit_paid_at = null
+          updates.deposit_amount = null
+          updates.payment_status = 'pending'
+        }
+        setPaymentData({ ...paymentData, deposit_paid: !paymentData.deposit_paid })
+        break
 
-  const fetchProposal = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('proposals')
-        .select(`
-          *,
-          customers (
-            id,
-            name,
-            email,
-            phone,
-            address
-          ),
-          proposal_items (
-            id,
-            name,
-            description,
-            quantity,
-            unit_price,
-            total_price,
-            is_addon,
-            is_selected
-          )
-        `)
-        .eq('id', proposalId)
-        .single()
+      case 'roughin':
+        if (!paymentData.roughin_paid) {
+          updates.progress_paid_at = now
+          updates.progress_payment_amount = paymentData.roughin_amount
+          updates.payment_status = 'roughin_paid'
+        } else {
+          updates.progress_paid_at = null
+          updates.progress_payment_amount = null
+          updates.payment_status = paymentData.deposit_paid ? 'deposit_paid' : 'pending'
+        }
+        setPaymentData({ ...paymentData, roughin_paid: !paymentData.roughin_paid })
+        break
 
-      if (error) throw error
-      setProposal(data)
-    } catch (error) {
-      console.error('Error fetching proposal:', error)
-    } finally {
-      setLoading(false)
+      case 'final':
+        if (!paymentData.final_paid) {
+          updates.final_paid_at = now
+          updates.final_payment_amount = paymentData.final_amount
+          updates.payment_status = 'paid'
+        } else {
+          updates.final_paid_at = null
+          updates.final_payment_amount = null
+          updates.payment_status = paymentData.roughin_paid ? 'roughin_paid' : 
+                                 paymentData.deposit_paid ? 'deposit_paid' : 'pending'
+        }
+        setPaymentData({ ...paymentData, final_paid: !paymentData.final_paid })
+        break
     }
+
+    // Calculate total paid
+    let totalPaid = 0
+    if (stage === 'deposit' ? !paymentData.deposit_paid : paymentData.deposit_paid) {
+      totalPaid += paymentData.deposit_amount
+    }
+    if (stage === 'roughin' ? !paymentData.roughin_paid : paymentData.roughin_paid) {
+      totalPaid += paymentData.roughin_amount
+    }
+    if (stage === 'final' ? !paymentData.final_paid : paymentData.final_paid) {
+      totalPaid += paymentData.final_amount
+    }
+    updates.total_paid = totalPaid
+
+    onUpdate(updates)
   }
 
-  const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this proposal?')) return
+  const handleAmountChange = (stage: 'deposit' | 'roughin' | 'final', value: string) => {
+    const amount = parseFloat(value) || 0
+    const updates: any = {}
 
-    try {
-      const { error } = await supabase
-        .from('proposals')
-        .delete()
-        .eq('id', proposalId)
-
-      if (error) throw error
-      router.push('/proposals')
-    } catch (error) {
-      console.error('Error deleting proposal:', error)
-      alert('Failed to delete proposal')
+    switch (stage) {
+      case 'deposit':
+        setPaymentData({ ...paymentData, deposit_amount: amount })
+        if (paymentData.deposit_paid) {
+          updates.deposit_amount = amount
+        }
+        break
+      case 'roughin':
+        setPaymentData({ ...paymentData, roughin_amount: amount })
+        if (paymentData.roughin_paid) {
+          updates.progress_payment_amount = amount
+        }
+        break
+      case 'final':
+        setPaymentData({ ...paymentData, final_amount: amount })
+        if (paymentData.final_paid) {
+          updates.final_payment_amount = amount
+        }
+        break
     }
-  }
 
-  const getStatusBadge = () => {
-    if (!proposal) return null
-
-    // Check payment status first if approved
-    if (proposal.status === 'approved' && proposal.payment_status) {
-      switch (proposal.payment_status) {
-        case 'paid':
-          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">Final Payment Complete</span>
-        case 'roughin_paid':
-          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">Rough-In Payment Received</span>
-        case 'deposit_paid':
-          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">Deposit Payment Received</span>
-        default:
-          return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">Approved - Awaiting Payment</span>
+    if (Object.keys(updates).length > 0) {
+      // Recalculate total paid
+      let totalPaid = 0
+      if (paymentData.deposit_paid) {
+        totalPaid += stage === 'deposit' ? amount : paymentData.deposit_amount
       }
-    }
-
-    switch (proposal.status) {
-      case 'draft':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">Draft</span>
-      case 'sent':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">Sent</span>
-      case 'viewed':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">Viewed by Customer</span>
-      case 'approved':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">Approved</span>
-      case 'rejected':
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">Rejected</span>
-      default:
-        return <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">{proposal.status}</span>
+      if (paymentData.roughin_paid) {
+        totalPaid += stage === 'roughin' ? amount : paymentData.roughin_amount
+      }
+      if (paymentData.final_paid) {
+        totalPaid += stage === 'final' ? amount : paymentData.final_amount
+      }
+      updates.total_paid = totalPaid
+      onUpdate(updates)
     }
   }
 
-  const getPaymentProgress = () => {
-    if (!proposal || proposal.status !== 'approved' || !proposal.total) return null
-
-    const depositAmount = proposal.total * 0.5
-    const roughInAmount = proposal.total * 0.3
-    const finalAmount = proposal.total * 0.2
-    const totalPaid = proposal.total_paid || 0
-    const percentage = (totalPaid / proposal.total) * 100
-
+  if (proposal.status !== 'approved') {
     return (
-      <div className="bg-white shadow sm:rounded-lg p-6 mb-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Progress</h3>
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <p className="text-yellow-800">Payment tracking is only available for approved proposals.</p>
+      </div>
+    )
+  }
+
+  const totalPaid = (paymentData.deposit_paid ? paymentData.deposit_amount : 0) +
+                   (paymentData.roughin_paid ? paymentData.roughin_amount : 0) +
+                   (paymentData.final_paid ? paymentData.final_amount : 0)
+  const percentage = proposal.total > 0 ? (totalPaid / proposal.total) * 100 : 0
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white shadow sm:rounded-lg p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Management</h3>
         
-        {/* Progress Bar */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <p className="text-sm text-blue-800">
+            Use this section to manually track payments received outside of Stripe (cash, check, etc.) 
+            or to correct payment records if needed.
+          </p>
+        </div>
+
+        {/* Progress Overview */}
         <div className="mb-6">
           <div className="flex justify-between text-sm text-gray-600 mb-2">
-            <span>Overall Progress</span>
+            <span>Overall Payment Progress</span>
             <span>{percentage.toFixed(0)}% Complete</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-3">
@@ -230,299 +226,125 @@ export default function ProposalView({ proposalId }: { proposalId: string }) {
             />
           </div>
           <div className="flex justify-between text-sm text-gray-600 mt-2">
-            <span>Paid: {formatCurrency(totalPaid)}</span>
-            <span>Remaining: {formatCurrency(proposal.total - totalPaid)}</span>
+            <span>Total Paid: {formatCurrency(totalPaid)}</span>
+            <span>Total Due: {formatCurrency(proposal.total)}</span>
           </div>
+        </div>
+
+        {/* Payment Method */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Payment Method
+          </label>
+          <select
+            value={paymentData.payment_method}
+            onChange={(e) => {
+              setPaymentData({ ...paymentData, payment_method: e.target.value })
+              onUpdate({ payment_method: e.target.value })
+            }}
+            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+          >
+            <option value="card">Credit Card</option>
+            <option value="ach">ACH/Bank Transfer</option>
+            <option value="cash">Cash</option>
+            <option value="check">Check</option>
+            <option value="other">Other</option>
+          </select>
         </div>
 
         {/* Payment Stages */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className={`border rounded-lg p-4 ${proposal.deposit_paid_at ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
-            <h4 className="font-medium text-gray-900">50% Deposit</h4>
-            <p className="text-xl font-bold mt-1">{formatCurrency(depositAmount)}</p>
-            <p className="text-sm text-gray-600 mt-2">
-              {proposal.deposit_paid_at ? (
-                <span className="text-green-600">✓ Paid on {formatDate(proposal.deposit_paid_at)}</span>
-              ) : (
-                <span className="text-gray-500">Pending</span>
-              )}
-            </p>
-          </div>
-
-          <div className={`border rounded-lg p-4 ${proposal.progress_paid_at ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
-            <h4 className="font-medium text-gray-900">30% Rough-In</h4>
-            <p className="text-xl font-bold mt-1">{formatCurrency(roughInAmount)}</p>
-            <p className="text-sm text-gray-600 mt-2">
-              {proposal.progress_paid_at ? (
-                <span className="text-green-600">✓ Paid on {formatDate(proposal.progress_paid_at)}</span>
-              ) : (
-                <span className="text-gray-500">Pending</span>
-              )}
-            </p>
-          </div>
-
-          <div className={`border rounded-lg p-4 ${proposal.final_paid_at ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
-            <h4 className="font-medium text-gray-900">20% Final</h4>
-            <p className="text-xl font-bold mt-1">{formatCurrency(finalAmount)}</p>
-            <p className="text-sm text-gray-600 mt-2">
-              {proposal.final_paid_at ? (
-                <span className="text-green-600">✓ Paid on {formatDate(proposal.final_paid_at)}</span>
-              ) : (
-                <span className="text-gray-500">Pending</span>
-              )}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 text-sm text-gray-600">
-          <p>To manually update payment status, use the Edit button above.</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Helper function to get base items and selected addons
-  const getDisplayItems = () => {
-    if (!proposal) return { baseItems: [], selectedAddons: [] }
-    
-    const baseItems = proposal.proposal_items.filter(item => !item.is_addon)
-    const selectedAddons = proposal.proposal_items.filter(item => item.is_addon && item.is_selected)
-    
-    return { baseItems, selectedAddons }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-      </div>
-    )
-  }
-
-  if (!proposal) {
-    return <div>Proposal not found</div>
-  }
-
-  const { baseItems, selectedAddons } = getDisplayItems()
-  const allAddons = proposal.proposal_items.filter(item => item.is_addon)
-
-  return (
-    <div>
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
-            Proposal #{proposal.proposal_number}
-          </h1>
-          <div className="mt-2">{getStatusBadge()}</div>
-        </div>
-        <div className="flex space-x-3">
-          <button
-            onClick={() => setShowSendModal(true)}
-            className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-          >
-            Send to Customer
-          </button>
-          <Link
-            href={`/proposals/${proposalId}/edit`}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Edit
-          </Link>
-          <button
-            onClick={handleDelete}
-            className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-
-      {/* Payment Progress - Show for approved proposals */}
-      {proposal.status === 'approved' && getPaymentProgress()}
-
-      {/* Proposal Details */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">
-            {proposal.title}
-          </h3>
-          {proposal.description && (
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              {proposal.description}
-            </p>
-          )}
-        </div>
-        <div className="border-t border-gray-200">
-          <dl>
-            <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500">Customer</dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                <Link href={`/customers/${proposal.customers.id}`} className="text-blue-600 hover:text-blue-900">
-                  {proposal.customers.name}
-                </Link>
-                <p className="text-gray-500">{proposal.customers.email}</p>
-                <p className="text-gray-500">{proposal.customers.phone}</p>
-              </dd>
-            </div>
-            <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500">Status Timeline</dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                <p>Created: {formatDate(proposal.created_at)}</p>
-                {proposal.sent_at && <p>Sent: {formatDate(proposal.sent_at)}</p>}
-                {proposal.approved_at && <p>Approved: {formatDate(proposal.approved_at)}</p>}
-                {proposal.rejected_at && <p>Rejected: {formatDate(proposal.rejected_at)}</p>}
-                {proposal.signed_at && (
-                  <p>Signed by: {proposal.signature_data} on {formatDate(proposal.signed_at)}</p>
-                )}
-              </dd>
-            </div>
-            {proposal.customer_notes && (
-              <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt className="text-sm font-medium text-gray-500">Customer Notes</dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                  {proposal.customer_notes}
-                </dd>
+        <div className="space-y-4">
+          {/* Deposit */}
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="deposit-paid"
+                  checked={paymentData.deposit_paid}
+                  onChange={() => handlePaymentToggle('deposit')}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="deposit-paid" className="ml-2 text-sm font-medium text-gray-900">
+                  50% Deposit Paid
+                </label>
               </div>
+              <input
+                type="number"
+                value={paymentData.deposit_amount}
+                onChange={(e) => handleAmountChange('deposit', e.target.value)}
+                className="ml-4 w-32 px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                step="0.01"
+              />
+            </div>
+            {proposal.deposit_paid_at && (
+              <p className="text-xs text-gray-500 ml-6">
+                Originally paid on: {new Date(proposal.deposit_paid_at).toLocaleDateString()}
+              </p>
             )}
-            <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500">Valid Until</dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                {proposal.valid_until ? formatDate(proposal.valid_until) : 'No expiration'}
-              </dd>
+          </div>
+
+          {/* Rough-In */}
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="roughin-paid"
+                  checked={paymentData.roughin_paid}
+                  onChange={() => handlePaymentToggle('roughin')}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="roughin-paid" className="ml-2 text-sm font-medium text-gray-900">
+                  30% Rough-In Paid
+                </label>
+              </div>
+              <input
+                type="number"
+                value={paymentData.roughin_amount}
+                onChange={(e) => handleAmountChange('roughin', e.target.value)}
+                className="ml-4 w-32 px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                step="0.01"
+              />
             </div>
-            <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt className="text-sm font-medium text-gray-500">Total Amount</dt>
-              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                <p className="text-xl font-bold">{formatCurrency(proposal.total)}</p>
-                <p className="text-gray-500">Subtotal: {formatCurrency(proposal.subtotal)}</p>
-                <p className="text-gray-500">Tax ({(proposal.tax_rate * 100).toFixed(2)}%): {formatCurrency(proposal.tax_amount)}</p>
-              </dd>
+            {proposal.progress_paid_at && (
+              <p className="text-xs text-gray-500 ml-6">
+                Originally paid on: {new Date(proposal.progress_paid_at).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+
+          {/* Final */}
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="final-paid"
+                  checked={paymentData.final_paid}
+                  onChange={() => handlePaymentToggle('final')}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="final-paid" className="ml-2 text-sm font-medium text-gray-900">
+                  20% Final Paid
+                </label>
+              </div>
+              <input
+                type="number"
+                value={paymentData.final_amount}
+                onChange={(e) => handleAmountChange('final', e.target.value)}
+                className="ml-4 w-32 px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                step="0.01"
+              />
             </div>
-          </dl>
+            {proposal.final_paid_at && (
+              <p className="text-xs text-gray-500 ml-6">
+                Originally paid on: {new Date(proposal.final_paid_at).toLocaleDateString()}
+              </p>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* Line Items */}
-      <div className="mt-6 bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">
-            Services & Items
-          </h3>
-        </div>
-        <div className="border-t border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Item
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Quantity
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Unit Price
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {/* Base Items */}
-              {baseItems.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <p className="font-medium">{item.name}</p>
-                    {item.description && (
-                      <p className="text-gray-500">{item.description}</p>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    Service
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                      Included
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.quantity}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatCurrency(item.unit_price)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                    {formatCurrency(item.total_price)}
-                  </td>
-                </tr>
-              ))}
-
-              {/* All Add-ons (showing selected status) */}
-              {allAddons.length > 0 && (
-                <>
-                  <tr>
-                    <td colSpan={6} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
-                      Optional Add-ons
-                    </td>
-                  </tr>
-                  {allAddons.map((item) => (
-                    <tr key={item.id} className={item.is_selected ? 'bg-blue-50' : ''}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <p className="font-medium">{item.name}</p>
-                        {item.description && (
-                          <p className="text-gray-500">{item.description}</p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        Add-on
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {item.is_selected ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                            Selected
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                            Not Selected
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {item.quantity}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatCurrency(item.unit_price)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <span className={item.is_selected ? 'text-gray-900' : 'text-gray-400'}>
-                          {formatCurrency(item.total_price)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {showSendModal && (
-        <SendProposal
-          proposal={proposal}
-          onClose={() => setShowSendModal(false)}
-          onSent={() => {
-            setShowSendModal(false)
-            fetchProposal()
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -530,36 +352,28 @@ EOF
 
 # Check for errors
 if [ $? -ne 0 ]; then
-    echo "❌ Error updating ProposalView"
+    echo "❌ Error updating PaymentEditSection"
     exit 1
 fi
 
 # Commit and push
 git add .
-git commit -m "fix: update edit proposal page and show addons in boss view
+git commit -m "fix: add formatCurrency and formatDate utility functions
 
-- Add PaymentEditSection import and component to edit proposal page
-- Update ProposalView to display all addons with selected status
-- Show Selected/Not Selected badges for addons
-- Highlight selected addons with blue background
-- Add separate section header for optional addons
-- Include addon status column in items table"
+- Add formatCurrency to format numbers as USD currency
+- Add formatDate for long date format
+- Add formatDateTime and formatShortDate variants
+- Update PaymentEditSection to use local formatCurrency
+- Fix build errors from missing exports"
 
 git push origin main
 
-echo "✅ Updates completed successfully!"
+echo "✅ Utility functions added successfully!"
 echo ""
-echo "📝 Changes made:"
-echo "1. Edit Proposal Page:"
-echo "   - Added PaymentEditSection import"
-echo "   - Component appears when proposal is approved"
-echo "   - Allows manual payment tracking"
+echo "📝 Added functions:"
+echo "- formatCurrency: $1,234.56 format"
+echo "- formatDate: January 28, 2025 format"
+echo "- formatDateTime: with time included"
+echo "- formatShortDate: Jan 28, 2025 format"
 echo ""
-echo "2. Proposal View (Boss Side):"
-echo "   - Now shows ALL addons (not just selected ones)"
-echo "   - Displays 'Selected' or 'Not Selected' status"
-echo "   - Selected addons have blue background"
-echo "   - Separate 'Optional Add-ons' section"
-echo "   - Shows which addons customer chose"
-echo ""
-echo "💡 Chat Status: You still have about 30-40% space left in this chat."
+echo "The build should now succeed on Vercel!"
