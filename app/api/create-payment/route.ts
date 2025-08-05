@@ -74,15 +74,9 @@ export async function POST(request: NextRequest) {
       success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposal_id}`,
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/view/${proposal.customer_view_token}?payment=cancelled`,
       metadata: {
-      payment_type: payment_type || 'card',
-      payment_stage: payment_stage || 'deposit',
-      proposal_id: proposal_id,
-        proposal_id,
-        proposal_number,
-        customer_name,
         payment_type: payment_type || 'card',
         payment_stage: payment_stage || 'deposit',
-        customer_view_token: proposal.customer_view_token
+        proposal_id: proposal_id
       },
       billing_address_collection: 'required',
       phone_number_collection: {
