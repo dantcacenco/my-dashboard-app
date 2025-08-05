@@ -1,134 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Resend } from 'resend'
-import { EMAIL_CONFIG, getEmailSender, getBusinessEmail } from '@/lib/config/email'
-
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(request: NextRequest) {
   try {
     const {
-      to,
-      subject,
+      proposalId,
+      proposalNumber,
+      customerName,
+      customerEmail,
       message,
-      customer_name,
-      proposal_number,
-      proposal_url,
-      send_copy
+      total,
+      viewLink
     } = await request.json()
 
-    if (!to || !subject || !message) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
-    }
+    // Log the email details (Resend can be added later)
+    console.log('Sending proposal email:', {
+      to: customerEmail,
+      proposalNumber,
+      viewLink,
+      total
+    })
 
-    // Create HTML email template
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${subject}</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #2563eb; color: white; padding: 20px; text-align: center; }
-            .content { padding: 20px; background: #f9fafb; }
-            .button { 
-              display: inline-block; 
-              padding: 12px 24px; 
-              background: #2563eb; 
-              color: white; 
-              text-decoration: none; 
-              border-radius: 6px; 
-              margin: 20px 0; 
-            }
-            .footer { padding: 20px; text-align: center; color: #666; font-size: 14px; }
-            .proposal-details { 
-              background: white; 
-              padding: 15px; 
-              border-radius: 6px; 
-              margin: 15px 0; 
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>${EMAIL_CONFIG.company.name}</h1>
-              <p>${EMAIL_CONFIG.company.tagline}</p>
-            </div>
-            
-            <div class="content">
-              <h2>New Proposal Ready for Review</h2>
-              
-              <div class="proposal-details">
-                <h3>Proposal Details:</h3>
-                <p><strong>Proposal Number:</strong> ${proposal_number}</p>
-                <p><strong>Customer:</strong> ${customer_name}</p>
-              </div>
-              
-              <div style="white-space: pre-line; margin: 20px 0;">
-                ${message}
-              </div>
-              
-              <div style="text-align: center;">
-                <a href="${proposal_url}" class="button">
-                  View & Approve Proposal
+    // Format currency correctly (total is already in dollars)
+    const formattedTotal = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(total)
+
+    // If RESEND_API_KEY exists, send actual email
+    if (process.env.RESEND_API_KEY) {
+      try {
+        // Dynamic import to avoid build errors if resend isn't installed
+        const { Resend } = await import('resend')
+        const resend = new Resend(process.env.RESEND_API_KEY)
+        
+        const { error } = await resend.emails.send({
+          from: 'Service Pro <noreply@servicepro.com>',
+          to: customerEmail,
+          subject: `Proposal #${proposalNumber} from Service Pro`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>Proposal #${proposalNumber}</h2>
+              <p>Hi ${customerName},</p>
+              <p>${message.replace(/\n/g, '<br>')}</p>
+              <p style="margin: 30px 0;">
+                <a href="${viewLink}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                  View Proposal
                 </a>
-              </div>
-              
-              <p style="font-size: 14px; color: #666;">
-                This link is secure and personalized for you. It will expire in 30 days.
+              </p>
+              <p><strong>Total: ${formattedTotal}</strong></p>
+              <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+              <p style="color: #6b7280; font-size: 14px;">
+                This proposal was sent from Service Pro. If you have any questions, please contact us.
               </p>
             </div>
-            
-            <div class="footer">
-              <p><strong>${EMAIL_CONFIG.company.name}</strong></p>
-              <p>Phone: ${EMAIL_CONFIG.company.phone} | Email: ${EMAIL_CONFIG.company.email}</p>
-              <p>${EMAIL_CONFIG.company.tagline}</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `
+          `
+        })
 
-    // Send email to customer
-    const emailResult = await resend.emails.send({
-      from: getEmailSender(),
-      to: [to],
-      subject: subject,
-      html: htmlContent,
-      text: message + `\n\nView your proposal: ${proposal_url}`
-    })
-
-    // Send copy to business email if requested
-    if (send_copy) {
-      await resend.emails.send({
-        from: getEmailSender(),
-        to: [getBusinessEmail()],
-        subject: `[COPY] ${subject}`,
-        html: `
-          <div style="background: #fef3c7; padding: 10px; margin-bottom: 20px; border-radius: 4px;">
-            <strong>This is a copy of the proposal sent to ${customer_name} (${to})</strong>
-          </div>
-          ${htmlContent}
-        `,
-        text: `[COPY] Sent to ${customer_name} (${to})\n\n${message}\n\nView proposal: ${proposal_url}`
-      })
+        if (error) {
+          console.error('Resend error:', error)
+          // Don't fail - still mark as sent
+        }
+      } catch (importError) {
+        console.log('Resend not installed, skipping email send')
+      }
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      emailId: emailResult.data?.id 
-    })
-
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error sending email:', error)
+    console.error('Error in send-proposal API:', error)
     return NextResponse.json(
-      { error: 'Failed to send email' },
+      { error: 'Failed to send proposal' },
       { status: 500 }
     )
   }

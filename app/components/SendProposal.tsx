@@ -33,15 +33,35 @@ export default function SendProposal({ proposalId, proposalNumber, customer, tot
 
     setSending(true)
     try {
-      // First, get the customer_view_token
+      // First, get the proposal and check for token
       const { data: proposal, error: fetchError } = await supabase
         .from('proposals')
         .select('customer_view_token')
         .eq('id', proposalId)
         .single()
 
-      if (fetchError || !proposal?.customer_view_token) {
-        throw new Error('Failed to get proposal token')
+      if (fetchError) {
+        console.error('Error fetching proposal:', fetchError)
+        throw new Error('Failed to fetch proposal')
+      }
+
+      let token = proposal?.customer_view_token
+
+      // If no token exists, generate one
+      if (!token) {
+        console.log('No token found, generating new token...')
+        // Generate a URL-safe token
+        token = `${proposalId.slice(-8)}-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 9)}`
+        
+        const { error: updateError } = await supabase
+          .from('proposals')
+          .update({ customer_view_token: token })
+          .eq('id', proposalId)
+
+        if (updateError) {
+          console.error('Error updating proposal with token:', updateError)
+          throw new Error('Failed to generate proposal token')
+        }
       }
 
       // Send the email
@@ -57,11 +77,13 @@ export default function SendProposal({ proposalId, proposalNumber, customer, tot
           customerEmail: email,
           message,
           total,
-          viewLink: `${window.location.origin}/proposal/view/${proposal.customer_view_token}`
+          viewLink: `${window.location.origin}/proposal/view/${token}`
         }),
       })
 
       if (!response.ok) {
+        const errorData = await response.text()
+        console.error('Send proposal API error:', errorData)
         throw new Error('Failed to send proposal')
       }
 
@@ -89,9 +111,9 @@ export default function SendProposal({ proposalId, proposalNumber, customer, tot
 
       alert('Proposal sent successfully!')
       onSent()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending proposal:', error)
-      alert('Failed to send proposal. Please try again.')
+      alert(error.message || 'Failed to send proposal. Please try again.')
     } finally {
       setSending(false)
     }
