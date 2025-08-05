@@ -1,12 +1,3 @@
-#!/bin/bash
-
-echo "🔧 Creating missing PaymentStages component..."
-
-# Create the components directory if it doesn't exist
-mkdir -p app/components
-
-# Create PaymentStages component
-cat > app/components/PaymentStages.tsx << 'EOF'
 'use client'
 
 import { useState } from 'react'
@@ -200,22 +191,3 @@ export default function PaymentStages({ proposal, onPaymentInitiated }: PaymentS
     </div>
   )
 }
-EOF
-
-# Commit changes
-git add .
-git commit -m "fix: add missing PaymentStages component
-
-- Create PaymentStages component with 50/30/20 payment split
-- Show payment progress bar
-- Handle stage-based payments with Stripe
-- Lock stages until previous payment completed"
-
-git push origin main
-
-echo "✅ Created PaymentStages component!"
-echo ""
-echo "The build should now pass with:"
-echo "- PaymentStages component properly created"
-echo "- 50/30/20 payment stage implementation"
-echo "- Progress tracking and stage locking"
