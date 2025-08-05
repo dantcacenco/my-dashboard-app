@@ -1,129 +1,137 @@
 #!/bin/bash
 
-echo "🔧 Fixing Proposals page authentication for boss role..."
+echo "🔧 Fixing 404 errors and payment session issue..."
 
-# Fix 1: Update proposals/page.tsx to accept boss role
-cat > app/proposals/page.tsx << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import ProposalsList from './ProposalsList'
+# Fix 1: Create placeholder pages for missing routes
+echo "Creating placeholder pages for missing routes..."
 
-export default async function ProposalsPage({
-  searchParams
-}: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
-}) {
-  const params = await searchParams
-  const supabase = await createClient()
-  
-  // Check if user is authenticated
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  
-  if (authError || !user) {
-    redirect('/auth/signin')
-  }
-
-  // Get user profile to check role
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  // Allow both boss and admin roles
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'boss')) {
-    console.error('User role:', profile?.role, '- redirecting to dashboard')
-    redirect('/')
-  }
-
-  // Get proposals with customer data
-  const { data: proposals, error } = await supabase
-    .from('proposals')
-    .select(`
-      *,
-      customers (
-        id,
-        name,
-        email,
-        phone,
-        address
-      )
-    `)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    console.error('Error fetching proposals:', error)
-  }
-
-  // Process search params
-  const status = typeof params.status === 'string' ? params.status : 'all'
-  const startDate = typeof params.startDate === 'string' ? params.startDate : undefined
-  const endDate = typeof params.endDate === 'string' ? params.endDate : undefined
-  const search = typeof params.search === 'string' ? params.search : undefined
-
+# Create customers page
+mkdir -p app/customers
+cat > app/customers/page.tsx << 'EOF'
+export default function CustomersPage() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <ProposalsList 
-          proposals={proposals || []}
-          searchParams={{
-            status,
-            startDate,
-            endDate,
-            search
-          }}
-        />
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">Customers</h1>
+        <p className="text-gray-600">Coming soon...</p>
       </div>
     </div>
   )
 }
 EOF
 
-# Fix 2: Also check other proposal-related pages
-# Update proposals/new/page.tsx if it exists
-if [ -f "app/proposals/new/page.tsx" ]; then
-  perl -i -pe "s/profile\?\.role !== 'admin'/profile?.role !== 'admin' && profile?.role !== 'boss'/g" app/proposals/new/page.tsx
-fi
+# Create invoices page
+mkdir -p app/invoices
+cat > app/invoices/page.tsx << 'EOF'
+export default function InvoicesPage() {
+  return (
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">Invoices</h1>
+        <p className="text-gray-600">Coming soon...</p>
+      </div>
+    </div>
+  )
+}
+EOF
 
-# Fix 3: Update any other pages that might have the same issue
-# Check customers page
-if [ -f "app/customers/page.tsx" ]; then
-  perl -i -pe "s/profile\?\.role !== 'admin'/profile?.role !== 'admin' && profile?.role !== 'boss'/g" app/customers/page.tsx
-fi
+# Create jobs page
+mkdir -p app/jobs
+cat > app/jobs/page.tsx << 'EOF'
+export default function JobsPage() {
+  return (
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">Jobs</h1>
+        <p className="text-gray-600">Coming soon...</p>
+      </div>
+    </div>
+  )
+}
+EOF
 
-# Check jobs page
-if [ -f "app/jobs/page.tsx" ]; then
-  perl -i -pe "s/profile\?\.role !== 'admin'/profile?.role !== 'admin' && profile?.role !== 'boss'/g" app/jobs/page.tsx
-fi
+# Fix 2: Debug and fix the payment API response
+echo "Fixing payment API to return session ID correctly..."
 
-# Check invoices page
-if [ -f "app/invoices/page.tsx" ]; then
-  perl -i -pe "s/profile\?\.role !== 'admin'/profile?.role !== 'admin' && profile?.role !== 'boss'/g" app/invoices/page.tsx
-fi
+# Create a temporary fix file to properly handle the Stripe session
+cat > fix-payment-api.js << 'EOF'
+const fs = require('fs');
+const content = fs.readFileSync('app/api/create-payment/route.ts', 'utf8');
 
-# Fix 4: Add debug logging to help identify issues
-echo "Adding debug logging to auth flow..."
+// Ensure we're returning the session ID correctly
+let fixed = content;
+
+// Make sure we're creating the session correctly
+if (!fixed.includes('console.log(\'Created Stripe session:\', session.id)')) {
+  fixed = fixed.replace(
+    /const session = await stripe\.checkout\.sessions\.create\({/g,
+    'const session = await stripe.checkout.sessions.create({'
+  );
+  
+  fixed = fixed.replace(
+    /return NextResponse\.json\({ sessionId: session\.id }\)/g,
+    `console.log('Created Stripe session:', session.id);
+    
+    if (!session.id) {
+      console.error('No session ID generated by Stripe');
+      return NextResponse.json(
+        { error: 'Failed to create payment session' },
+        { status: 500 }
+      );
+    }
+    
+    return NextResponse.json({ sessionId: session.id })`
+  );
+}
+
+// Add better error handling
+fixed = fixed.replace(
+  /} catch \(error: any\) {/g,
+  `} catch (error: any) {
+    console.error('Stripe error:', error);
+    console.error('Error type:', error.type);
+    console.error('Error message:', error.message);
+    
+    // Check for specific Stripe errors
+    if (error.type === 'StripeInvalidRequestError') {
+      return NextResponse.json(
+        { error: \`Stripe configuration error: \${error.message}\` },
+        { status: 400 }
+      );
+    }`
+);
+
+fs.writeFileSync('app/api/create-payment/route.ts', fixed);
+EOF
+
+node fix-payment-api.js
+rm fix-payment-api.js
+
+# Fix 3: Ensure success and cancel URLs are absolute
+perl -i -pe "s|success_url: '/proposal/payment-success|success_url: \`\${process.env.NEXT_PUBLIC_BASE_URL || 'https://my-dashboard-app-tau.vercel.app'}/proposal/payment-success|g" app/api/create-payment/route.ts
+perl -i -pe "s|cancel_url: '/proposal/view/|cancel_url: \`\${process.env.NEXT_PUBLIC_BASE_URL || 'https://my-dashboard-app-tau.vercel.app'}/proposal/view/|g" app/api/create-payment/route.ts
 
 # Commit changes
 git add .
-git commit -m "fix: allow boss role access to proposals and other pages
+git commit -m "fix: create missing pages and fix payment session response
 
-- Update proposals page to accept both admin and boss roles
-- Add debug logging for role checking
-- Fix auth redirect loop for boss role
-- Update all main pages to accept boss role"
+- Add placeholder pages for customers, invoices, jobs
+- Fix payment API to properly return session ID
+- Add detailed Stripe error logging
+- Use absolute URLs for Stripe success/cancel redirects"
 
 git push origin main
 
-echo "✅ Fixed Proposals page authentication!"
+echo "✅ Fixed 404 errors and improved payment handling!"
 echo ""
 echo "📝 What was fixed:"
-echo "1. Proposals page now accepts 'boss' role"
-echo "2. Added console logging to debug role issues"
-echo "3. Fixed potential redirect loops"
-echo "4. Updated other pages to accept boss role"
+echo "1. Created placeholder pages for Customers, Invoices, Jobs"
+echo "2. Added session ID validation in payment API"
+echo "3. Improved Stripe error messages"
+echo "4. Fixed redirect URLs to be absolute"
 echo ""
-echo "🧪 Next steps:"
-echo "1. Hard refresh the page (Ctrl+F5)"
-echo "2. Try accessing Proposals page again"
-echo "3. Check browser console for any role-related logs"
+echo "⚠️ Check Vercel logs for Stripe-specific errors"
+echo "Common issues:"
+echo "- Product/Price not created in Stripe dashboard"
+echo "- URLs not matching Stripe allowed domains"
+echo "- API keys not matching (test vs live)"

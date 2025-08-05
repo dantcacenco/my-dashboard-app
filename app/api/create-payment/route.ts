@@ -107,6 +107,17 @@ export async function POST(request: NextRequest) {
       payment_stage,
       customer_email
     })  } catch (error: any) {
+    console.error('Stripe error:', error);
+    console.error('Error type:', error.type);
+    console.error('Error message:', error.message);
+    
+    // Check for specific Stripe errors
+    if (error.type === 'StripeInvalidRequestError') {
+      return NextResponse.json(
+        { error: `Stripe configuration error: ${error.message}` },
+        { status: 400 }
+      );
+    }
     console.error('Stripe session creation error:', error);
     console.error('Error details:', {
       message: error.message,
