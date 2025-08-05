@@ -14,7 +14,7 @@ export default async function ViewProposalPage({ params }: PageProps) {
   const { data: { user }, error } = await supabase.auth.getUser()
   
   if (error || !user) {
-    redirect('/sign-in')
+    redirect('/auth/signin')
   }
 
   // Get user profile to check role
@@ -24,9 +24,9 @@ export default async function ViewProposalPage({ params }: PageProps) {
     .eq('id', user.id)
     .single()
 
-  // Only boss can view proposals (for now - later customers can view their own)
-  if (profile?.role !== 'admin') {
-    redirect('/unauthorized')
+  // Allow both 'boss' and 'admin' roles to view proposals
+  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
+    redirect('/')
   }
 
   // Get the proposal with items and customer data

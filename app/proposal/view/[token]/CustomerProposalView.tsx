@@ -335,8 +335,26 @@ export default function CustomerProposalView({
   }
 
   const isApproved = proposal.status === 'approved' && proposal.approved_at
+
+  // Show payment stages for approved proposals
+  const showPaymentStages = isApproved && (
+    !proposal.final_paid_at || // Not fully paid
+    (proposal.deposit_paid_at || proposal.progress_paid_at || proposal.final_paid_at) // Or has any payments
+  )
   const isRejected = proposal.status === 'rejected' && proposal.rejected_at
+
+  // Show payment stages for approved proposals
+  const showPaymentStages = isApproved && (
+    !proposal.final_paid_at || // Not fully paid
+    (proposal.deposit_paid_at || proposal.progress_paid_at || proposal.final_paid_at) // Or has any payments
+  )
   const isPending = !isApproved && !isRejected
+
+  // Show payment stages for approved proposals
+  const showPaymentStages = isApproved && (
+    !proposal.final_paid_at || // Not fully paid
+    (proposal.deposit_paid_at || proposal.progress_paid_at || proposal.final_paid_at) // Or has any payments
+  )
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -369,6 +387,14 @@ export default function CustomerProposalView({
             </div>
           </div>
           
+        </div>
+
+        {/* Payment Stages */}
+        {showPaymentStages && (
+          <PaymentStages proposal={proposal} />
+        )}
+
+        <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-600">Customer</p>
