@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
+
+if (!process.env.STRIPE_SECRET_KEY) {
+  console.error('STRIPE_SECRET_KEY is not set in environment variables')
+}import Stripe from 'stripe'
 import { createClient } from '@/lib/supabase/server'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -71,6 +74,9 @@ export async function POST(request: NextRequest) {
       success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposal_id}`,
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/view/${proposal.customer_view_token}?payment=cancelled`,
       metadata: {
+      payment_type: payment_type || 'card',
+      payment_stage: payment_stage || 'deposit',
+      proposal_id: proposal_id,
         proposal_id,
         proposal_number,
         customer_name,
@@ -101,7 +107,12 @@ export async function POST(request: NextRequest) {
       session_id: session.id 
     })
 
-  } catch (error) {
+    // Log session creation for debugging
+    console.log('Creating Stripe session with:', {
+      amount: Math.round(amount),
+      payment_stage,
+      customer_email
+    })  } catch (error) {
     console.error('Error creating Stripe checkout session:', error)
     return NextResponse.json(
       { error: 'Failed to create payment session' },

@@ -152,7 +152,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
               )}
               
               {/* Edit Button - Only show for draft proposals */}
-              {proposal.status === 'draft' && (
+              {(proposal.status === 'draft' || proposal.status === 'sent' || (!proposal.approved_at && !proposal.rejected_at)) && (
                 <Link
                   href={`/proposals/${proposal.id}/edit`}
                   className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
