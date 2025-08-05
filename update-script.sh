@@ -1,20 +1,7 @@
 #!/bin/bash
-echo "🔧 Fixing proposal action buttons and revenue calculation..."
+echo "🔧 Fixing dashboard data structure to match DashboardContent interface..."
 
-# Fix 1: Update ProposalView to check for 'admin' role instead of 'boss'
-echo "📝 Fixing ProposalView role check..."
-sed -i.bak 's/userRole === '\''boss'\''/userRole === '\''admin'\''/g' app/proposals/[id]/ProposalView.tsx
-
-# Fix 2: Update the proposal page to check for 'admin' role
-echo "📝 Fixing proposal page role check..."
-sed -i.bak 's/profile?.role !== '\''boss'\''/profile?.role !== '\''admin'\''/g' app/proposals/[id]/page.tsx
-
-# Fix 3: Update the edit page to check for 'admin' role
-echo "📝 Fixing edit page role check..."
-sed -i.bak 's/profile?.role !== '\''boss'\''/profile?.role !== '\''admin'\''/g' app/proposals/[id]/edit/page.tsx
-
-# Fix 4: Update the dashboard page to calculate revenue based on actual payments
-echo "📝 Fixing revenue calculation in dashboard..."
+# Create the complete fixed page.tsx
 cat > app/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
@@ -42,7 +29,7 @@ export default async function DashboardPage() {
       .from('proposals')
       .select('id, status, total, created_at, deposit_amount, progress_amount, final_amount, deposit_paid_at, progress_paid_at, final_paid_at'),
 
-    // Recent proposals
+    // Recent proposals - note: customers is an object, not array
     supabase
       .from('proposals')
       .select(`
@@ -63,7 +50,7 @@ export default async function DashboardPage() {
       .select('created_at, total, status, deposit_amount, progress_amount, final_amount, deposit_paid_at, progress_paid_at, final_paid_at')
       .gte('created_at', new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000).toISOString()),
 
-    // Recent activities
+    // Recent activities - note: proposals is an object, not array
     supabase
       .from('proposal_activities')
       .select(`
@@ -85,8 +72,8 @@ export default async function DashboardPage() {
   // Calculate key metrics
   const totalProposals = proposals.length
   
-  // Calculate paid revenue including partial payments
-  const paidRevenue = proposals.reduce((sum, p) => {
+  // Calculate total revenue including partial payments
+  const totalRevenue = proposals.reduce((sum, p) => {
     let proposalRevenue = 0
     if (p.deposit_paid_at && p.deposit_amount) proposalRevenue += p.deposit_amount
     if (p.progress_paid_at && p.progress_amount) proposalRevenue += p.progress_amount
@@ -107,92 +94,103 @@ export default async function DashboardPage() {
   const paymentRate = approvedProposals > 0 ? (paidProposals / approvedProposals) * 100 : 0
 
   // Process monthly data for charts
-  const monthlyRevenue = new Map()
+  const monthlyRevenue = []
   const currentDate = new Date()
   
   // Initialize last 6 months
   for (let i = 5; i >= 0; i--) {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1)
-    const key = date.toISOString().slice(0, 7) // YYYY-MM format
-    monthlyRevenue.set(key, 0)
+    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
+    const monthName = date.toLocaleDateString('en-US', { month: 'short' })
+    
+    // Find all proposals and payments in this month
+    let monthRevenue = 0
+    let monthProposals = 0
+    
+    monthlyData.forEach(proposal => {
+      // Count proposals created in this month
+      if (proposal.created_at.startsWith(monthKey)) {
+        monthProposals++
+      }
+      
+      // Add deposit payments
+      if (proposal.deposit_paid_at && proposal.deposit_paid_at.startsWith(monthKey) && proposal.deposit_amount) {
+        monthRevenue += proposal.deposit_amount
+      }
+      
+      // Add progress payments
+      if (proposal.progress_paid_at && proposal.progress_paid_at.startsWith(monthKey) && proposal.progress_amount) {
+        monthRevenue += proposal.progress_amount
+      }
+      
+      // Add final payments
+      if (proposal.final_paid_at && proposal.final_paid_at.startsWith(monthKey) && proposal.final_amount) {
+        monthRevenue += proposal.final_amount
+      }
+      
+      // For backward compatibility - if status is 'paid' but no staged payments
+      if (proposal.status === 'paid' && proposal.created_at.startsWith(monthKey) && 
+          !proposal.deposit_paid_at && !proposal.progress_paid_at && !proposal.final_paid_at) {
+        monthRevenue += proposal.total || 0
+      }
+    })
+    
+    monthlyRevenue.push({
+      month: monthName,
+      revenue: monthRevenue,
+      proposals: monthProposals
+    })
   }
 
-  // Add revenue from all payments
-  monthlyData.forEach(proposal => {
-    // Add deposit payments
-    if (proposal.deposit_paid_at && proposal.deposit_amount) {
-      const month = proposal.deposit_paid_at.slice(0, 7)
-      if (monthlyRevenue.has(month)) {
-        monthlyRevenue.set(month, monthlyRevenue.get(month) + proposal.deposit_amount)
-      }
-    }
-    
-    // Add progress payments
-    if (proposal.progress_paid_at && proposal.progress_amount) {
-      const month = proposal.progress_paid_at.slice(0, 7)
-      if (monthlyRevenue.has(month)) {
-        monthlyRevenue.set(month, monthlyRevenue.get(month) + proposal.progress_amount)
-      }
-    }
-    
-    // Add final payments
-    if (proposal.final_paid_at && proposal.final_amount) {
-      const month = proposal.final_paid_at.slice(0, 7)
-      if (monthlyRevenue.has(month)) {
-        monthlyRevenue.set(month, monthlyRevenue.get(month) + proposal.final_amount)
-      }
-    }
-    
-    // For backward compatibility - if status is 'paid' but no staged payments
-    if (proposal.status === 'paid' && !proposal.deposit_paid_at && !proposal.progress_paid_at && !proposal.final_paid_at) {
-      const month = proposal.created_at.slice(0, 7)
-      if (monthlyRevenue.has(month)) {
-        monthlyRevenue.set(month, monthlyRevenue.get(month) + (proposal.total || 0))
-      }
-    }
-  })
+  // Status distribution
+  const statusCounts = {
+    draft: proposals.filter(p => p.status === 'draft').length,
+    sent: proposals.filter(p => p.status === 'sent').length,
+    viewed: proposals.filter(p => p.status === 'viewed').length,
+    approved: proposals.filter(p => p.status === 'approved').length,
+    rejected: proposals.filter(p => p.status === 'rejected').length,
+    paid: proposals.filter(p => p.status === 'paid').length
+  }
 
-  const revenueData = Array.from(monthlyRevenue.entries()).map(([month, revenue]) => ({
-    month,
-    revenue
+  // Transform recent proposals to match expected format
+  const transformedRecentProposals = recentProposals.map(p => ({
+    ...p,
+    customers: p.customers ? [p.customers] : null // Convert object to array
   }))
 
-  // Status distribution
-  const statusCounts = proposals.reduce((acc: Record<string, number>, proposal) => {
-    acc[proposal.status] = (acc[proposal.status] || 0) + 1
-    return acc
-  }, {})
+  // Transform recent activities to match expected format
+  const transformedRecentActivities = recentActivities.map(a => ({
+    ...a,
+    proposals: a.proposals ? [a.proposals] : null // Convert object to array
+  }))
 
   const dashboardData = {
-    totalProposals,
-    paidRevenue,
-    approvedProposals,
-    conversionRate,
-    paymentRate,
-    recentProposals,
-    recentActivities,
-    revenueData,
-    statusCounts
+    metrics: {
+      totalProposals,
+      totalRevenue, // Changed from paidRevenue
+      approvedProposals,
+      conversionRate,
+      paymentRate
+    },
+    monthlyRevenue,
+    statusCounts,
+    recentProposals: transformedRecentProposals,
+    recentActivities: transformedRecentActivities
   }
 
   return <DashboardContent data={dashboardData} />
 }
 EOF
 
-# Remove backup files
-rm -f app/proposals/[id]/ProposalView.tsx.bak
-rm -f app/proposals/[id]/page.tsx.bak
-rm -f app/proposals/[id]/edit/page.tsx.bak
-
 # Check for errors
 if [ $? -ne 0 ]; then
-    echo "❌ Error updating files"
+    echo "❌ Error writing file"
     exit 1
 fi
 
 # Commit and push
 git add .
-git commit -m "fix: update role checks to 'admin' and fix revenue calculation for multi-stage payments"
+git commit -m "fix: correct dashboard data structure to match DashboardContent interface"
 git push origin main
 
-echo "✅ Fixed! Action buttons should now appear and revenue should calculate correctly"
+echo "✅ Fixed! Dashboard data structure now matches expected interface"
