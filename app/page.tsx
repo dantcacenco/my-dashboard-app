@@ -150,13 +150,13 @@ export default async function DashboardPage() {
   // Transform recent proposals to match expected format
   const transformedRecentProposals = recentProposals.map(p => ({
     ...p,
-    customers: p.customers ? [p.customers] : null // Convert object to array
+    customers: Array.isArray(p.customers) ? p.customers : (p.customers ? [p.customers] : null)
   }))
 
   // Transform recent activities to match expected format
   const transformedRecentActivities = recentActivities.map(a => ({
     ...a,
-    proposals: a.proposals ? [a.proposals] : null // Convert object to array
+    proposals: Array.isArray(a.proposals) ? a.proposals : (a.proposals ? [a.proposals] : null)
   }))
 
   const dashboardData = {
