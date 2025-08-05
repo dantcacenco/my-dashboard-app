@@ -79,7 +79,7 @@ export default function PaymentStages({ proposal, onPaymentInitiated }: PaymentS
       if (error) throw error
 
       if (onPaymentInitiated) onPaymentInitiated()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Payment error:', error)
       console.error('Payment error details:', error);
       const errorMessage = error.message || 'Failed to initiate payment';

@@ -1,15 +1,18 @@
 #!/bin/bash
 
-echo "🔧 Fixing Stripe API version..."
+echo "🔧 Fixing TypeScript error in PaymentStages..."
 
-# Fix the Stripe API version to match the type definition
-perl -i -pe "s/apiVersion: '[\d-]+\.[\w]+'/apiVersion: '2025-07-30.basil'/" app/api/create-payment/route.ts
+# Fix the error type handling in PaymentStages
+perl -i -pe 's/} catch \(error\) {/} catch (error: any) {/' app/components/PaymentStages.tsx
+
+# Also fix any other catch blocks that might have the same issue
+perl -i -pe 's/} catch \(error: any\) {/} catch (error: any) {/g' app/components/PaymentStages.tsx
 
 # Commit the fix
 git add .
-git commit -m "fix: use correct Stripe API version 2025-07-30.basil"
+git commit -m "fix: add TypeScript type annotation for error handling"
 git push origin main
 
-echo "✅ Fixed Stripe API version!"
+echo "✅ Fixed TypeScript error!"
 echo ""
-echo "The build should now pass with the correct API version."
+echo "The error object is now properly typed as 'any' to access its properties."
