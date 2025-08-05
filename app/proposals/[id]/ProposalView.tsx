@@ -18,7 +18,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
   const supabase = createClient()
 
   // Check if user can edit (boss or admin)
-  const canEdit = userRole === 'admin' || userRole === 'boss'
+  const canEdit = userRole === 'admin' || userRole === 'boss' || userRole === 'boss'
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this proposal?')) {

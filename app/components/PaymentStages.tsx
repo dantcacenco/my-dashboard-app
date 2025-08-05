@@ -64,7 +64,13 @@ export default function PaymentStages({ proposal, onPaymentInitiated }: PaymentS
 
       if (!response.ok) throw new Error('Failed to create payment session')
 
-      const { sessionId } = await response.json()
+      const data = await response.json();
+      console.log('Payment API response:', data);
+      const { sessionId } = data;
+      
+      if (!sessionId) {
+        throw new Error('No session ID received from payment API');
+      }
       const stripe = await stripePromise
 
       if (!stripe) throw new Error('Stripe not loaded')
@@ -75,7 +81,9 @@ export default function PaymentStages({ proposal, onPaymentInitiated }: PaymentS
       if (onPaymentInitiated) onPaymentInitiated()
     } catch (error) {
       console.error('Payment error:', error)
-      alert('Failed to initiate payment. Please try again.')
+      console.error('Payment error details:', error);
+      const errorMessage = error.message || 'Failed to initiate payment';
+      alert(`Payment Error: ${errorMessage}. Please check console for details.`)
     } finally {
       setLoading('')
     }

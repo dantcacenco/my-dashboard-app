@@ -6,7 +6,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 import { createClient } from '@/lib/supabase/server'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-07-30.basil'
+  apiVersion: '2024-11-20.acacia'
 })
 
 export async function POST(request: NextRequest) {
@@ -106,7 +106,13 @@ export async function POST(request: NextRequest) {
       amount: Math.round(amount),
       payment_stage,
       customer_email
-    })  } catch (error) {
+    })  } catch (error: any) {
+    console.error('Stripe session creation error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      type: error.type,
+      statusCode: error.statusCode
+    });
     console.error('Error creating Stripe checkout session:', error)
     return NextResponse.json(
       { error: 'Failed to create payment session' },
