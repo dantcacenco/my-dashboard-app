@@ -17,16 +17,16 @@ export default async function EditProposalPage({ params }: PageProps) {
     redirect('/sign-in')
   }
 
-  // Get user profile to check role
+  // Get user profile to check role - NOTE: table is 'user_profiles' not 'profiles'
   const { data: profile } = await supabase
-    .from('profiles')
+    .from('user_profiles')
     .select('role')
-    .eq('id', user.id)
+    .eq('user_id', user.id)
     .single()
 
-  // Only boss can edit proposals
+  // Allow both admin and boss roles to edit proposals
   if (profile?.role !== 'admin' && profile?.role !== 'boss') {
-    redirect('/unauthorized')
+    redirect('/')
   }
 
   // Get the proposal with items and customer data

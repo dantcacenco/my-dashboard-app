@@ -1,41 +1,37 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+import { redirect, notFound } from 'next/navigation'
 import ProposalView from './ProposalView'
 
-export default async function ProposalPage({
-  params
-}: {
+interface PageProps {
   params: Promise<{ id: string }>
-}) {
+}
+
+export default async function ViewProposalPage({ params }: PageProps) {
   const { id } = await params
   const supabase = await createClient()
-
-  // Get current user
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
   
-  if (userError || !user) {
-    redirect('/login')
+  // Check if user is authenticated
+  const { data: { user }, error } = await supabase.auth.getUser()
+  
+  if (error || !user) {
+    redirect('/sign-in')
   }
 
-  // Get user profile
-  const { data: profile, error: profileError } = await supabase
+  // Get user profile to check role - NOTE: table is 'user_profiles' not 'profiles'
+  const { data: profile } = await supabase
     .from('user_profiles')
     .select('role')
     .eq('user_id', user.id)
     .single()
 
-  if (profileError || !profile) {
-    console.error('Error fetching user profile:', profileError)
+  // Allow both admin and boss roles to view proposals
+  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
+    console.log('Unauthorized access attempt:', { userId: user.id, role: profile?.role })
     redirect('/')
   }
 
-  // Check authorization
-  if (profile.role !== 'admin' && profile.role !== 'boss') {
-    redirect('/')
-  }
-
-  // Get proposal with all related data
-  const { data: proposal, error } = await supabase
+  // Get the proposal with items and customer data
+  const { data: proposal, error: proposalError } = await supabase
     .from('proposals')
     .select(`
       *,
@@ -47,36 +43,22 @@ export default async function ProposalPage({
         address
       ),
       proposal_items (
-        id,
-        name,
-        description,
-        quantity,
-        unit_price,
-        total_price,
-        is_addon,
-        is_selected
-      ),
-      proposal_activities (
-        id,
-        activity_type,
-        description,
-        created_at,
-        metadata
+        *
       )
     `)
     .eq('id', id)
     .single()
 
-  if (error || !proposal) {
-    console.error('Error fetching proposal:', error)
-    redirect('/proposals')
+  if (proposalError || !proposal) {
+    console.error('Proposal not found:', proposalError)
+    notFound()
   }
 
   return (
-    <div className="p-6">
+    <div className="min-h-screen bg-gray-50">
       <ProposalView 
-        proposal={proposal} 
-        userRole={profile.role}
+        proposal={proposal}
+        userRole={profile?.role}
         userId={user.id}
       />
     </div>
