@@ -10,27 +10,53 @@ export default async function ViewProposalPage({ params }: PageProps) {
   const { id } = await params
   const supabase = await createClient()
   
+  console.log('[ViewProposalPage] Starting with proposal ID:', id)
+  
   // Check if user is authenticated
   const { data: { user }, error } = await supabase.auth.getUser()
   
   if (error || !user) {
+    console.log('[ViewProposalPage] No user found, redirecting to sign-in')
     redirect('/sign-in')
   }
+  
+  console.log('[ViewProposalPage] User authenticated:', user.id)
 
-  // Get user profile - CORRECT TABLE: 'profiles' with 'id' column
-  const { data: profile } = await supabase
+  // Get user profile with error handling
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('role')
+    .select('*')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
 
-  console.log('User profile check:', { userId: user.id, role: profile?.role })
+  console.log('[ViewProposalPage] Profile query result:', { profile, profileError })
 
-  // Allow both admin and boss roles to view proposals
-  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
-    console.log('Unauthorized: redirecting to dashboard')
+  // If no profile found or error, try to handle gracefully
+  if (!profile && !profileError) {
+    console.log('[ViewProposalPage] No profile found for user')
+    // Create a default profile or redirect
     redirect('/')
   }
+  
+  if (profileError) {
+    console.error('[ViewProposalPage] Error fetching profile:', profileError)
+    // Check if it's an RLS error
+    if (profileError.message?.includes('row-level security')) {
+      console.error('[ViewProposalPage] RLS policy blocking profile access')
+    }
+    redirect('/')
+  }
+
+  // Check role authorization
+  const userRole = profile?.role
+  console.log('[ViewProposalPage] User role:', userRole)
+  
+  if (userRole !== 'admin' && userRole !== 'boss') {
+    console.log('[ViewProposalPage] Unauthorized role, redirecting to dashboard')
+    redirect('/')
+  }
+
+  console.log('[ViewProposalPage] Authorization passed, fetching proposal')
 
   // Get the proposal with items and customer data
   const { data: proposal, error: proposalError } = await supabase
@@ -52,15 +78,17 @@ export default async function ViewProposalPage({ params }: PageProps) {
     .single()
 
   if (proposalError || !proposal) {
-    console.error('Proposal not found:', proposalError)
+    console.error('[ViewProposalPage] Proposal not found:', proposalError)
     notFound()
   }
+
+  console.log('[ViewProposalPage] Proposal found, rendering view')
 
   return (
     <div className="min-h-screen bg-gray-50">
       <ProposalView 
         proposal={proposal}
-        userRole={profile?.role || 'boss'}
+        userRole={userRole}
         userId={user.id}
       />
     </div>
