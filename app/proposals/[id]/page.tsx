@@ -17,16 +17,18 @@ export default async function ViewProposalPage({ params }: PageProps) {
     redirect('/sign-in')
   }
 
-  // Get user profile to check role - NOTE: table is 'user_profiles' not 'profiles'
+  // Get user profile - CORRECT TABLE: 'profiles' with 'id' column
   const { data: profile } = await supabase
-    .from('user_profiles')
+    .from('profiles')
     .select('role')
-    .eq('user_id', user.id)
+    .eq('id', user.id)
     .single()
+
+  console.log('User profile check:', { userId: user.id, role: profile?.role })
 
   // Allow both admin and boss roles to view proposals
   if (profile?.role !== 'admin' && profile?.role !== 'boss') {
-    console.log('Unauthorized access attempt:', { userId: user.id, role: profile?.role })
+    console.log('Unauthorized: redirecting to dashboard')
     redirect('/')
   }
 
@@ -58,7 +60,7 @@ export default async function ViewProposalPage({ params }: PageProps) {
     <div className="min-h-screen bg-gray-50">
       <ProposalView 
         proposal={proposal}
-        userRole={profile?.role}
+        userRole={profile?.role || 'boss'}
         userId={user.id}
       />
     </div>

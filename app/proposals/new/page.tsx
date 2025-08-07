@@ -12,11 +12,11 @@ export default async function NewProposalPage() {
     redirect('/sign-in')
   }
 
-  // Get user profile to check role - NOTE: table is 'user_profiles' not 'profiles'
+  // Get user profile - CORRECT TABLE: 'profiles' with 'id' column
   const { data: profile } = await supabase
-    .from('user_profiles')
+    .from('profiles')
     .select('role')
-    .eq('user_id', user.id)
+    .eq('id', user.id)
     .single()
 
   // Allow both admin and boss roles to create proposals
