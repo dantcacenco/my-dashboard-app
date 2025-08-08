@@ -1,14 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Image from 'next/image'
 import { CheckCircleIcon, XCircleIcon, ClockIcon } from '@heroicons/react/24/solid'
-import PaymentStages from '@/app/components/PaymentStages'
+import { createClient } from '@/lib/supabase/client'
+import { useSearchParams } from 'next/navigation'
+import MultiStagePayment from '@/components/MultiStagePayment'
 
 interface ProposalItem {
   id: string
   name: string
-  description: string | null
+  description: string
   quantity: number
   unit_price: number
   total_price: number
@@ -16,51 +18,121 @@ interface ProposalItem {
   is_selected: boolean
 }
 
-interface CustomerProposalViewProps {
-  proposal: any
-  error?: 'not_found' | 'invalid_token' | null
+interface Customer {
+  id: string
+  name: string
+  email: string
+  phone: string
+  address: string
 }
 
-export default function CustomerProposalView({ proposal, error }: CustomerProposalViewProps) {
-  const [selectedAddons, setSelectedAddons] = useState<string[]>(
-    proposal?.proposal_items?.filter((item: ProposalItem) => item.is_addon && item.is_selected).map((item: ProposalItem) => item.id) || []
-  )
-  const [customerName, setCustomerName] = useState('')
+interface Proposal {
+  id: string
+  proposal_number: string
+  customer_id: string
+  title: string
+  description: string
+  subtotal: number
+  tax_rate: number
+  tax_amount: number
+  total: number
+  status: string
+  valid_until: string | null
+  signed_at: string | null
+  signature_data: string | null
+  created_at: string
+  customer_view_token: string
+  approved_at: string | null
+  rejected_at: string | null
+  first_viewed_at: string | null
+  customer_notes: string | null
+  customers: Customer
+  proposal_items: ProposalItem[]
+  payment_status: string | null
+  payment_method: string | null
+  deposit_paid_at: string | null
+  deposit_amount: number | null
+  progress_paid_at: string | null
+  progress_payment_amount: number | null
+  final_paid_at: string | null
+  final_payment_amount: number | null
+  total_paid: number | null
+  current_payment_stage: string | null
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
+
+function formatDate(dateString: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date(dateString))
+}
+
+export default function CustomerProposalView({ 
+  proposal: initialProposal,
+  error 
+}: { 
+  proposal: Proposal
+  error?: string 
+}) {
+  const [proposal, setProposal] = useState<Proposal>(initialProposal)
+  const [isApproving, setIsApproving] = useState(false)
+  const [isRejecting, setIsRejecting] = useState(false)
+  const [showRejectionForm, setShowRejectionForm] = useState(false)
   const [customerNotes, setCustomerNotes] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [customerName, setCustomerName] = useState('')
+  const searchParams = useSearchParams()
+  const supabase = createClient()
 
-  // Handle addon selection
-  const handleAddonToggle = (addonId: string) => {
-    setSelectedAddons(prev => 
-      prev.includes(addonId) 
-        ? prev.filter(id => id !== addonId)
-        : [...prev, addonId]
-    )
-  }
-
-  // Calculate total with selected addons
-  const calculateTotal = () => {
-    if (!proposal) return 0
+  // Check for payment success/failure messages
+  useEffect(() => {
+    const payment = searchParams.get('payment')
+    const stage = searchParams.get('stage')
     
-    const baseTotal = proposal.proposal_items
-      ?.filter((item: ProposalItem) => !item.is_addon)
-      .reduce((sum: number, item: ProposalItem) => sum + item.total_price, 0) || 0
+    if (payment === 'success' && stage) {
+      const stageLabel = stage === 'roughin' ? 'Rough In' : stage.charAt(0).toUpperCase() + stage.slice(1)
+      alert(`✅ ${stageLabel} payment completed successfully!`)
+      // Refresh proposal data
+      refreshProposal()
+    } else if (payment === 'cancelled') {
+      alert('Payment was cancelled. You can try again when ready.')
+    } else if (payment === 'error') {
+      alert('There was an error processing your payment. Please try again.')
+    }
+  }, [searchParams])
 
-    const addonsTotal = proposal.proposal_items
-      ?.filter((item: ProposalItem) => item.is_addon && selectedAddons.includes(item.id))
-      .reduce((sum: number, item: ProposalItem) => sum + item.total_price, 0) || 0
+  const refreshProposal = async () => {
+    const { data, error } = await supabase
+      .from('proposals')
+      .select(`
+        *,
+        customers (id, name, email, phone, address),
+        proposal_items (*)
+      `)
+      .eq('id', proposal.id)
+      .single()
 
-    return baseTotal + addonsTotal
+    if (data && !error) {
+      setProposal(data)
+    }
   }
 
-  // Handle approval/rejection
-  const handleDecision = async (approved: boolean) => {
-    if (!customerName.trim() && approved) {
-      alert('Please provide your name/signature for approval')
+  const handleApproval = async () => {
+    if (!customerName.trim()) {
+      alert('Please enter your name to approve the proposal')
       return
     }
 
-    setIsSubmitting(true)
+    setIsApproving(true)
     
     try {
       const response = await fetch('/api/proposal-approval', {
@@ -70,63 +142,75 @@ export default function CustomerProposalView({ proposal, error }: CustomerPropos
         },
         body: JSON.stringify({
           proposalId: proposal.id,
-          approved,
-          customerName: customerName.trim(),
-          selectedAddons,
-          finalTotal: calculateTotal(),
-          customerNotes: customerNotes.trim()
+          approved: true,
+          customerNotes: customerNotes.trim(),
+          customerName: customerName.trim()
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to submit decision')
+        throw new Error('Failed to approve proposal')
       }
 
-      const data = await response.json()
+      const { proposal: updatedProposal } = await response.json()
+      setProposal(updatedProposal)
+      alert('Proposal approved successfully! You can now proceed with payment.')
       
-      // Redirect based on decision
-      if (approved) {
-        // Redirect to payment page
-        window.location.href = `/proposal/payment/${proposal.customer_view_token}`
-      } else {
-        // Show rejection confirmation
-        alert('Thank you for your response. The proposal has been declined.')
-        window.location.reload()
-      }
     } catch (error) {
-      console.error('Error submitting decision:', error)
-      alert('An error occurred. Please try again.')
+      console.error('Error approving proposal:', error)
+      alert('Failed to approve proposal. Please try again.')
     } finally {
-      setIsSubmitting(false)
+      setIsApproving(false)
     }
   }
 
-  // Format currency
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
+  const handleRejection = async () => {
+    if (!customerNotes.trim()) {
+      alert('Please provide a reason for rejection')
+      return
+    }
+
+    setIsRejecting(true)
+    
+    try {
+      const response = await fetch('/api/proposal-approval', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          proposalId: proposal.id,
+          approved: false,
+          customerNotes: customerNotes.trim(),
+          customerName: customerName.trim() || proposal.customers.name
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to reject proposal')
+      }
+
+      const { proposal: updatedProposal } = await response.json()
+      setProposal(updatedProposal)
+      setShowRejectionForm(false)
+      
+    } catch (error) {
+      console.error('Error rejecting proposal:', error)
+      alert('Failed to reject proposal. Please try again.')
+    } finally {
+      setIsRejecting(false)
+    }
   }
 
-  // Format date
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
-  }
-
-  // Show error page if there's an error
-  if (error || !proposal) {
+  if (error) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <main className="flex-1">
-            <div className="py-6">
-              <div className="max-w-3xl mx-auto px-4 sm:px-6 md:px-8">
-                <h1 className="text-2xl font-semibold text-gray-900">
+      <div className="min-h-screen bg-gray-50 px-4 py-16 sm:px-6 sm:py-24 md:grid md:place-items-center lg:px-8">
+        <div className="max-w-max mx-auto">
+          <main className="sm:flex">
+            <XCircleIcon className="h-12 w-12 text-red-500" />
+            <div className="sm:ml-6">
+              <div className="sm:border-l sm:border-gray-200 sm:pl-6">
+                <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight sm:text-5xl">
                   {error === 'not_found' ? 'Proposal not found' : 'Invalid access'}
                 </h1>
                 <p className="mt-1 text-base text-gray-500">
@@ -142,222 +226,231 @@ export default function CustomerProposalView({ proposal, error }: CustomerPropos
     )
   }
 
-  const isApproved = proposal.status === 'approved' && proposal.approved_at
-  const isRejected = proposal.status === 'rejected' && proposal.rejected_at
+  const isApproved = proposal.status === 'approved'
+  const isRejected = proposal.status === 'rejected'
   const isPending = !isApproved && !isRejected
-
-  // Show payment stages for approved proposals
-  const showPaymentStages = isApproved && (
-    !proposal.final_paid_at || // Not fully paid
-    (proposal.deposit_paid_at || proposal.progress_paid_at || proposal.final_paid_at) // Or has any payments
-  )
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
+        <div className="bg-white rounded-lg shadow-sm mb-6 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold text-gray-900">
               Proposal #{proposal.proposal_number}
             </h1>
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               {isApproved && (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                  <CheckCircleIcon className="w-5 h-5 mr-1" />
+                  <CheckCircleIcon className="w-4 h-4 mr-1" />
                   Approved
                 </span>
               )}
               {isRejected && (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
-                  <XCircleIcon className="w-5 h-5 mr-1" />
+                  <XCircleIcon className="w-4 h-4 mr-1" />
                   Rejected
                 </span>
               )}
               {isPending && (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
-                  <ClockIcon className="w-5 h-5 mr-1" />
+                  <ClockIcon className="w-4 h-4 mr-1" />
                   Pending Approval
                 </span>
               )}
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
-              <p className="text-sm text-gray-600">Customer</p>
+              <p className="text-gray-600">Customer</p>
               <p className="font-medium">{proposal.customers.name}</p>
-              <p className="text-sm text-gray-500">{proposal.customers.email}</p>
-              <p className="text-sm text-gray-500">{proposal.customers.phone}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Valid Until</p>
-              <p className="font-medium">
-                {proposal.valid_until ? formatDate(proposal.valid_until) : 'No expiration'}
-              </p>
+              <p className="text-gray-600">Date</p>
+              <p className="font-medium">{formatDate(proposal.created_at)}</p>
             </div>
-          </div>
-        </div>
-
-        {/* Payment Stages */}
-        {showPaymentStages && (
-          <PaymentStages proposal={proposal} />
-        )}
-
-        {/* Proposal Content */}
-        <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">{proposal.title}</h2>
-          {proposal.description && (
-            <p className="text-gray-600 mb-6">{proposal.description}</p>
-          )}
-
-          {/* Items */}
-          <div className="mb-6">
-            <h3 className="text-md font-semibold text-gray-900 mb-3">Items & Services</h3>
-            <div className="space-y-2">
-              {proposal.proposal_items
-                ?.filter((item: ProposalItem) => !item.is_addon)
-                .map((item: ProposalItem) => (
-                  <div key={item.id} className="flex justify-between py-2 border-b border-gray-100">
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      {item.description && (
-                        <p className="text-sm text-gray-600">{item.description}</p>
-                      )}
-                      <p className="text-sm text-gray-500">
-                        {item.quantity} × {formatCurrency(item.unit_price)}
-                      </p>
-                    </div>
-                    <p className="font-medium">{formatCurrency(item.total_price)}</p>
-                  </div>
-                ))}
-            </div>
-          </div>
-
-          {/* Add-ons */}
-          {proposal.proposal_items?.some((item: ProposalItem) => item.is_addon) && (
-            <div className="mb-6">
-              <h3 className="text-md font-semibold text-gray-900 mb-3">Optional Add-ons</h3>
-              <div className="space-y-2">
-                {proposal.proposal_items
-                  ?.filter((item: ProposalItem) => item.is_addon)
-                  .map((item: ProposalItem) => (
-                    <div key={item.id} className="flex items-center justify-between py-2 border-b border-gray-100">
-                      <div className="flex items-center flex-1">
-                        <input
-                          type="checkbox"
-                          id={item.id}
-                          checked={selectedAddons.includes(item.id)}
-                          onChange={() => handleAddonToggle(item.id)}
-                          disabled={!isPending}
-                          className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor={item.id} className="flex-1 cursor-pointer">
-                          <p className="font-medium">{item.name}</p>
-                          {item.description && (
-                            <p className="text-sm text-gray-600">{item.description}</p>
-                          )}
-                        </label>
-                      </div>
-                      <p className="font-medium ml-4">{formatCurrency(item.total_price)}</p>
-                    </div>
-                  ))}
+            {proposal.valid_until && (
+              <div>
+                <p className="text-gray-600">Valid Until</p>
+                <p className="font-medium">{formatDate(proposal.valid_until)}</p>
               </div>
-            </div>
-          )}
-
-          {/* Total */}
-          <div className="border-t pt-4">
-            <div className="flex justify-between text-lg font-semibold">
-              <span>Total</span>
-              <span>{formatCurrency(calculateTotal())}</span>
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Approval Section - Only show if pending */}
+        {/* Proposal Details */}
+        <div className="bg-white rounded-lg shadow-sm mb-6 p-6">
+          <h2 className="text-xl font-semibold mb-4">{proposal.title}</h2>
+          {proposal.description && (
+            <p className="text-gray-600 whitespace-pre-wrap">{proposal.description}</p>
+          )}
+        </div>
+
+        {/* Line Items */}
+        <div className="bg-white rounded-lg shadow-sm mb-6 p-6">
+          <h3 className="text-lg font-semibold mb-4">Services & Materials</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-3">Item</th>
+                  <th className="text-center py-3">Qty</th>
+                  <th className="text-right py-3">Unit Price</th>
+                  <th className="text-right py-3">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {proposal.proposal_items?.map((item) => (
+                  <tr key={item.id} className="border-b">
+                    <td className="py-3">
+                      <div>
+                        <p className="font-medium">{item.name}</p>
+                        {item.description && (
+                          <p className="text-sm text-gray-600">{item.description}</p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-center py-3">{item.quantity}</td>
+                    <td className="text-right py-3">{formatCurrency(item.unit_price)}</td>
+                    <td className="text-right py-3">{formatCurrency(item.total_price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} className="text-right py-3 font-medium">Subtotal:</td>
+                  <td className="text-right py-3">{formatCurrency(proposal.subtotal)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={3} className="text-right py-3 font-medium">
+                    Tax ({proposal.tax_rate}%):
+                  </td>
+                  <td className="text-right py-3">{formatCurrency(proposal.tax_amount)}</td>
+                </tr>
+                <tr className="border-t">
+                  <td colSpan={3} className="text-right py-3 text-xl font-bold">Total:</td>
+                  <td className="text-right py-3 text-xl font-bold text-green-600">
+                    {formatCurrency(proposal.total)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        {/* Approval/Rejection Section - Only show if pending */}
         {isPending && (
-          <div className="bg-white shadow-sm rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Approval</h3>
+          <div className="bg-white rounded-lg shadow-sm mb-6 p-6">
+            <h3 className="text-lg font-semibold mb-4">Approve or Reject Proposal</h3>
             
             <div className="mb-4">
-              <label htmlFor="customerName" className="block text-sm font-medium text-gray-700 mb-1">
-                Your Name (Required for approval)
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Your Name *
               </label>
               <input
                 type="text"
-                id="customerName"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter your full name"
+                className="w-full p-2 border rounded-md"
               />
             </div>
 
-            <div className="mb-6">
-              <label htmlFor="customerNotes" className="block text-sm font-medium text-gray-700 mb-1">
-                Notes or Comments (Optional)
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes (Optional)
               </label>
               <textarea
-                id="customerNotes"
                 value={customerNotes}
                 onChange={(e) => setCustomerNotes(e.target.value)}
+                placeholder="Any additional comments or requests..."
+                className="w-full p-2 border rounded-md"
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Any additional comments or special requests..."
               />
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-3">
               <button
-                onClick={() => handleDecision(true)}
-                disabled={isSubmitting}
-                className="flex-1 bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-400"
+                onClick={handleApproval}
+                disabled={isApproving || !customerName.trim()}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? 'Processing...' : 'Approve & Continue to Payment'}
+                {isApproving ? 'Approving...' : 'Approve Proposal'}
               </button>
+              
               <button
-                onClick={() => handleDecision(false)}
-                disabled={isSubmitting}
-                className="flex-1 bg-red-600 text-white px-6 py-3 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-400"
+                onClick={() => setShowRejectionForm(true)}
+                disabled={isRejecting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {isSubmitting ? 'Processing...' : 'Decline Proposal'}
+                Reject
               </button>
             </div>
           </div>
         )}
 
-        {/* Status Messages */}
-        {isApproved && !showPaymentStages && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-            <div className="flex items-center">
-              <CheckCircleIcon className="w-6 h-6 text-green-600 mr-2" />
-              <div>
-                <h3 className="font-semibold text-green-900">Proposal Approved</h3>
-                <p className="text-green-700">
-                  This proposal was approved on {formatDate(proposal.approved_at)}.
-                  {proposal.signature_data && ` Signed by: ${proposal.signature_data}`}
-                </p>
-                {proposal.total_paid >= proposal.total && (
-                  <p className="text-green-700 mt-1">Payment has been completed in full.</p>
-                )}
-              </div>
-            </div>
-          </div>
+        {/* Payment Section - Show only if approved */}
+        {isApproved && (
+          <MultiStagePayment
+            proposalId={proposal.id}
+            proposalNumber={proposal.proposal_number}
+            customerName={proposal.customers.name}
+            customerEmail={proposal.customers.email}
+            totalAmount={proposal.total}
+            depositAmount={proposal.deposit_amount || undefined}
+            progressAmount={proposal.progress_payment_amount || undefined}
+            finalAmount={proposal.final_payment_amount || undefined}
+            depositPaidAt={proposal.deposit_paid_at || undefined}
+            progressPaidAt={proposal.progress_paid_at || undefined}
+            finalPaidAt={proposal.final_paid_at || undefined}
+            onPaymentInitiated={() => {
+              // Optional: Show loading state
+            }}
+          />
         )}
 
-        {isRejected && (
+        {/* Rejection Notes - Show if rejected */}
+        {isRejected && proposal.customer_notes && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <div className="flex items-center">
-              <XCircleIcon className="w-6 h-6 text-red-600 mr-2" />
-              <div>
-                <h3 className="font-semibold text-red-900">Proposal Declined</h3>
-                <p className="text-red-700">
-                  This proposal was declined on {formatDate(proposal.rejected_at)}.
-                </p>
-                {proposal.customer_notes && (
-                  <p className="text-red-700 mt-2">Reason: {proposal.customer_notes}</p>
-                )}
+            <h3 className="text-lg font-semibold text-red-900 mb-2">Rejection Reason</h3>
+            <p className="text-red-700">{proposal.customer_notes}</p>
+          </div>
+        )}
+
+        {/* Rejection Modal */}
+        {showRejectionForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold mb-4">Reject Proposal</h3>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reason for rejection *
+                </label>
+                <textarea
+                  value={customerNotes}
+                  onChange={(e) => setCustomerNotes(e.target.value)}
+                  placeholder="Please provide a reason..."
+                  className="w-full p-2 border rounded-md"
+                  rows={4}
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowRejectionForm(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRejection}
+                  disabled={isRejecting || !customerNotes.trim()}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isRejecting ? 'Rejecting...' : 'Confirm Rejection'}
+                </button>
               </div>
             </div>
           </div>
