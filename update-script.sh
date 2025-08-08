@@ -1,256 +1,13 @@
 #!/bin/bash
 
-# Fix real email sending with Resend and icon imports
+# Fix missing proposal ID error in send email
 
 set -e
 
-echo "🔧 Fixing email sending and icon imports..."
+echo "🔧 Fixing missing proposal ID error..."
 
-# Fix 1: Install Resend package if not already installed
-echo "📦 Ensuring Resend is installed..."
-npm install resend --save 2>/dev/null || echo "Resend already installed"
-
-# Fix 2: Fix ProposalsList with correct icon imports
-echo "📝 Fixing ProposalsList with correct icons..."
-cat > app/proposals/ProposalsList.tsx << 'EOF'
-'use client'
-
-import { useState } from 'react'
-import Link from 'next/link'
-import { EyeIcon, PencilIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline'
-import { Squares2X2Icon, ListBulletIcon } from '@heroicons/react/24/solid'
-import SendProposal from '@/components/SendProposal'
-
-interface ProposalListProps {
-  proposals: any[]
-}
-
-export default function ProposalsList({ proposals }: ProposalListProps) {
-  const [viewMode, setViewMode] = useState<'box' | 'list'>('box')
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    }).format(new Date(dateString))
-  }
-
-  const getStatusBadge = (status: string) => {
-    const statusColors: Record<string, string> = {
-      draft: 'bg-gray-100 text-gray-800',
-      sent: 'bg-blue-100 text-blue-800',
-      approved: 'bg-green-100 text-green-800',
-      rejected: 'bg-red-100 text-red-800',
-      paid: 'bg-purple-100 text-purple-800'
-    }
-    
-    return (
-      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusColors[status] || statusColors.draft}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    )
-  }
-
-  if (viewMode === 'list') {
-    return (
-      <div>
-        <div className="flex justify-end mb-4">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewMode('box')}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
-              title="Box View"
-            >
-              <Squares2X2Icon className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className="p-2 text-gray-900 bg-gray-100 rounded"
-              title="List View"
-            >
-              <ListBulletIcon className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Proposal #
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Title
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {proposals.map((proposal) => (
-                <tr key={proposal.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    #{proposal.proposal_number}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {proposal.customers?.name || 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">
-                    {proposal.title}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(proposal.total || 0)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(proposal.status)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDate(proposal.created_at)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex items-center justify-end gap-2">
-                      <Link
-                        href={`/proposals/${proposal.id}`}
-                        className="text-blue-600 hover:text-blue-900"
-                        title="View"
-                      >
-                        <EyeIcon className="h-5 w-5" />
-                      </Link>
-                      {(proposal.status === 'draft' || proposal.status === 'sent') && (
-                        <Link
-                          href={`/proposals/${proposal.id}/edit`}
-                          className="text-gray-600 hover:text-gray-900"
-                          title="Edit"
-                        >
-                          <PencilIcon className="h-5 w-5" />
-                        </Link>
-                      )}
-                      {proposal.status !== 'paid' && (
-                        <SendProposal
-                          proposalId={proposal.id}
-                          proposalNumber={proposal.proposal_number}
-                          customerEmail={proposal.customers?.email}
-                          customerName={proposal.customers?.name}
-                          variant="icon"
-                        />
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    )
-  }
-
-  // Box view
-  return (
-    <div>
-      <div className="flex justify-end mb-4">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setViewMode('box')}
-            className="p-2 text-gray-900 bg-gray-100 rounded"
-            title="Box View"
-          >
-            <Squares2X2Icon className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
-            title="List View"
-          >
-            <ListBulletIcon className="h-5 w-5" />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {proposals.map((proposal) => (
-          <div key={proposal.id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <div className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  #{proposal.proposal_number}
-                </h3>
-                {getStatusBadge(proposal.status)}
-              </div>
-              
-              <p className="text-gray-900 font-medium mb-2">{proposal.title}</p>
-              <p className="text-sm text-gray-600 mb-1">
-                Customer: {proposal.customers?.name || 'N/A'}
-              </p>
-              <p className="text-sm text-gray-600 mb-3">
-                Date: {formatDate(proposal.created_at)}
-              </p>
-              
-              <div className="border-t pt-3 mb-4">
-                <p className="text-2xl font-bold text-green-600">
-                  {formatCurrency(proposal.total || 0)}
-                </p>
-              </div>
-              
-              <div className="flex gap-2">
-                <Link
-                  href={`/proposals/${proposal.id}`}
-                  className="flex-1 text-center px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  View
-                </Link>
-                {(proposal.status === 'draft' || proposal.status === 'sent') && (
-                  <Link
-                    href={`/proposals/${proposal.id}/edit`}
-                    className="flex-1 text-center px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-                  >
-                    Edit
-                  </Link>
-                )}
-                {proposal.status !== 'paid' && (
-                  <SendProposal
-                    proposalId={proposal.id}
-                    proposalNumber={proposal.proposal_number}
-                    customerEmail={proposal.customers?.email}
-                    customerName={proposal.customers?.name}
-                    variant="button"
-                    buttonText="Send"
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-EOF
-
-# Fix 3: Update SendProposal to use real Resend email sending
-echo "📝 Updating SendProposal with real email sending..."
+# Fix SendProposal component to ensure proposalId is passed correctly
+echo "📝 Fixing SendProposal component..."
 cat > components/SendProposal.tsx << 'EOF'
 'use client'
 
@@ -290,31 +47,58 @@ export default function SendProposal({
   }, [customerEmail])
 
   const fetchProposalToken = async () => {
-    const { data, error } = await supabase
-      .from('proposals')
-      .select('customer_view_token')
-      .eq('id', proposalId)
-      .single()
-
-    if (data?.customer_view_token) {
-      return data.customer_view_token
-    } else {
-      const newToken = crypto.randomUUID()
-      await supabase
+    try {
+      const { data, error } = await supabase
         .from('proposals')
-        .update({ customer_view_token: newToken })
+        .select('customer_view_token')
         .eq('id', proposalId)
-      return newToken
+        .single()
+
+      if (error) {
+        console.error('Error fetching proposal:', error)
+        return null
+      }
+
+      if (data?.customer_view_token) {
+        return data.customer_view_token
+      } else {
+        const newToken = crypto.randomUUID()
+        const { error: updateError } = await supabase
+          .from('proposals')
+          .update({ customer_view_token: newToken })
+          .eq('id', proposalId)
+        
+        if (updateError) {
+          console.error('Error updating token:', updateError)
+          return null
+        }
+        
+        return newToken
+      }
+    } catch (err) {
+      console.error('Error in fetchProposalToken:', err)
+      return null
     }
   }
 
   const handleSendClick = async () => {
+    // Validate we have required data
+    if (!proposalId) {
+      alert('Error: Proposal ID is missing. Please refresh the page and try again.')
+      return
+    }
+
     if (!customerEmail && !emailTo) {
       alert('Customer email is required')
       return
     }
 
     const token = await fetchProposalToken()
+    if (!token) {
+      alert('Error generating proposal link. Please try again.')
+      return
+    }
+    
     setProposalToken(token)
     
     const baseUrl = window.location.origin
@@ -337,7 +121,13 @@ Your HVAC Team`
   }
 
   const handleSend = async () => {
-    if (!emailTo || !emailContent || !proposalId || !proposalNumber) {
+    // Final validation before sending
+    if (!proposalId) {
+      alert('Error: Proposal ID is missing')
+      return
+    }
+
+    if (!emailTo || !emailContent) {
       alert('Please fill in all required fields')
       return
     }
@@ -348,11 +138,19 @@ Your HVAC Team`
       const baseUrl = window.location.origin
       const proposalUrl = `${baseUrl}/proposal/view/${proposalToken}`
       
+      console.log('Sending email with:', {
+        proposalId,
+        proposalNumber,
+        to: emailTo,
+        customerName
+      })
+      
       // Send email using Resend API
       const response = await fetch('/api/send-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          proposalId: proposalId,  // Explicitly include proposalId
           to: emailTo,
           subject: `Proposal ${proposalNumber} from Service Pro`,
           message: emailContent,
@@ -386,7 +184,7 @@ Your HVAC Team`
       setShowModal(false)
       onSent?.()
     } catch (error: any) {
-      console.error('Error:', error)
+      console.error('Error sending proposal:', error)
       alert(error.message || 'Failed to send proposal')
     } finally {
       setIsLoading(false)
@@ -411,7 +209,7 @@ Your HVAC Team`
         <button
           onClick={handleSendClick}
           className="flex-1 text-center px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-          disabled={!customerEmail && !emailTo}
+          disabled={!proposalId}
         >
           {buttonText}
         </button>
@@ -423,13 +221,23 @@ Your HVAC Team`
       <button
         onClick={handleSendClick}
         className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-        disabled={!customerEmail && !emailTo}
+        disabled={!proposalId}
       >
         <PaperAirplaneIcon className="h-4 w-4 mr-2" />
         {buttonText}
       </button>
     )
   }
+
+  // Debug log to check props
+  useEffect(() => {
+    console.log('SendProposal props:', {
+      proposalId,
+      proposalNumber,
+      customerEmail,
+      customerName
+    })
+  }, [proposalId, proposalNumber, customerEmail, customerName])
 
   return (
     <>
@@ -458,6 +266,7 @@ Your HVAC Team`
                 onChange={(e) => setEmailTo(e.target.value)}
                 className="w-full p-2 border rounded-md"
                 placeholder="customer@email.com"
+                required
               />
             </div>
 
@@ -479,6 +288,7 @@ Your HVAC Team`
                 onChange={(e) => setEmailContent(e.target.value)}
                 className="w-full p-2 border rounded-md font-mono text-sm"
                 rows={12}
+                required
               />
             </div>
 
@@ -494,6 +304,11 @@ Your HVAC Team`
               </label>
             </div>
 
+            {/* Debug info - remove in production */}
+            <div className="text-xs text-gray-400 mb-2">
+              Debug: Proposal ID: {proposalId || 'MISSING'}
+            </div>
+
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowModal(false)}
@@ -505,7 +320,7 @@ Your HVAC Team`
               <button
                 onClick={handleSend}
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-                disabled={isLoading || !emailTo || !emailContent}
+                disabled={isLoading || !emailTo || !emailContent || !proposalId}
               >
                 {isLoading ? 'Sending...' : 'Send Email'}
               </button>
@@ -518,78 +333,212 @@ Your HVAC Team`
 }
 EOF
 
-# Fix 4: Ensure email config file exists
-echo "📝 Creating email config if missing..."
-mkdir -p lib/config
-cat > lib/config/email.ts << 'EOF'
-// Email configuration
-export const EMAIL_CONFIG = {
-  from: {
-    name: 'Service Pro',
-    email: process.env.EMAIL_FROM || 'onboarding@resend.dev'
-  },
-  
-  business: {
-    email: process.env.BUSINESS_EMAIL || 'dantcacenco@gmail.com',
-    name: 'Service Pro Team'
-  },
-  
-  company: {
-    name: 'Service Pro HVAC',
-    tagline: 'Professional HVAC Services',
-    phone: '(555) 123-4567',
-    email: 'info@servicepro.com',
-    website: 'https://servicepro-hvac.vercel.app'
+# Fix the send-proposal API to handle the proposalId properly
+echo "📝 Updating send-proposal API..."
+cat > app/api/send-proposal/route.ts << 'EOF'
+import { NextRequest, NextResponse } from 'next/server'
+import { Resend } from 'resend'
+import { createClient } from '@/lib/supabase/server'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    console.log('Received request body:', body)
+    
+    const {
+      proposalId,  // This is the proposal ID
+      to,
+      subject,
+      message,
+      customer_name,
+      proposal_number,
+      proposal_url,
+      send_copy
+    } = body
+
+    // Validate required fields
+    if (!proposalId) {
+      console.error('Missing proposalId in request')
+      return NextResponse.json(
+        { error: 'Missing proposal ID' },
+        { status: 400 }
+      )
+    }
+
+    if (!to || !subject || !message) {
+      console.error('Missing required email fields')
+      return NextResponse.json(
+        { error: 'Missing required email fields' },
+        { status: 400 }
+      )
+    }
+
+    // Update proposal status first
+    const supabase = await createClient()
+    const { error: updateError } = await supabase
+      .from('proposals')
+      .update({ 
+        status: 'sent',
+        sent_at: new Date().toISOString()
+      })
+      .eq('id', proposalId)
+
+    if (updateError) {
+      console.error('Error updating proposal:', updateError)
+    }
+
+    // Get sender email config
+    const fromEmail = process.env.EMAIL_FROM || 'onboarding@resend.dev'
+    const businessEmail = process.env.BUSINESS_EMAIL || 'dantcacenco@gmail.com'
+
+    // Create HTML email template
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${subject}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #2563eb; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; }
+            .button { 
+              display: inline-block; 
+              padding: 12px 24px; 
+              background: #2563eb; 
+              color: white !important; 
+              text-decoration: none; 
+              border-radius: 6px; 
+              margin: 20px 0; 
+            }
+            .footer { padding: 20px; text-align: center; color: #666; font-size: 14px; background: #f3f4f6; border-radius: 0 0 8px 8px; }
+            .proposal-details { 
+              background: white; 
+              padding: 15px; 
+              border-radius: 6px; 
+              margin: 15px 0; 
+              border: 1px solid #e5e7eb;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Service Pro HVAC</h1>
+              <p>Professional HVAC Services</p>
+            </div>
+            
+            <div class="content">
+              <h2>Your Proposal is Ready for Review</h2>
+              
+              <div class="proposal-details">
+                <h3>Proposal Details:</h3>
+                <p><strong>Proposal Number:</strong> ${proposal_number}</p>
+                <p><strong>Customer:</strong> ${customer_name}</p>
+              </div>
+              
+              <div style="white-space: pre-line; margin: 20px 0;">
+                ${message.replace(/\n/g, '<br>')}
+              </div>
+              
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${proposal_url}" class="button" style="color: white !important;">
+                  View & Approve Proposal
+                </a>
+              </div>
+              
+              <p style="font-size: 14px; color: #666; text-align: center;">
+                This link is secure and personalized for you.
+              </p>
+            </div>
+            
+            <div class="footer">
+              <p><strong>Service Pro HVAC</strong></p>
+              <p>Phone: (555) 123-4567 | Email: info@servicepro.com</p>
+              <p>Professional HVAC Services</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `
+
+    // Send email to customer
+    console.log('Sending email to:', to)
+    const emailResult = await resend.emails.send({
+      from: `Service Pro <${fromEmail}>`,
+      to: [to],
+      subject: subject,
+      html: htmlContent,
+      text: message + `\n\nView your proposal: ${proposal_url}`
+    })
+
+    console.log('Email sent successfully:', emailResult)
+
+    // Send copy to business email if requested
+    if (send_copy) {
+      console.log('Sending copy to business:', businessEmail)
+      await resend.emails.send({
+        from: `Service Pro <${fromEmail}>`,
+        to: [businessEmail],
+        subject: `[COPY] ${subject}`,
+        html: `
+          <div style="background: #fef3c7; padding: 10px; margin-bottom: 20px; border-radius: 4px;">
+            <strong>This is a copy of the proposal sent to ${customer_name} (${to})</strong>
+          </div>
+          ${htmlContent}
+        `,
+        text: `[COPY] Sent to ${customer_name} (${to})\n\n${message}\n\nView proposal: ${proposal_url}`
+      })
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      emailId: emailResult.data?.id,
+      message: 'Email sent successfully'
+    })
+
+  } catch (error: any) {
+    console.error('Error in send-proposal API:', error)
+    return NextResponse.json(
+      { error: error.message || 'Failed to send email' },
+      { status: 500 }
+    )
   }
 }
-
-export const getEmailSender = () => {
-  return `${EMAIL_CONFIG.from.name} <${EMAIL_CONFIG.from.email}>`
-}
-
-export const getBusinessEmail = () => {
-  return EMAIL_CONFIG.business.email
-}
 EOF
-
-# Run TypeScript check
-echo "🔍 Running TypeScript check..."
-npx tsc --noEmit 2>&1 | tee typescript_check.log || true
 
 # Commit and push
 echo "🚀 Committing and pushing fixes..."
 git add -A
-git commit -m "Fix real email sending with Resend and icon imports
+git commit -m "Fix missing proposal ID error in email sending
 
-- Fixed icon imports (Squares2X2Icon instead of LayoutGridIcon)
-- Implemented real email sending with Resend API
-- Added email configuration file
-- Added option to send copy to business email
-- Fixed customer email handling
-- Emails now actually send (not simulated)" || echo "No changes"
+- Added proper proposalId validation and passing
+- Added debug logging to track proposal ID
+- Improved error messages for missing data
+- Fixed API to properly handle proposalId parameter
+- Added validation checks before sending" || echo "No changes"
 
 git push origin main
 
 echo ""
-echo "✅ All fixes applied and pushed!"
+echo "✅ Fix applied and pushed!"
 echo ""
 echo "📋 What was fixed:"
-echo "1. ✅ Icon import error resolved (using Squares2X2Icon)"
-echo "2. ✅ Real email sending with Resend API"
-echo "3. ✅ Proper email templates with HTML formatting"
-echo "4. ✅ Option to send copy to business email"
-echo "5. ✅ Customer email validation and input"
+echo "1. ✅ ProposalId now properly passed to API"
+echo "2. ✅ Added validation for missing proposal ID"
+echo "3. ✅ Better error messages"
+echo "4. ✅ Debug logging to track issues"
+echo "5. ✅ Email should now send successfully"
 echo ""
-echo "⚠️ Required Environment Variables in Vercel:"
-echo "   RESEND_API_KEY=re_xxxxx (already set)"
-echo "   BUSINESS_EMAIL=dantcacenco@gmail.com (optional, defaults to this)"
-echo "   EMAIL_FROM=noreply@yourdomain.com (optional, uses Resend default)"
+echo "🧪 To test:"
+echo "1. Go to a proposal view page"
+echo "2. Click Send Proposal"
+echo "3. Check the debug info shows proposal ID"
+echo "4. Send the email - should work now!"
 echo ""
-echo "🧪 Test the email flow:"
-echo "1. Go to Proposals page"
-echo "2. Click Send on any proposal"
-echo "3. Review email preview"
-echo "4. Click Send Email"
-echo "5. Check your inbox for the actual email!"
-
-rm -f typescript_check.log
+echo "Note: The debug info at bottom of modal shows the proposal ID"
+echo "Remove this in production once confirmed working."

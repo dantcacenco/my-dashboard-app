@@ -36,31 +36,58 @@ export default function SendProposal({
   }, [customerEmail])
 
   const fetchProposalToken = async () => {
-    const { data, error } = await supabase
-      .from('proposals')
-      .select('customer_view_token')
-      .eq('id', proposalId)
-      .single()
-
-    if (data?.customer_view_token) {
-      return data.customer_view_token
-    } else {
-      const newToken = crypto.randomUUID()
-      await supabase
+    try {
+      const { data, error } = await supabase
         .from('proposals')
-        .update({ customer_view_token: newToken })
+        .select('customer_view_token')
         .eq('id', proposalId)
-      return newToken
+        .single()
+
+      if (error) {
+        console.error('Error fetching proposal:', error)
+        return null
+      }
+
+      if (data?.customer_view_token) {
+        return data.customer_view_token
+      } else {
+        const newToken = crypto.randomUUID()
+        const { error: updateError } = await supabase
+          .from('proposals')
+          .update({ customer_view_token: newToken })
+          .eq('id', proposalId)
+        
+        if (updateError) {
+          console.error('Error updating token:', updateError)
+          return null
+        }
+        
+        return newToken
+      }
+    } catch (err) {
+      console.error('Error in fetchProposalToken:', err)
+      return null
     }
   }
 
   const handleSendClick = async () => {
+    // Validate we have required data
+    if (!proposalId) {
+      alert('Error: Proposal ID is missing. Please refresh the page and try again.')
+      return
+    }
+
     if (!customerEmail && !emailTo) {
       alert('Customer email is required')
       return
     }
 
     const token = await fetchProposalToken()
+    if (!token) {
+      alert('Error generating proposal link. Please try again.')
+      return
+    }
+    
     setProposalToken(token)
     
     const baseUrl = window.location.origin
@@ -83,7 +110,13 @@ Your HVAC Team`
   }
 
   const handleSend = async () => {
-    if (!emailTo || !emailContent || !proposalId || !proposalNumber) {
+    // Final validation before sending
+    if (!proposalId) {
+      alert('Error: Proposal ID is missing')
+      return
+    }
+
+    if (!emailTo || !emailContent) {
       alert('Please fill in all required fields')
       return
     }
@@ -94,11 +127,19 @@ Your HVAC Team`
       const baseUrl = window.location.origin
       const proposalUrl = `${baseUrl}/proposal/view/${proposalToken}`
       
+      console.log('Sending email with:', {
+        proposalId,
+        proposalNumber,
+        to: emailTo,
+        customerName
+      })
+      
       // Send email using Resend API
       const response = await fetch('/api/send-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          proposalId: proposalId,  // Explicitly include proposalId
           to: emailTo,
           subject: `Proposal ${proposalNumber} from Service Pro`,
           message: emailContent,
@@ -132,7 +173,7 @@ Your HVAC Team`
       setShowModal(false)
       onSent?.()
     } catch (error: any) {
-      console.error('Error:', error)
+      console.error('Error sending proposal:', error)
       alert(error.message || 'Failed to send proposal')
     } finally {
       setIsLoading(false)
@@ -157,7 +198,7 @@ Your HVAC Team`
         <button
           onClick={handleSendClick}
           className="flex-1 text-center px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-          disabled={!customerEmail && !emailTo}
+          disabled={!proposalId}
         >
           {buttonText}
         </button>
@@ -169,13 +210,23 @@ Your HVAC Team`
       <button
         onClick={handleSendClick}
         className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-        disabled={!customerEmail && !emailTo}
+        disabled={!proposalId}
       >
         <PaperAirplaneIcon className="h-4 w-4 mr-2" />
         {buttonText}
       </button>
     )
   }
+
+  // Debug log to check props
+  useEffect(() => {
+    console.log('SendProposal props:', {
+      proposalId,
+      proposalNumber,
+      customerEmail,
+      customerName
+    })
+  }, [proposalId, proposalNumber, customerEmail, customerName])
 
   return (
     <>
@@ -204,6 +255,7 @@ Your HVAC Team`
                 onChange={(e) => setEmailTo(e.target.value)}
                 className="w-full p-2 border rounded-md"
                 placeholder="customer@email.com"
+                required
               />
             </div>
 
@@ -225,6 +277,7 @@ Your HVAC Team`
                 onChange={(e) => setEmailContent(e.target.value)}
                 className="w-full p-2 border rounded-md font-mono text-sm"
                 rows={12}
+                required
               />
             </div>
 
@@ -240,6 +293,11 @@ Your HVAC Team`
               </label>
             </div>
 
+            {/* Debug info - remove in production */}
+            <div className="text-xs text-gray-400 mb-2">
+              Debug: Proposal ID: {proposalId || 'MISSING'}
+            </div>
+
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowModal(false)}
@@ -251,7 +309,7 @@ Your HVAC Team`
               <button
                 onClick={handleSend}
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-                disabled={isLoading || !emailTo || !emailContent}
+                disabled={isLoading || !emailTo || !emailContent || !proposalId}
               >
                 {isLoading ? 'Sending...' : 'Send Email'}
               </button>
