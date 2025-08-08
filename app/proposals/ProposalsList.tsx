@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { EyeIcon, PencilIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline'
-import { LayoutGridIcon, ListBulletIcon } from '@heroicons/react/24/solid'
+import { Squares2X2Icon, ListBulletIcon } from '@heroicons/react/24/solid'
 import SendProposal from '@/components/SendProposal'
 
 interface ProposalListProps {
@@ -54,7 +54,7 @@ export default function ProposalsList({ proposals }: ProposalListProps) {
               className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
               title="Box View"
             >
-              <LayoutGridIcon className="h-5 w-5" />
+              <Squares2X2Icon className="h-5 w-5" />
             </button>
             <button
               onClick={() => setViewMode('list')}
@@ -132,12 +132,12 @@ export default function ProposalsList({ proposals }: ProposalListProps) {
                           <PencilIcon className="h-5 w-5" />
                         </Link>
                       )}
-                      {proposal.status !== 'paid' && proposal.customers?.email && (
+                      {proposal.status !== 'paid' && (
                         <SendProposal
                           proposalId={proposal.id}
                           proposalNumber={proposal.proposal_number}
-                          customerEmail={proposal.customers.email}
-                          customerName={proposal.customers.name}
+                          customerEmail={proposal.customers?.email}
+                          customerName={proposal.customers?.name}
                           variant="icon"
                         />
                       )}
@@ -152,7 +152,7 @@ export default function ProposalsList({ proposals }: ProposalListProps) {
     )
   }
 
-  // Box view (original view)
+  // Box view
   return (
     <div>
       <div className="flex justify-end mb-4">
@@ -162,7 +162,7 @@ export default function ProposalsList({ proposals }: ProposalListProps) {
             className="p-2 text-gray-900 bg-gray-100 rounded"
             title="Box View"
           >
-            <LayoutGridIcon className="h-5 w-5" />
+            <Squares2X2Icon className="h-5 w-5" />
           </button>
           <button
             onClick={() => setViewMode('list')}
@@ -214,12 +214,12 @@ export default function ProposalsList({ proposals }: ProposalListProps) {
                     Edit
                   </Link>
                 )}
-                {proposal.status !== 'paid' && proposal.customers?.email && (
+                {proposal.status !== 'paid' && (
                   <SendProposal
                     proposalId={proposal.id}
                     proposalNumber={proposal.proposal_number}
-                    customerEmail={proposal.customers.email}
-                    customerName={proposal.customers.name}
+                    customerEmail={proposal.customers?.email}
+                    customerName={proposal.customers?.name}
                     variant="button"
                     buttonText="Send"
                   />

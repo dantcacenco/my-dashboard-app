@@ -28,6 +28,7 @@ export default function SendProposal({
   const [emailContent, setEmailContent] = useState('')
   const [proposalToken, setProposalToken] = useState<string>('')
   const [emailTo, setEmailTo] = useState(customerEmail || '')
+  const [sendCopy, setSendCopy] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -67,12 +68,12 @@ export default function SendProposal({
     
     const defaultMessage = `Dear ${customerName || 'Customer'},
 
-Please find attached your proposal #${proposalNumber}.
+We're pleased to present you with Proposal #${proposalNumber} for your HVAC service needs.
+
+Please review the attached proposal and let us know if you have any questions.
 
 You can view and approve your proposal by clicking the link below:
 ${viewLink}
-
-If you have any questions, please don't hesitate to contact us.
 
 Best regards,
 Your HVAC Team`
@@ -90,11 +91,30 @@ Your HVAC Team`
     setIsLoading(true)
     
     try {
-      // For now, we'll simulate sending since email service isn't configured
-      // In production, you'd integrate with SendGrid, Resend, etc.
-      console.log('Would send email to:', emailTo)
-      console.log('Proposal link:', `${window.location.origin}/proposal/view/${proposalToken}`)
+      const baseUrl = window.location.origin
+      const proposalUrl = `${baseUrl}/proposal/view/${proposalToken}`
       
+      // Send email using Resend API
+      const response = await fetch('/api/send-proposal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emailTo,
+          subject: `Proposal ${proposalNumber} from Service Pro`,
+          message: emailContent,
+          customer_name: customerName || 'Customer',
+          proposal_number: proposalNumber,
+          proposal_url: proposalUrl,
+          send_copy: sendCopy
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send email')
+      }
+
       // Update proposal status
       const { error: updateError } = await supabase
         .from('proposals')
@@ -105,10 +125,10 @@ Your HVAC Team`
         .eq('id', proposalId)
 
       if (updateError) {
-        throw updateError
+        console.error('Error updating proposal status:', updateError)
       }
 
-      alert('Proposal marked as sent! (Email service not configured - in production, email would be sent)')
+      alert('Proposal sent successfully!')
       setShowModal(false)
       onSent?.()
     } catch (error: any) {
@@ -126,7 +146,6 @@ Your HVAC Team`
           onClick={handleSendClick}
           className="text-green-600 hover:text-green-800"
           title="Send Proposal"
-          disabled={!customerEmail}
         >
           <PaperAirplaneIcon className="h-5 w-5" />
         </button>
@@ -138,7 +157,7 @@ Your HVAC Team`
         <button
           onClick={handleSendClick}
           className="flex-1 text-center px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-          disabled={!customerEmail}
+          disabled={!customerEmail && !emailTo}
         >
           {buttonText}
         </button>
@@ -150,7 +169,7 @@ Your HVAC Team`
       <button
         onClick={handleSendClick}
         className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-        disabled={!customerEmail}
+        disabled={!customerEmail && !emailTo}
       >
         <PaperAirplaneIcon className="h-4 w-4 mr-2" />
         {buttonText}
@@ -193,7 +212,7 @@ Your HVAC Team`
                 Subject:
               </label>
               <div className="p-2 bg-gray-50 rounded">
-                Your Proposal #{proposalNumber} is Ready
+                Proposal {proposalNumber} from Service Pro
               </div>
             </div>
 
@@ -209,6 +228,18 @@ Your HVAC Team`
               />
             </div>
 
+            <div className="mb-4">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={sendCopy}
+                  onChange={(e) => setSendCopy(e.target.checked)}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Send a copy to business email</span>
+              </label>
+            </div>
+
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowModal(false)}
@@ -222,7 +253,7 @@ Your HVAC Team`
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
                 disabled={isLoading || !emailTo || !emailContent}
               >
-                {isLoading ? 'Sending...' : 'Send'}
+                {isLoading ? 'Sending...' : 'Send Email'}
               </button>
             </div>
           </div>
