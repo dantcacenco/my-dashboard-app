@@ -71,9 +71,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
           progressAmount={proposal.progress_payment_amount || 0}
           finalAmount={proposal.final_payment_amount || 0}
           currentStage={proposal.current_payment_stage || 'deposit'}
-      />
-    )
-  }
 
   // Print view
   if (showPrintView) {
