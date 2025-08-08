@@ -6,11 +6,11 @@ interface PageProps {
   params: Promise<{ token: string }>
 }
 
-export default async function CustomerViewProposalPage({ params }: PageProps) {
+export default async function CustomerProposalPage({ params }: PageProps) {
   const { token } = await params
   const supabase = await createClient()
 
-  // Get the proposal by view token
+  // Get proposal by customer view token - ALWAYS get fresh data
   const { data: proposal, error } = await supabase
     .from('proposals')
     .select(`
@@ -23,38 +23,30 @@ export default async function CustomerViewProposalPage({ params }: PageProps) {
         address
       ),
       proposal_items (
-        *
+        id,
+        name,
+        description,
+        quantity,
+        unit_price,
+        total_price,
+        is_addon,
+        is_selected,
+        sort_order
       )
     `)
     .eq('customer_view_token', token)
     .single()
 
   if (error || !proposal) {
+    console.error('Error fetching proposal:', error)
     notFound()
   }
 
-  // Log that customer viewed the proposal
-  await supabase
-    .from('proposal_activities')
-    .insert({
-      proposal_id: proposal.id,
-      activity_type: 'viewed_by_customer',
-      description: `Proposal viewed by customer`,
-      metadata: {
-        customer_email: proposal.customers.email,
-        view_token: token,
-        viewed_at: new Date().toISOString()
-      }
-    })
-
-  // Update proposal status to 'viewed' if it was 'sent'
-  if (proposal.status === 'sent') {
+  // Mark as viewed if first time
+  if (!proposal.first_viewed_at) {
     await supabase
       .from('proposals')
-      .update({ 
-        status: 'viewed',
-        first_viewed_at: new Date().toISOString()
-      })
+      .update({ first_viewed_at: new Date().toISOString() })
       .eq('id', proposal.id)
   }
 

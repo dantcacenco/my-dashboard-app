@@ -27,10 +27,10 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
     
     if (session.payment_status !== 'paid') {
       console.error('Payment not completed:', session.payment_status)
-      redirect(`/proposals?payment=failed`)
+      redirect('/proposals?payment=failed')
     }
 
-    // Get proposal details
+    // Get full proposal details with fresh data
     const { data: proposal, error: fetchError } = await supabase
       .from('proposals')
       .select(`
@@ -50,7 +50,7 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
     const now = new Date().toISOString()
 
     // Record payment in payments table
-    const { error: paymentError } = await supabase
+    await supabase
       .from('payments')
       .insert({
         proposal_id,
@@ -64,12 +64,8 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
         metadata: session.metadata
       })
 
-    if (paymentError) {
-      console.error('Error recording payment:', paymentError)
-    }
-
-    // Update payment_stages table
-    const { error: stageError } = await supabase
+    // Update payment_stages table if it exists
+    await supabase
       .from('payment_stages')
       .update({
         paid: true,
@@ -81,10 +77,6 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
       .eq('proposal_id', proposal_id)
       .eq('stage', paymentStage)
 
-    if (stageError) {
-      console.error('Error updating payment stage:', stageError)
-    }
-
     // Calculate total paid
     const { data: allPayments } = await supabase
       .from('payments')
@@ -92,7 +84,7 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
       .eq('proposal_id', proposal_id)
       .eq('status', 'completed')
 
-    const totalPaid = allPayments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
+    const totalPaid = allPayments?.reduce((sum, p) => sum + Number(p.amount), 0) || paidAmount
 
     // Determine next stage
     let nextStage = null
@@ -107,8 +99,9 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
       nextStage = null
     }
 
-    // Update proposal with payment info
+    // Update proposal with payment info - IMPORTANT: Also ensure status stays 'approved'
     const updateData: any = {
+      status: 'approved', // Keep it approved!
       payment_status: paymentStatus,
       payment_method: session.metadata?.payment_type || 'card',
       stripe_session_id: session_id,
@@ -124,20 +117,39 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
     } else if (paymentStage === 'roughin') {
       updateData.progress_paid_at = now
       updateData.progress_payment_amount = paidAmount
-      updateData.progress_amount = paidAmount // Update both columns
+      updateData.progress_amount = paidAmount
     } else if (paymentStage === 'final') {
       updateData.final_paid_at = now
       updateData.final_payment_amount = paidAmount
-      updateData.final_amount = paidAmount // Update both columns
+      updateData.final_amount = paidAmount
     }
 
-    const { error: updateError } = await supabase
+    await supabase
       .from('proposals')
       .update(updateData)
       .eq('id', proposal_id)
 
-    if (updateError) {
-      console.error('Error updating proposal:', updateError)
+    // Send payment notification email
+    try {
+      const businessEmail = process.env.BUSINESS_EMAIL || 'dantcacenco@gmail.com'
+      const fromEmail = process.env.EMAIL_FROM || 'onboarding@resend.dev'
+      
+      await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'https://my-dashboard-app-tau.vercel.app'}/api/payment-notification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposal_id,
+          proposal_number: proposal.proposal_number,
+          customer_name: proposal.customers.name,
+          customer_email: proposal.customers.email,
+          amount: paidAmount,
+          payment_method: session.metadata?.payment_type || 'card',
+          payment_stage: paymentStage,
+          stripe_session_id: session_id
+        })
+      })
+    } catch (emailError) {
+      console.error('Failed to send payment notification:', emailError)
     }
 
     return (
@@ -148,6 +160,7 @@ export default async function PaymentSuccessPage({ searchParams }: PageProps) {
         sessionId={session_id}
         paymentStage={paymentStage}
         nextStage={nextStage}
+        customerViewToken={proposal.customer_view_token}
       />
     )
 

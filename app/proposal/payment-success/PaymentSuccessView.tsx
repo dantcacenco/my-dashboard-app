@@ -2,6 +2,8 @@
 
 import { CheckCircleIcon } from '@heroicons/react/24/solid'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 interface PaymentSuccessViewProps {
   proposal: any
@@ -10,6 +12,7 @@ interface PaymentSuccessViewProps {
   sessionId: string
   paymentStage: string
   nextStage: string | null
+  customerViewToken: string
 }
 
 export default function PaymentSuccessView({
@@ -18,8 +21,11 @@ export default function PaymentSuccessView({
   paymentMethod,
   sessionId,
   paymentStage,
-  nextStage
+  nextStage,
+  customerViewToken
 }: PaymentSuccessViewProps) {
+  const router = useRouter()
+  
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -35,6 +41,14 @@ export default function PaymentSuccessView({
       default: return stage
     }
   }
+
+  // Auto-redirect after 5 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      router.push(`/proposal/view/${customerViewToken}?payment=success&stage=${paymentStage}`)
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [customerViewToken, paymentStage, router])
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
@@ -76,7 +90,7 @@ export default function PaymentSuccessView({
               </div>
               <div>
                 <p className="text-sm text-gray-600">Transaction ID</p>
-                <p className="font-mono text-xs">{sessionId}</p>
+                <p className="font-mono text-xs">{sessionId.slice(-12)}</p>
               </div>
             </div>
           </div>
@@ -94,7 +108,7 @@ export default function PaymentSuccessView({
 
           <div className="space-y-3">
             <Link
-              href={`/proposal/view/${proposal.customer_view_token}`}
+              href={`/proposal/view/${customerViewToken}?payment=success&stage=${paymentStage}`}
               className="block w-full bg-blue-600 text-white text-center py-3 rounded-lg hover:bg-blue-700 transition"
             >
               View Proposal
@@ -111,6 +125,9 @@ export default function PaymentSuccessView({
             <p>A confirmation email has been sent to {proposal.customers?.email}</p>
             <p className="mt-2">
               For questions, please contact us at support@servicepro.com
+            </p>
+            <p className="mt-4 text-xs">
+              Redirecting to your proposal in 5 seconds...
             </p>
           </div>
         </div>
