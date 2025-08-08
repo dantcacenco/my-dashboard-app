@@ -13,12 +13,21 @@ import { Plus, Send, Eye, Grid3X3, List } from 'lucide-react';
 import { toast } from 'sonner';
 import SendProposalModal from './SendProposalModal';
 
-export default function ProposalsList({ initialProposals }: { initialProposals: Proposal[] }) {
+interface ProposalWithCustomer extends Proposal {
+  customers?: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+}
+
+export default function ProposalsList({ initialProposals }: { initialProposals: ProposalWithCustomer[] }) {
   const router = useRouter();
-  const [proposals, setProposals] = useState<Proposal[]>(initialProposals);
+  const [proposals, setProposals] = useState<ProposalWithCustomer[]>(initialProposals);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [sendModalOpen, setSendModalOpen] = useState(false);
-  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
+  const [selectedProposal, setSelectedProposal] = useState<ProposalWithCustomer | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -53,8 +62,13 @@ export default function ProposalsList({ initialProposals }: { initialProposals: 
     }
   };
 
-  const handleSendProposal = (proposal: Proposal) => {
-    setSelectedProposal(proposal);
+  const handleSendProposal = (proposal: ProposalWithCustomer) => {
+    // Update the proposal to include the customer data for the modal
+    const proposalWithCustomer = {
+      ...proposal,
+      customer: proposal.customers
+    };
+    setSelectedProposal(proposalWithCustomer);
     setSendModalOpen(true);
   };
 

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Phone, Mail, Calendar, User, ChevronLeft, Camera, Clock, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { Job } from '@/app/types';
+import { JobWithRelations } from '@/app/types';
 import { toast } from 'sonner';
 import PhotoUpload from './PhotoUpload';
 
@@ -16,7 +16,7 @@ interface JobDetailViewProps {
 }
 
 export default function JobDetailView({ jobId }: JobDetailViewProps) {
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob] = useState<JobWithRelations | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const router = useRouter();
@@ -88,7 +88,7 @@ export default function JobDetailView({ jobId }: JobDetailViewProps) {
     }
   };
 
-  const getStatusBadgeVariant = (status: string) => {
+  const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
       case 'scheduled':
         return 'secondary';
@@ -97,7 +97,7 @@ export default function JobDetailView({ jobId }: JobDetailViewProps) {
       case 'needs_attention':
         return 'destructive';
       case 'completed':
-        return 'success';
+        return 'default'; // Changed from 'success' since Badge doesn't support it
       case 'cancelled':
         return 'outline';
       default:
@@ -308,7 +308,7 @@ export default function JobDetailView({ jobId }: JobDetailViewProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <PhotoUpload jobId={job.id} onPhotoUploaded={fetchJob} />
+            <PhotoUpload jobId={job.id} userId={job.created_by} onPhotoUploaded={fetchJob} />
           </CardContent>
         </Card>
       )}
