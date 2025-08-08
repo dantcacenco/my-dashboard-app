@@ -29,7 +29,7 @@ interface Proposal {
   proposal_number: string
   title: string
   status: 'draft' | 'sent' | 'approved' | 'rejected' | 'paid'
-  total_amount: number
+  total: number
   created_at: string
   updated_at: string
   customers: Customer
@@ -174,7 +174,7 @@ export default function ProposalsList({ proposals, userRole }: ProposalsListProp
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Total Amount:</span>
-                      <span className="font-semibold">{formatCurrency(proposal.total_amount)}</span>
+                      <span className="font-semibold">{formatCurrency(proposal.total)}</span>
                     </div>
                     {paymentStatus && (
                       <div className="flex justify-between">
@@ -275,7 +275,7 @@ export default function ProposalsList({ proposals, userRole }: ProposalsListProp
                       )}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      {formatCurrency(proposal.total_amount)}
+                      {formatCurrency(proposal.total)}
                     </TableCell>
                     <TableCell>
                       {new Date(proposal.updated_at).toLocaleDateString()}
