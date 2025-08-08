@@ -5,8 +5,9 @@ import JobCreationForm from './JobCreationForm'
 export default async function NewJobPage({
   searchParams
 }: {
-  searchParams: { proposal_id?: string }
+  searchParams: Promise<{ proposal_id?: string }>
 }) {
+  const params = await searchParams
   const supabase = await createClient()
   
   // Check if user is authenticated
@@ -30,14 +31,14 @@ export default async function NewJobPage({
 
   // Get proposal data if proposal_id is provided
   let proposalData = null
-  if (searchParams.proposal_id) {
+  if (params.proposal_id) {
     const { data: proposal } = await supabase
       .from('proposals')
       .select(`
         *,
         customers (*)
       `)
-      .eq('id', searchParams.proposal_id)
+      .eq('id', params.proposal_id)
       .single()
     
     proposalData = proposal
