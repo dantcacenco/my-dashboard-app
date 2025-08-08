@@ -16,6 +16,7 @@ export default function PaymentSuccessView({
   proposal,
   paymentAmount,
   paymentMethod,
+  sessionId,
   paymentStage,
   nextStage
 }: PaymentSuccessViewProps) {
@@ -57,7 +58,7 @@ export default function PaymentSuccessView({
               </div>
               <div>
                 <p className="text-sm text-gray-600">Customer</p>
-                <p className="font-semibold">{proposal.customers.name}</p>
+                <p className="font-semibold">{proposal.customers?.name}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Payment Stage</p>
@@ -107,7 +108,7 @@ export default function PaymentSuccessView({
           </div>
 
           <div className="mt-8 text-center text-sm text-gray-500">
-            <p>A confirmation email has been sent to {proposal.customers.email}</p>
+            <p>A confirmation email has been sent to {proposal.customers?.email}</p>
             <p className="mt-2">
               For questions, please contact us at support@servicepro.com
             </p>
