@@ -1,4 +1,0 @@
-app/proposals/[id]/ProposalView.tsx(386,11): error TS2322: Type '{ proposalId: any; customerEmail: any; proposalNumber: any; onClose: () => void; onSuccess: () => void; }' is not assignable to type 'IntrinsicAttributes & SendProposalProps'.
-  Property 'onClose' does not exist on type 'IntrinsicAttributes & SendProposalProps'.
-components/proposals/SendProposal.tsx(14,8): error TS2307: Cannot find module '@/components/ui/dialog' or its corresponding type declarations.
-components/proposals/SendProposal.tsx(17,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.

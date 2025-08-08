@@ -6,8 +6,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/utils'
-import { FileText, Eye, Edit, Send, CheckCircle, Clock, XCircle, DollarSign } from 'lucide-react'
+import { FileText, Eye, Edit, Send, CheckCircle, Clock, XCircle, DollarSign, LayoutGrid, List } from 'lucide-react'
 import SendProposal from './SendProposal'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 interface Customer {
   id: string
@@ -41,6 +49,7 @@ export interface ProposalsListProps {
 
 export default function ProposalsList({ proposals, userRole }: ProposalsListProps) {
   const [proposalsList, setProposalsList] = useState(proposals)
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -96,6 +105,11 @@ export default function ProposalsList({ proposals, userRole }: ProposalsListProp
     )
   }
 
+  // Sort proposals by updated_at date (most recent first)
+  const sortedProposals = [...proposalsList].sort((a, b) => {
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  })
+
   if (proposalsList.length === 0) {
     return (
       <Card>
@@ -109,85 +123,196 @@ export default function ProposalsList({ proposals, userRole }: ProposalsListProp
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {proposalsList.map((proposal) => {
-        const paymentStatus = getPaymentStatus(proposal)
-        
-        return (
-          <Card key={proposal.id}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-lg">{proposal.title}</CardTitle>
-                  <CardDescription>
-                    #{proposal.proposal_number} • {proposal.customers?.name || 'No customer'}
-                  </CardDescription>
-                </div>
-                <Badge className={getStatusColor(proposal.status)}>
-                  <span className="mr-1">{getStatusIcon(proposal.status)}</span>
-                  {proposal.status}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Total Amount:</span>
-                  <span className="font-semibold">{formatCurrency(proposal.total_amount)}</span>
-                </div>
-                {paymentStatus && (
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Payment:</span>
-                    <Badge variant="outline" className="text-xs">
-                      {paymentStatus}
+    <>
+      {/* View Toggle Buttons */}
+      <div className="flex justify-end mb-4">
+        <div className="flex gap-2 border rounded-lg p-1">
+          <Button
+            variant={viewMode === 'grid' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('grid')}
+            className="gap-2"
+          >
+            <LayoutGrid className="h-4 w-4" />
+            Box View
+          </Button>
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('list')}
+            className="gap-2"
+          >
+            <List className="h-4 w-4" />
+            List View
+          </Button>
+        </div>
+      </div>
+
+      {/* Grid View */}
+      {viewMode === 'grid' && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {proposalsList.map((proposal) => {
+            const paymentStatus = getPaymentStatus(proposal)
+            
+            return (
+              <Card key={proposal.id}>
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg">{proposal.title}</CardTitle>
+                      <CardDescription>
+                        #{proposal.proposal_number} • {proposal.customers?.name || 'No customer'}
+                      </CardDescription>
+                    </div>
+                    <Badge className={getStatusColor(proposal.status)}>
+                      <span className="mr-1">{getStatusIcon(proposal.status)}</span>
+                      {proposal.status}
                     </Badge>
                   </div>
-                )}
-                {proposal.customer_approved_at && (
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Approved:</span>
-                    <span className="text-sm">
-                      {new Date(proposal.customer_approved_at).toLocaleDateString()}
-                    </span>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Total Amount:</span>
+                      <span className="font-semibold">{formatCurrency(proposal.total_amount)}</span>
+                    </div>
+                    {paymentStatus && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">Payment:</span>
+                        <Badge variant="outline" className="text-xs">
+                          {paymentStatus}
+                        </Badge>
+                      </div>
+                    )}
+                    {proposal.customer_approved_at && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">Approved:</span>
+                        <span className="text-sm">
+                          {new Date(proposal.customer_approved_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Created:</span>
+                      <span className="text-sm">
+                        {new Date(proposal.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Created:</span>
-                  <span className="text-sm">
-                    {new Date(proposal.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="gap-2">
-              <Link href={`/proposals/${proposal.id}`} className="flex-1">
-                <Button variant="outline" size="sm" className="w-full">
-                  <Eye className="h-4 w-4 mr-1" />
-                  View
-                </Button>
-              </Link>
-              {(userRole === 'admin' || userRole === 'boss') && proposal.status === 'draft' && (
-                <Link href={`/proposals/${proposal.id}/edit`} className="flex-1">
-                  <Button variant="outline" size="sm" className="w-full">
-                    <Edit className="h-4 w-4 mr-1" />
-                    Edit
-                  </Button>
-                </Link>
-              )}
-              {(userRole === 'admin' || userRole === 'boss') && 
-               (proposal.status === 'draft' || proposal.status === 'sent') && (
-                <SendProposal
-                  proposalId={proposal.id}
-                  proposalNumber={proposal.proposal_number}
-                  customerEmail={proposal.customers?.email || ''}
-                  currentToken={proposal.customer_view_token}
-                  onSent={handleProposalSent}
-                />
-              )}
-            </CardFooter>
-          </Card>
-        )
-      })}
-    </div>
+                </CardContent>
+                <CardFooter className="gap-2">
+                  <Link href={`/proposals/${proposal.id}`} className="flex-1">
+                    <Button variant="outline" size="sm" className="w-full">
+                      <Eye className="h-4 w-4 mr-1" />
+                      View
+                    </Button>
+                  </Link>
+                  {(userRole === 'admin' || userRole === 'boss') && proposal.status === 'draft' && (
+                    <Link href={`/proposals/${proposal.id}/edit`} className="flex-1">
+                      <Button variant="outline" size="sm" className="w-full">
+                        <Edit className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                    </Link>
+                  )}
+                  {(userRole === 'admin' || userRole === 'boss') && 
+                   (proposal.status === 'draft' || proposal.status === 'sent') && (
+                    <SendProposal
+                      proposalId={proposal.id}
+                      proposalNumber={proposal.proposal_number}
+                      customerEmail={proposal.customers?.email || ''}
+                      currentToken={proposal.customer_view_token}
+                      onSent={handleProposalSent}
+                    />
+                  )}
+                </CardFooter>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {/* List View */}
+      {viewMode === 'list' && (
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Proposal #</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Payment</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>Updated</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedProposals.map((proposal) => {
+                const paymentStatus = getPaymentStatus(proposal)
+                
+                return (
+                  <TableRow key={proposal.id}>
+                    <TableCell className="font-medium">
+                      #{proposal.proposal_number}
+                    </TableCell>
+                    <TableCell>{proposal.title}</TableCell>
+                    <TableCell>{proposal.customers?.name || 'No customer'}</TableCell>
+                    <TableCell>
+                      <Badge className={getStatusColor(proposal.status)}>
+                        <span className="mr-1">{getStatusIcon(proposal.status)}</span>
+                        {proposal.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {paymentStatus ? (
+                        <Badge variant="outline" className="text-xs">
+                          {paymentStatus}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {formatCurrency(proposal.total_amount)}
+                    </TableCell>
+                    <TableCell>
+                      {new Date(proposal.updated_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Link href={`/proposals/${proposal.id}`}>
+                          <Button variant="ghost" size="sm">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                        {(userRole === 'admin' || userRole === 'boss') && proposal.status === 'draft' && (
+                          <Link href={`/proposals/${proposal.id}/edit`}>
+                            <Button variant="ghost" size="sm">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        )}
+                        {(userRole === 'admin' || userRole === 'boss') && 
+                         (proposal.status === 'draft' || proposal.status === 'sent') && (
+                          <SendProposal
+                            proposalId={proposal.id}
+                            proposalNumber={proposal.proposal_number}
+                            customerEmail={proposal.customers?.email || ''}
+                            currentToken={proposal.customer_view_token}
+                            onSent={handleProposalSent}
+                          />
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </>
   )
 }
