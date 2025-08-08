@@ -1,56 +1,50 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Send, Loader2, CheckCircle } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { toast } from 'sonner'
 
-interface SendProposalProps {
+export interface SendProposalProps {
   proposalId: string
-  customerEmail: string
   proposalNumber: string
-  onClose: () => void
-  onSuccess: () => void
+  customerEmail: string
+  currentToken: string | null
+  onSent: (proposalId: string, token: string) => void
 }
 
 export default function SendProposal({
   proposalId,
-  customerEmail,
   proposalNumber,
-  onClose,
-  onSuccess
+  customerEmail,
+  currentToken,
+  onSent
 }: SendProposalProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const supabase = createClient()
+  const [isOpen, setIsOpen] = useState(false)
+  const [isSending, setIsSending] = useState(false)
+  const [email, setEmail] = useState(customerEmail)
+  const [wasSent, setWasSent] = useState(false)
 
   const handleSend = async () => {
-    setIsLoading(true)
-    setError(null)
+    if (!email) {
+      toast.error('Please enter an email address')
+      return
+    }
 
+    setIsSending(true)
+    
     try {
-      // First ensure the proposal has a customer_view_token
-      const { data: proposal, error: fetchError } = await supabase
-        .from('proposals')
-        .select('customer_view_token')
-        .eq('id', proposalId)
-        .single()
-
-      if (fetchError) throw fetchError
-
-      let token = proposal.customer_view_token
-
-      // Generate token if missing
-      if (!token) {
-        token = crypto.randomUUID()
-        const { error: updateError } = await supabase
-          .from('proposals')
-          .update({ customer_view_token: token })
-          .eq('id', proposalId)
-
-        if (updateError) throw updateError
-      }
-
-      // Send the proposal
       const response = await fetch('/api/send-proposal', {
         method: 'POST',
         headers: {
@@ -58,75 +52,134 @@ export default function SendProposal({
         },
         body: JSON.stringify({
           proposalId,
-          customerEmail,
-          proposalNumber,
-          token
-        })
+          email,
+        }),
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error('Failed to send proposal')
+        throw new Error(data.error || 'Failed to send proposal')
       }
 
-      // Update proposal status
-      const { error: statusError } = await supabase
-        .from('proposals')
-        .update({ status: 'sent' })
-        .eq('id', proposalId)
-
-      if (statusError) throw statusError
-
-      onSuccess()
-    } catch (err: any) {
-      console.error('Error sending proposal:', err)
-      setError(err.message || 'Failed to send proposal')
+      toast.success('Proposal sent successfully!')
+      setWasSent(true)
+      onSent(proposalId, data.token)
+      
+      // Close dialog after a short delay
+      setTimeout(() => {
+        setIsOpen(false)
+        setWasSent(false)
+      }, 2000)
+    } catch (error: any) {
+      console.error('Error sending proposal:', error)
+      toast.error(error.message || 'Failed to send proposal')
     } finally {
-      setIsLoading(false)
+      setIsSending(false)
+    }
+  }
+
+  const handleCopyLink = () => {
+    if (currentToken) {
+      const link = `${window.location.origin}/proposal/view/${currentToken}`
+      navigator.clipboard.writeText(link)
+      toast.success('Link copied to clipboard!')
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">Send Proposal</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X size={24} />
-          </button>
-        </div>
-
-        <div className="mb-4">
-          <p className="text-gray-600">
-            Send proposal #{proposalNumber} to:
-          </p>
-          <p className="font-medium">{customerEmail}</p>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-            {error}
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="flex-1">
+          <Send className="h-4 w-4 mr-1" />
+          Send
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Send Proposal #{proposalNumber}</DialogTitle>
+          <DialogDescription>
+            Send this proposal to the customer via email or copy the link.
+          </DialogDescription>
+        </DialogHeader>
+        
+        {wasSent ? (
+          <div className="flex flex-col items-center justify-center py-8">
+            <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+            <p className="text-lg font-medium">Proposal Sent!</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              The customer will receive an email with the proposal link.
+            </p>
           </div>
+        ) : (
+          <>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="email" className="text-right">
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="col-span-3"
+                  placeholder="customer@example.com"
+                />
+              </div>
+              
+              {currentToken && (
+                <div className="text-sm text-muted-foreground">
+                  <p className="mb-2">Or copy the direct link:</p>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={`${window.location.origin}/proposal/view/${currentToken}`}
+                      className="text-xs"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyLink}
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsOpen(false)}
+                disabled={isSending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                onClick={handleSend}
+                disabled={isSending || !email}
+              >
+                {isSending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    Send Email
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </>
         )}
-
-        <div className="flex gap-3">
-          <button
-            onClick={handleSend}
-            disabled={isLoading}
-            className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Sending...' : 'Send Proposal'}
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

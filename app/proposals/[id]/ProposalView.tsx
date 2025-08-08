@@ -379,15 +379,7 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
 
       {/* Send Proposal Modal */}
       {showSendModal && (
-        <SendProposal
-          proposalId={proposal.id}
-          customerEmail={proposal.customers.email}
-          proposalNumber={proposal.proposal_number}
-          onClose={() => setShowSendModal(false)}
-          onSuccess={() => {
-            setShowSendModal(false)
-            router.refresh()
-          }}
+        <SendProposal proposalId={proposal.id} customerEmail={proposal.customers.email} proposalNumber={proposal.proposal_number} currentToken={proposal.customer_view_token} onSent={(id, token) => { setShowSendModal(false); window.location.reload(); }}}
         />
       )}
     </div>
