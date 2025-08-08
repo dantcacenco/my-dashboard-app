@@ -1,4 +1,3 @@
-import type { Job, Customer, Profile, Proposal } from '@/app/types'
 'use client'
 
 import { useState } from 'react'
