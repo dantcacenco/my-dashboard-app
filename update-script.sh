@@ -1,46 +1,48 @@
 #!/bin/bash
 
-# Fix Syntax Error - Portable Version
-# Works on both macOS and Linux
+# Fix missing opening tag around line 74
 
-set -e
+echo "🔧 Fixing missing component tag..."
 
-echo "🔧 Fixing syntax error..."
-
-# Create a simple Python script to fix the issue
-cat > fix_syntax.py << 'EOF'
-import sys
-
+# Fix with Python for consistency
+cat > fix_tag.py << 'EOF'
 with open('app/proposals/[id]/ProposalView.tsx', 'r') as f:
     lines = f.readlines()
 
-# Remove problematic lines around 388-389
-new_lines = []
-skip_next = False
-for i, line in enumerate(lines, 1):
-    # Skip orphaned closing tags
-    if line.strip() == '/>' or line.strip() == ')}':
-        continue
-    # Skip the specific problem lines
-    if i >= 387 and i <= 389:
-        if '/>' in line and len(line.strip()) <= 3:
-            continue
-        if ')}' in line and len(line.strip()) <= 3:
-            continue
-    new_lines.append(line)
+# Find the issue around line 74
+for i in range(70, min(75, len(lines))):
+    if 'progressAmount=' in lines[i]:
+        # Check if there's a component opening before these props
+        found_opening = False
+        for j in range(i-5, i):
+            if j >= 0 and '<PaymentStages' in lines[j]:
+                found_opening = True
+                break
+        
+        if not found_opening:
+            # Add the opening tag
+            lines[i-3] = lines[i-3] + '        <PaymentStages\n'
+            print(f"Added <PaymentStages> opening tag")
+        break
+
+# Also check for closing tag
+for i in range(70, min(76, len(lines))):
+    if '</div>' in lines[i] and i > 0:
+        # Make sure it's />
+        lines[i] = lines[i].replace('</div>', '/>')
+        break
 
 with open('app/proposals/[id]/ProposalView.tsx', 'w') as f:
-    f.writelines(new_lines)
+    f.writelines(lines)
 
-print("✅ Fixed syntax errors")
+print("✅ Fixed")
 EOF
 
-python3 fix_syntax.py
-rm fix_syntax.py
+python3 fix_tag.py
+rm fix_tag.py
 
-echo "📦 Committing..."
 git add -A
-git commit -m "Fix syntax error - remove orphaned closing tags (portable fix)" || exit 0
+git commit -m "Fix missing component opening tag" || exit 0
 git push origin main
 
-echo "✅ Done! Check Vercel deployment."
+echo "✅ Pushed fix"
