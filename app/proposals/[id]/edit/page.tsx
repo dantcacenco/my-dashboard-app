@@ -1,12 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect, notFound } from 'next/navigation'
-import ProposalEditor from './ProposalEditor'
+import { redirect } from 'next/navigation'
+import ProposalEditForm from './ProposalEditForm'
 
-interface PageProps {
+export default async function EditProposalPage({
+  params
+}: {
   params: Promise<{ id: string }>
-}
-
-export default async function EditProposalPage({ params }: PageProps) {
+}) {
   const { id } = await params
   const supabase = await createClient()
   
@@ -17,45 +17,34 @@ export default async function EditProposalPage({ params }: PageProps) {
     redirect('/sign-in')
   }
 
-  // Get user profile - CORRECT TABLE: 'profiles' with 'id' column
+  // Get user profile to check role
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  console.log('Edit page - User profile:', { userId: user.id, role: profile?.role })
-
-  // Allow both admin and boss roles to edit proposals
-  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
-    console.log('Edit page - Unauthorized: redirecting to dashboard')
-    redirect('/')
+  // Only boss/admin can edit proposals
+  if (profile?.role !== 'boss' && profile?.role !== 'admin') {
+    redirect('/unauthorized')
   }
 
-  // Get the proposal with items and customer data
-  const { data: proposal, error: proposalError } = await supabase
+  // Get proposal data
+  const { data: proposal } = await supabase
     .from('proposals')
     .select(`
       *,
-      customers (
-        id,
-        name,
-        email,
-        phone,
-        address
-      ),
-      proposal_items (
-        *
-      )
+      customers (*),
+      proposal_items (*)
     `)
     .eq('id', id)
     .single()
 
-  if (proposalError || !proposal) {
-    notFound()
+  if (!proposal) {
+    redirect('/proposals')
   }
 
-  // Get all customers and pricing items for the editor
+  // Get customers and pricing items for the form
   const [customersResult, pricingResult] = await Promise.all([
     supabase
       .from('customers')
@@ -71,16 +60,7 @@ export default async function EditProposalPage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Edit Proposal {proposal.proposal_number}
-          </h1>
-          <p className="mt-2 text-gray-600">
-            Update proposal details for {proposal.customers.name}
-          </p>
-        </div>
-        
-        <ProposalEditor 
+        <ProposalEditForm 
           proposal={proposal}
           customers={customersResult.data || []}
           pricingItems={pricingResult.data || []}

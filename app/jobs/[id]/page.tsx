@@ -5,8 +5,9 @@ import JobDetailView from './JobDetailView'
 export default async function JobDetailPage({
   params
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const { id } = await params
   const supabase = await createClient()
   
   // Check authentication
@@ -69,7 +70,7 @@ export default async function JobDetailPage({
         created_at
       )
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (error || !job) {

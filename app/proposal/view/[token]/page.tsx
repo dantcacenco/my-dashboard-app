@@ -1,16 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import CustomerProposalView from './CustomerProposalView'
 
-interface PageProps {
+export default async function ProposalViewPage({
+  params
+}: {
   params: Promise<{ token: string }>
-}
-
-export default async function CustomerProposalPage({ params }: PageProps) {
+}) {
   const { token } = await params
   const supabase = await createClient()
 
-  // Get proposal by customer view token - ALWAYS get fresh data
+  // Fetch proposal by customer view token
   const { data: proposal, error } = await supabase
     .from('proposals')
     .select(`
@@ -38,16 +38,7 @@ export default async function CustomerProposalPage({ params }: PageProps) {
     .single()
 
   if (error || !proposal) {
-    console.error('Error fetching proposal:', error)
-    notFound()
-  }
-
-  // Mark as viewed if first time
-  if (!proposal.first_viewed_at) {
-    await supabase
-      .from('proposals')
-      .update({ first_viewed_at: new Date().toISOString() })
-      .eq('id', proposal.id)
+    redirect('/')
   }
 
   return <CustomerProposalView proposal={proposal} />

@@ -5,8 +5,9 @@ import ProposalView from './ProposalView'
 export default async function ProposalPage({
   params
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const { id } = await params
   const supabase = await createClient()
   
   // Check if user is authenticated
@@ -47,7 +48,7 @@ export default async function ProposalPage({
         sort_order
       )
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!proposal) {
