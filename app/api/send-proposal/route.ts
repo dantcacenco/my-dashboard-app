@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const { proposalId, customerEmail, proposalNumber, token } = await request.json()
+    const { proposalId, email } = await request.json()
 
-    if (!proposalId || !customerEmail || !proposalNumber || !token) {
+    if (!proposalId || !email) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -14,30 +14,66 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient()
 
-    // Log the activity
-    await supabase
-      .from('proposal_activities')
-      .insert({
-        proposal_id: proposalId,
-        activity_type: 'sent_to_customer',
-        description: `Proposal sent to ${customerEmail}`,
-        metadata: {
-          customer_email: customerEmail,
-          proposal_number: proposalNumber,
-          view_link: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/view/${token}`
-        }
-      })
+    // Check if proposal exists
+    const { data: proposal, error: fetchError } = await supabase
+      .from('proposals')
+      .select('id, proposal_number, customer_view_token, status')
+      .eq('id', proposalId)
+      .single()
 
-    // In a real app, you would send an email here
+    if (fetchError || !proposal) {
+      console.error('Error fetching proposal:', fetchError)
+      return NextResponse.json(
+        { error: 'Proposal not found' },
+        { status: 404 }
+      )
+    }
+
+    // Generate token if it doesn't exist
+    let token = proposal.customer_view_token
+    if (!token) {
+      // Generate a random token
+      token = Math.random().toString(36).substring(2) + Date.now().toString(36)
+      
+      // Update proposal with token
+      const { error: updateError } = await supabase
+        .from('proposals')
+        .update({ 
+          customer_view_token: token,
+          status: 'sent'
+        })
+        .eq('id', proposalId)
+
+      if (updateError) {
+        console.error('Error updating proposal:', updateError)
+        return NextResponse.json(
+          { error: 'Failed to update proposal' },
+          { status: 500 }
+        )
+      }
+    } else {
+      // Just update status to sent
+      await supabase
+        .from('proposals')
+        .update({ status: 'sent' })
+        .eq('id', proposalId)
+    }
+
+    // Here you would normally send an email
     // For now, we'll just return success
-    console.log(`Would send email to ${customerEmail} with link: ${process.env.NEXT_PUBLIC_BASE_URL}/proposal/view/${token}`)
+    console.log(`Proposal ${proposal.proposal_number} sent to ${email}`)
+    console.log(`View link: ${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/proposal/view/${token}`)
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({
+      success: true,
+      token: token,
+      message: 'Proposal sent successfully'
+    })
 
   } catch (error) {
-    console.error('Error sending proposal:', error)
+    console.error('Error in send-proposal API:', error)
     return NextResponse.json(
-      { error: 'Failed to send proposal' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
