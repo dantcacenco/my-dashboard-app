@@ -63,12 +63,7 @@ export default function ProposalsList({ initialProposals }: { initialProposals: 
   };
 
   const handleSendProposal = (proposal: ProposalWithCustomer) => {
-    // Update the proposal to include the customer data for the modal
-    const proposalWithCustomer = {
-      ...proposal,
-      customer: proposal.customers
-    };
-    setSelectedProposal(proposalWithCustomer);
+    setSelectedProposal(proposal);
     setSendModalOpen(true);
   };
 

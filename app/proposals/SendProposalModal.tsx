@@ -8,10 +8,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Send } from 'lucide-react';
 import { toast } from 'sonner';
-import { Proposal } from '@/app/types';
 
 interface SendProposalModalProps {
-  proposal: Proposal;
+  proposal: {
+    id: string;
+    proposal_number: string;
+    total: number;
+    customers?: {
+      name: string;
+      email: string;
+    };
+  };
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSent?: () => void;
@@ -19,9 +26,9 @@ interface SendProposalModalProps {
 
 export default function SendProposalModal({ proposal, open, onOpenChange, onSent }: SendProposalModalProps) {
   const [sending, setSending] = useState(false);
-  const [email, setEmail] = useState(proposal.customer?.email || '');
+  const [email, setEmail] = useState(proposal.customers?.email || '');
   const [message, setMessage] = useState(
-    `Hi ${proposal.customer?.name || 'there'},\n\nPlease find attached your service proposal #${proposal.proposal_number}.\n\nThe total amount is $${proposal.total.toFixed(2)}.\n\nYou can review and approve the proposal by clicking the link below.\n\nThank you for your business!`
+    `Hi ${proposal.customers?.name || 'there'},\n\nPlease find attached your service proposal #${proposal.proposal_number}.\n\nThe total amount is $${proposal.total.toFixed(2)}.\n\nYou can review and approve the proposal by clicking the link below.\n\nThank you for your business!`
   );
 
   const handleSend = async () => {
@@ -74,7 +81,7 @@ export default function SendProposalModal({ proposal, open, onOpenChange, onSent
               id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
               placeholder="customer@example.com"
             />
           </div>
@@ -83,7 +90,7 @@ export default function SendProposalModal({ proposal, open, onOpenChange, onSent
             <Textarea
               id="message"
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setMessage(e.target.value)}
               rows={8}
               placeholder="Enter your message..."
             />
