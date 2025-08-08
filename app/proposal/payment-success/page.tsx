@@ -14,7 +14,7 @@ export default async function PaymentSuccessPage({
     redirect('/')
   }
 
-  // Get the proposal
+  // Get the proposal with all payment details
   const { data: proposal, error } = await supabase
     .from('proposals')
     .select(`
@@ -31,6 +31,7 @@ export default async function PaymentSuccessPage({
     .single()
 
   if (error || !proposal) {
+    console.error('Error fetching proposal:', error)
     redirect('/')
   }
 
