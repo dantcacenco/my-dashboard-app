@@ -71,7 +71,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
           progressAmount={proposal.progress_payment_amount || 0}
           finalAmount={proposal.final_payment_amount || 0}
           currentStage={proposal.current_payment_stage || 'deposit'}
-        />
       </div>
     )
   }
@@ -114,7 +113,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
             <h3 className="text-lg font-semibold mb-2">{proposal.title}</h3>
             {proposal.description && (
               <p className="text-gray-700 mb-4">{proposal.description}</p>
-            )}
           </div>
 
           {/* Items */}
@@ -137,7 +135,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                         <p className="font-medium">{item.name}</p>
                         {item.description && (
                           <p className="text-sm text-gray-600">{item.description}</p>
-                        )}
                       </div>
                     </td>
                     <td className="text-right py-2">{item.quantity}</td>
@@ -161,7 +158,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
               <h3 className="text-lg font-semibold mb-2">Terms & Conditions</h3>
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{proposal.terms_conditions}</p>
             </div>
-          )}
 
           {/* Print Actions */}
           <div className="no-print mt-8 flex gap-4">
@@ -209,8 +205,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                   buttonClassName="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
                   buttonText="Send Proposal"
                   showIcon={true}
-                />
-              )}
               {canEdit && (
                 <Link
                   href={`/proposals/${proposal.id}/edit`}
@@ -218,7 +212,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                 >
                   Edit
                 </Link>
-              )}
               <button
                 onClick={() => setShowPrintView(true)}
                 className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
@@ -232,7 +225,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                 Delete
               </button>
             </div>
-          )}
         </div>
       </div>
 
@@ -249,7 +241,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
             <p className="mt-1 max-w-2xl text-sm text-gray-500">
               {proposal.description}
             </p>
-          )}
         </div>
         <div className="border-t border-gray-200">
           <dl>
@@ -285,7 +276,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                   </span>
                 </dd>
               </div>
-            )}
             {proposal.customer_view_token && (
               <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                 <dt className="text-sm font-medium text-gray-500">Customer Link</dt>
@@ -300,7 +290,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                   </a>
                 </dd>
               </div>
-            )}
           </dl>
         </div>
       </div>
@@ -338,7 +327,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                       <div className="text-sm font-medium text-gray-900">{item.name}</div>
                       {item.description && (
                         <div className="text-sm text-gray-500">{item.description}</div>
-                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -381,12 +369,9 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
             </p>
           </div>
         </div>
-      )}
 
       {/* Send Proposal Modal */}
 
-        />
-      )}
     </div>
   )
 }
