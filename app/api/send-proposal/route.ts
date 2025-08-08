@@ -14,7 +14,6 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // Check if proposal exists
     const { data: proposal, error: fetchError } = await supabase
       .from('proposals')
       .select('id, proposal_number, customer_view_token, status')
@@ -29,7 +28,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Generate token if it doesn't exist
     let token = proposal.customer_view_token
     if (!token) {
       token = Math.random().toString(36).substring(2) + Date.now().toString(36)
@@ -56,7 +54,6 @@ export async function POST(request: Request) {
         .eq('id', proposalId)
     }
 
-    // Log the email content and details
     console.log('=== SENDING PROPOSAL EMAIL ===')
     console.log(`Proposal: ${proposal.proposal_number}`)
     console.log(`To: ${email}`)
@@ -64,9 +61,6 @@ export async function POST(request: Request) {
     console.log('Email Content:')
     console.log(emailContent)
     console.log('==============================')
-
-    // TODO: Integrate with your email service (SendGrid, Resend, etc.)
-    // For now, we just log and return success
 
     return NextResponse.json({
       success: true,

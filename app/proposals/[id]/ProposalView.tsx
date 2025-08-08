@@ -198,12 +198,18 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
           {(userRole === 'admin' || userRole === 'boss') && (
             <div className="flex gap-2">
               {proposal.status === 'draft' && (
-                <button
-                  onClick={() => setShowSendModal(true)}
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                >
-                  Send Proposal
-                </button>
+                <SendProposal
+                  proposalId={proposal.id}
+                  proposalNumber={proposal.proposal_number}
+                  customerEmail={proposal.customers?.email || ''}
+                  customerName={proposal.customers?.name}
+                  currentToken={proposal.customer_view_token}
+                  buttonVariant="default"
+                  buttonSize="default"
+                  buttonClassName="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+                  buttonText="Send Proposal"
+                  showIcon={true}
+                />
               )}
               {canEdit && (
                 <Link
@@ -378,8 +384,7 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
       )}
 
       {/* Send Proposal Modal */}
-      {showSendModal && (
-        <SendProposal proposalId={proposal.id} customerEmail={proposal.customers.email} proposalNumber={proposal.proposal_number} currentToken={proposal.customer_view_token} onSent={(id, token) => { setShowSendModal(false); window.location.reload(); }}
+
         />
       )}
     </div>
