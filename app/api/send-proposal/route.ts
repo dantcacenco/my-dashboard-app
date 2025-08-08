@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
   try {
-    const { proposalId, email } = await request.json()
+    const { proposalId, email, emailContent } = await request.json()
 
     if (!proposalId || !email) {
       return NextResponse.json(
@@ -32,10 +32,8 @@ export async function POST(request: Request) {
     // Generate token if it doesn't exist
     let token = proposal.customer_view_token
     if (!token) {
-      // Generate a random token
       token = Math.random().toString(36).substring(2) + Date.now().toString(36)
       
-      // Update proposal with token
       const { error: updateError } = await supabase
         .from('proposals')
         .update({ 
@@ -52,17 +50,23 @@ export async function POST(request: Request) {
         )
       }
     } else {
-      // Just update status to sent
       await supabase
         .from('proposals')
         .update({ status: 'sent' })
         .eq('id', proposalId)
     }
 
-    // Here you would normally send an email
-    // For now, we'll just return success
-    console.log(`Proposal ${proposal.proposal_number} sent to ${email}`)
-    console.log(`View link: ${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/proposal/view/${token}`)
+    // Log the email content and details
+    console.log('=== SENDING PROPOSAL EMAIL ===')
+    console.log(`Proposal: ${proposal.proposal_number}`)
+    console.log(`To: ${email}`)
+    console.log(`Token: ${token}`)
+    console.log('Email Content:')
+    console.log(emailContent)
+    console.log('==============================')
+
+    // TODO: Integrate with your email service (SendGrid, Resend, etc.)
+    // For now, we just log and return success
 
     return NextResponse.json({
       success: true,

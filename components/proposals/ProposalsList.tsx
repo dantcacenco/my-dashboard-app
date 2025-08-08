@@ -218,12 +218,16 @@ export default function ProposalsList({ proposals, userRole }: ProposalsListProp
                   {(userRole === 'admin' || userRole === 'boss') && 
                    (proposal.status === 'draft' || proposal.status === 'sent') && (
                     <SendProposal
-                      proposalId={proposal.id}
-                      proposalNumber={proposal.proposal_number}
-                      customerEmail={proposal.customers?.email || ''}
-                      currentToken={proposal.customer_view_token}
-                      onSent={handleProposalSent}
-                    />
+                  proposalId={proposal.id}
+                  proposalNumber={proposal.proposal_number}
+                  customerEmail={proposal.customers?.email || ''}
+                  customerName={proposal.customers?.name}
+                  currentToken={proposal.customer_view_token}
+                  onSent={handleProposalSent}
+                  buttonVariant="outline"
+                  buttonSize="sm"
+                  buttonClassName="flex-1"
+                />
                   )}
                 </CardFooter>
               </Card>
@@ -297,12 +301,16 @@ export default function ProposalsList({ proposals, userRole }: ProposalsListProp
                         {(userRole === 'admin' || userRole === 'boss') && 
                          (proposal.status === 'draft' || proposal.status === 'sent') && (
                           <SendProposal
-                            proposalId={proposal.id}
-                            proposalNumber={proposal.proposal_number}
-                            customerEmail={proposal.customers?.email || ''}
-                            currentToken={proposal.customer_view_token}
-                            onSent={handleProposalSent}
-                          />
+                  proposalId={proposal.id}
+                  proposalNumber={proposal.proposal_number}
+                  customerEmail={proposal.customers?.email || ''}
+                  customerName={proposal.customers?.name}
+                  currentToken={proposal.customer_view_token}
+                  onSent={handleProposalSent}
+                  buttonVariant="outline"
+                  buttonSize="sm"
+                  buttonClassName="flex-1"
+                />
                         )}
                       </div>
                     </TableCell>

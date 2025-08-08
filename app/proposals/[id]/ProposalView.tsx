@@ -15,7 +15,7 @@ interface ProposalViewProps {
 }
 
 export default function ProposalView({ proposal, userRole, userId }: ProposalViewProps) {
-  const [showSendModal, setShowSendModal] = useState(false)
+  
   const [showPrintView, setShowPrintView] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
