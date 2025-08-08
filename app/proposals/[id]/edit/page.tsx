@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import ProposalEditForm from './ProposalEditForm'
+import { redirect, notFound } from 'next/navigation'
+import ProposalEditor from './ProposalEditor'
 
 export default async function EditProposalPage({
   params
@@ -17,7 +17,7 @@ export default async function EditProposalPage({
     redirect('/sign-in')
   }
 
-  // Get user profile to check role
+  // Get user profile
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
@@ -26,25 +26,33 @@ export default async function EditProposalPage({
 
   // Only boss/admin can edit proposals
   if (profile?.role !== 'boss' && profile?.role !== 'admin') {
-    redirect('/unauthorized')
+    redirect('/')
   }
 
-  // Get proposal data
-  const { data: proposal } = await supabase
+  // Get the proposal with items and customer data
+  const { data: proposal, error: proposalError } = await supabase
     .from('proposals')
     .select(`
       *,
-      customers (*),
-      proposal_items (*)
+      customers (
+        id,
+        name,
+        email,
+        phone,
+        address
+      ),
+      proposal_items (
+        *
+      )
     `)
     .eq('id', id)
     .single()
 
-  if (!proposal) {
-    redirect('/proposals')
+  if (proposalError || !proposal) {
+    notFound()
   }
 
-  // Get customers and pricing items for the form
+  // Get all customers and pricing items for the editor
   const [customersResult, pricingResult] = await Promise.all([
     supabase
       .from('customers')
@@ -60,7 +68,16 @@ export default async function EditProposalPage({
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <ProposalEditForm 
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Edit Proposal {proposal.proposal_number}
+          </h1>
+          <p className="mt-2 text-gray-600">
+            Update proposal details for {proposal.customers.name}
+          </p>
+        </div>
+        
+        <ProposalEditor 
           proposal={proposal}
           customers={customersResult.data || []}
           pricingItems={pricingResult.data || []}
