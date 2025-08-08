@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { formatDate, formatCurrency } from '@/lib/utils'
+import PhotoUpload from './PhotoUpload'
 import { 
   ArrowLeft,
   Edit,
@@ -31,18 +32,32 @@ interface JobDetailViewProps {
 export default function JobDetailView({ job, userRole, userId }: JobDetailViewProps) {
   const router = useRouter()
   const supabase = createClient()
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [currentJob, setCurrentJob] = useState(job)
   
   const isBossOrAdmin = userRole === 'boss' || userRole === 'admin'
   const isTechnician = userRole === 'technician'
 
   const handleStatusChange = async (newStatus: string) => {
+    setIsUpdating(true)
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('jobs')
-        .update({ status: newStatus })
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', job.id)
+        .select()
+        .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase error:', error)
+        throw error
+      }
+
+      // Update local state
+      setCurrentJob({ ...currentJob, status: newStatus })
 
       // Log activity
       await supabase
@@ -56,11 +71,19 @@ export default function JobDetailView({ job, userRole, userId }: JobDetailViewPr
           new_value: newStatus
         })
 
+      // Refresh the page data
       router.refresh()
     } catch (error: any) {
       console.error('Error updating status:', error)
-      alert('Failed to update status')
+      alert(`Failed to update status: ${error.message || 'Unknown error'}`)
+    } finally {
+      setIsUpdating(false)
     }
+  }
+
+  const handlePhotoUploaded = () => {
+    // Refresh the page to show new photos
+    router.refresh()
   }
 
   return (
@@ -78,14 +101,14 @@ export default function JobDetailView({ job, userRole, userId }: JobDetailViewPr
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
-              Job #{job.job_number}
+              Job #{currentJob.job_number}
             </h1>
-            <p className="mt-1 text-gray-600">{job.title}</p>
+            <p className="mt-1 text-gray-600">{currentJob.title}</p>
           </div>
 
           <div className="flex items-center gap-2">
             <Badge className="capitalize">
-              {job.job_type}
+              {currentJob.job_type}
             </Badge>
             {isBossOrAdmin && (
               <Button
@@ -110,51 +133,56 @@ export default function JobDetailView({ job, userRole, userId }: JobDetailViewPr
           <div className="flex items-center gap-2 mb-4">
             <span className="text-sm text-gray-600">Current Status:</span>
             <Badge className="capitalize">
-              {job.status.replace('_', ' ')}
+              {currentJob.status.replace('_', ' ')}
             </Badge>
           </div>
           
           {(isBossOrAdmin || isTechnician) && (
             <div className="flex flex-wrap gap-2">
-              {job.status === 'scheduled' && (
+              {currentJob.status === 'scheduled' && (
                 <Button
                   size="sm"
                   onClick={() => handleStatusChange('started')}
+                  disabled={isUpdating}
                 >
                   Start Job
                 </Button>
               )}
-              {job.status === 'started' && (
+              {currentJob.status === 'started' && (
                 <Button
                   size="sm"
                   onClick={() => handleStatusChange('in_progress')}
+                  disabled={isUpdating}
                 >
                   Mark In Progress
                 </Button>
               )}
-              {job.status === 'in_progress' && (
+              {currentJob.status === 'in_progress' && (
                 <>
                   <Button
                     size="sm"
                     onClick={() => handleStatusChange('rough_in')}
+                    disabled={isUpdating}
                   >
                     Complete Rough-In
                   </Button>
                 </>
               )}
-              {job.status === 'rough_in' && (
+              {currentJob.status === 'rough_in' && (
                 <Button
                   size="sm"
                   onClick={() => handleStatusChange('final')}
+                  disabled={isUpdating}
                 >
                   Move to Final
                 </Button>
               )}
-              {job.status === 'final' && (
+              {currentJob.status === 'final' && (
                 <Button
                   size="sm"
                   onClick={() => handleStatusChange('complete')}
                   className="bg-green-600 hover:bg-green-700"
+                  disabled={isUpdating}
                 >
                   Complete Job
                 </Button>
@@ -164,6 +192,7 @@ export default function JobDetailView({ job, userRole, userId }: JobDetailViewPr
         </CardContent>
       </Card>
 
+      {/* Rest of the component remains the same... */}
       {/* Customer Information */}
       <Card className="mb-6">
         <CardHeader>
@@ -272,23 +301,31 @@ export default function JobDetailView({ job, userRole, userId }: JobDetailViewPr
         </CardContent>
       </Card>
 
-      {/* Photos */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Camera className="h-5 w-5" />
-            Photos
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {job.job_photos?.length > 0 ? (
+      {/* Photo Upload Component */}
+      <PhotoUpload 
+        jobId={job.id} 
+        userId={userId} 
+        onPhotoUploaded={handlePhotoUploaded}
+      />
+
+      {/* Photos Display */}
+      {job.job_photos && job.job_photos.length > 0 && (
+        <Card className="mt-6 mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5" />
+              Job Photos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {job.job_photos.map((photo: any) => (
                 <div key={photo.id} className="relative">
                   <img
                     src={photo.photo_url}
                     alt={photo.caption || 'Job photo'}
-                    className="w-full h-32 object-cover rounded"
+                    className="w-full h-32 object-cover rounded cursor-pointer hover:opacity-90"
+                    onClick={() => window.open(photo.photo_url, '_blank')}
                   />
                   <Badge className="absolute top-2 right-2 text-xs">
                     {photo.photo_type}
@@ -296,16 +333,9 @@ export default function JobDetailView({ job, userRole, userId }: JobDetailViewPr
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-gray-500">No photos uploaded yet</p>
-          )}
-          
-          <Button className="mt-4" variant="outline">
-            <Camera className="h-4 w-4 mr-2" />
-            Upload Photos
-          </Button>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Materials */}
       <Card className="mb-6">
