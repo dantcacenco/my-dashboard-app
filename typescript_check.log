@@ -1,0 +1,1 @@
+app/proposals/ProposalsList.tsx(6,10): error TS2305: Module '"@heroicons/react/24/solid"' has no exported member 'LayoutGridIcon'.
