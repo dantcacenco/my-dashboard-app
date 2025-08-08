@@ -8,23 +8,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export async function POST(request: NextRequest) {
   try {
-    // Check for required environment variables
-    if (!process.env.STRIPE_SECRET_KEY) {
-      console.error('Missing STRIPE_SECRET_KEY environment variable')
-      return NextResponse.json(
-        { error: 'Payment system not configured. Please contact support.' },
-        { status: 500 }
-      )
-    }
-
-    if (!process.env.NEXT_PUBLIC_BASE_URL) {
-      console.error('Missing NEXT_PUBLIC_BASE_URL environment variable')
-      return NextResponse.json(
-        { error: 'Payment system configuration error. Please contact support.' },
-        { status: 500 }
-      )
-    }
-
     const {
       proposal_id,
       proposal_number,
@@ -32,16 +15,15 @@ export async function POST(request: NextRequest) {
       customer_email,
       amount,
       payment_type,
-      payment_stage,
-      description
+      description,
+      payment_stage = 'deposit'
     } = await request.json()
 
-    console.log('Creating payment session:', {
+    console.log('Creating payment for:', {
       proposal_id,
-      amount,
-      payment_type,
       payment_stage,
-      base_url: process.env.NEXT_PUBLIC_BASE_URL
+      amount,
+      payment_type
     })
 
     if (!proposal_id || !amount || !customer_email) {
@@ -51,23 +33,61 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get proposal to ensure we have the customer_view_token
+    // Get the proposal with customer_view_token
     const supabase = await createClient()
-    const { data: proposal, error: proposalError } = await supabase
+    const { data: proposal, error: fetchError } = await supabase
       .from('proposals')
-      .select('customer_view_token')
+      .select('customer_view_token, total')
       .eq('id', proposal_id)
       .single()
 
-    if (proposalError || !proposal) {
-      console.error('Error fetching proposal:', proposalError)
+    if (fetchError || !proposal) {
+      console.error('Error fetching proposal:', fetchError)
       return NextResponse.json(
         { error: 'Proposal not found' },
         { status: 404 }
       )
     }
 
-    // Define payment method types based on selection
+    // Ensure customer_view_token exists
+    let customerViewToken = proposal.customer_view_token
+    if (!customerViewToken) {
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('proposals')
+        .update({ customer_view_token: crypto.randomUUID() })
+        .eq('id', proposal_id)
+        .select('customer_view_token')
+        .single()
+      
+      if (tokenError || !tokenData) {
+        console.error('Error generating token:', tokenError)
+        return NextResponse.json(
+          { error: 'Failed to generate customer token' },
+          { status: 500 }
+        )
+      }
+      customerViewToken = tokenData.customer_view_token
+    }
+
+    // Create or update payment stage record
+    const { error: stageError } = await supabase
+      .from('payment_stages')
+      .upsert({
+        proposal_id,
+        stage: payment_stage,
+        amount: amount,
+        percentage: payment_stage === 'deposit' ? 50 : payment_stage === 'roughin' ? 30 : 20,
+        due_date: new Date().toISOString().split('T')[0],
+        paid: false
+      }, {
+        onConflict: 'proposal_id,stage'
+      })
+
+    if (stageError) {
+      console.error('Error creating payment stage:', stageError)
+    }
+
+    // Define payment method types
     const paymentMethodTypes = payment_type === 'ach' 
       ? ['us_bank_account' as const] 
       : ['card' as const]
@@ -81,8 +101,7 @@ export async function POST(request: NextRequest) {
             currency: 'usd',
             product_data: {
               name: `Service Pro - ${description}`,
-              description: `${description} for HVAC services proposal ${proposal_number}`,
-              images: [] // Add your logo URL here if you have one
+              description: `${description} for proposal ${proposal_number}`,
             },
             unit_amount: Math.round(amount * 100) // Convert to cents
           },
@@ -91,21 +110,20 @@ export async function POST(request: NextRequest) {
       ],
       mode: 'payment',
       customer_email: customer_email,
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposal_id}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/proposal/view/${proposal.customer_view_token}?payment=cancelled`,
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://servicepro-hvac.vercel.app'}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposal_id}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://servicepro-hvac.vercel.app'}/proposal/view/${customerViewToken}?payment=cancelled`,
       metadata: {
         proposal_id,
         proposal_number,
         customer_name,
         payment_type: payment_type || 'card',
-        payment_stage: payment_stage || 'deposit',
-        customer_view_token: proposal.customer_view_token
+        payment_stage: payment_stage,
+        customer_view_token: customerViewToken
       },
       billing_address_collection: 'required',
       phone_number_collection: {
         enabled: true
       },
-      // For ACH payments, add additional configuration
       ...(payment_type === 'ach' && {
         payment_method_options: {
           us_bank_account: {
@@ -117,8 +135,7 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    console.log('Stripe session created:', session.id)
-    console.log('Checkout URL:', session.url)
+    console.log('Stripe session created successfully:', session.id)
 
     return NextResponse.json({ 
       checkout_url: session.url,
@@ -127,24 +144,8 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error creating Stripe checkout session:', error)
-    
-    // Provide more specific error messages
-    if (error.type === 'StripeAuthenticationError') {
-      return NextResponse.json(
-        { error: 'Invalid Stripe API key. Please check configuration.' },
-        { status: 500 }
-      )
-    }
-    
-    if (error.type === 'StripeInvalidRequestError') {
-      return NextResponse.json(
-        { error: `Stripe configuration error: ${error.message}` },
-        { status: 400 }
-      )
-    }
-    
     return NextResponse.json(
-      { error: 'Failed to create payment session. Please try again.' },
+      { error: error.message || 'Failed to create payment session' },
       { status: 500 }
     )
   }
