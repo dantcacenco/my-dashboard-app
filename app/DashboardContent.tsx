@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts'
 
+
 interface DashboardData {
   metrics: {
     totalProposals: number
