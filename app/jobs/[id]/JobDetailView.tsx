@@ -12,14 +12,66 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MapPin, Phone, Clock, Calendar, User, AlertCircle, Camera, CheckCircle, PlayCircle, PauseCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import PhotoUpload from './PhotoUpload';
-import type { Job, Customer, Proposal } from '@/app/types';
+
+interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+}
+
+interface Proposal {
+  id: string;
+  proposal_number: string;
+  title: string;
+  total: number;
+}
+
+interface Technician {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string;
+}
+
+interface JobWithRelations {
+  id: string;
+  job_number: string;
+  customer_id: string;
+  proposal_id?: string;
+  title: string;
+  description?: string;
+  job_type: string;
+  status: string;
+  scheduled_date?: string;
+  scheduled_time?: string;
+  assigned_technician_id?: string;
+  estimated_duration?: string;
+  actual_start_time?: string;
+  actual_end_time?: string;
+  notes?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  technician_id?: string;
+  service_address?: string;
+  service_city?: string;
+  service_state?: string;
+  service_zip?: string;
+  boss_notes?: string;
+  completion_notes?: string;
+  customers: Customer;
+  proposals?: Proposal;
+  profiles?: Technician;
+}
 
 interface JobDetailViewProps {
   jobId: string;
 }
 
 export default function JobDetailView({ jobId }: JobDetailViewProps) {
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob] = useState<JobWithRelations | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [completionNotes, setCompletionNotes] = useState('');
@@ -40,14 +92,14 @@ export default function JobDetailView({ jobId }: JobDetailViewProps) {
         .from('jobs')
         .select(`
           *,
-          customers (
+          customers!customer_id (
             id,
             name,
             email,
             phone,
             address
           ),
-          proposals (
+          proposals!proposal_id (
             id,
             proposal_number,
             title,
@@ -65,7 +117,15 @@ export default function JobDetailView({ jobId }: JobDetailViewProps) {
 
       if (error) throw error;
       
-      setJob(data as Job);
+      // Transform the data to match our interface
+      const jobData: JobWithRelations = {
+        ...data,
+        customers: data.customers,
+        proposals: data.proposals,
+        profiles: data.profiles
+      };
+      
+      setJob(jobData);
       setCompletionNotes(data.completion_notes || '');
     } catch (error: any) {
       console.error('Error fetching job:', error);
@@ -168,9 +228,9 @@ export default function JobDetailView({ jobId }: JobDetailViewProps) {
   }
 
   const nextStatus = getNextStatus();
-  const customer = job.customers as Customer;
-  const proposal = job.proposals as Proposal | null;
-  const technician = job.profiles as any;
+  const customer = job.customers;
+  const proposal = job.proposals;
+  const technician = job.profiles;
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
