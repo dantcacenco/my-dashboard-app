@@ -4,23 +4,27 @@ import ProposalBuilder from './ProposalBuilder'
 
 export default async function NewProposalPage() {
   const supabase = await createClient()
+
+  // Get current user
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
   
-  // Check if user is authenticated
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
-  if (error || !user) {
-    redirect('/sign-in')
+  if (authError || !user) {
+    redirect('/auth/login')
   }
 
-  // Get user profile - CORRECT TABLE: 'profiles' with 'id' column
-  const { data: profile } = await supabase
+  // Get user profile
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  // Allow both admin and boss roles to create proposals
-  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
+  if (profileError || !profile) {
+    redirect('/')
+  }
+
+  // Check authorization - allow both admin and boss
+  if (profile.role !== 'admin' && profile.role !== 'boss') {
     redirect('/')
   }
 
@@ -42,7 +46,7 @@ export default async function NewProposalPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Create New Proposal</h1>
-          <p className="mt-2 text-gray-600">Build a professional proposal for your customer</p>
+          <p className="mt-2 text-gray-600">Build a new proposal for your customer</p>
         </div>
         
         <ProposalBuilder 
