@@ -9,10 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, XCircle, AlertCircle, RefreshCw, Database, Shield, Route, User } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 export default function DiagnosticPage() {
   const [diagnostics, setDiagnostics] = useState<any>({
     auth: null,
-    database: null,
+    database: {},
     routing: [],
     permissions: [],
     environment: {},
@@ -56,7 +58,7 @@ export default function DiagnosticPage() {
       }
 
       // Test database connectivity and tables
-      const tables = ['proposals', 'customers', 'jobs', 'invoices', 'profiles', 'organizations'];
+      const tables = ['proposals', 'customers', 'jobs', 'invoices', 'profiles'];
       for (const table of tables) {
         try {
           const { count, error } = await supabase
@@ -83,6 +85,7 @@ export default function DiagnosticPage() {
         { path: '/customers', name: 'Customers', requiresAuth: true },
         { path: '/jobs', name: 'Jobs', requiresAuth: true },
         { path: '/invoices', name: 'Invoices', requiresAuth: true },
+        { path: '/technicians', name: 'Technicians', requiresAuth: true },
         { path: '/technician', name: 'Technician Portal', requiresAuth: true },
         { path: '/proposal/view/[token]', name: 'Customer Proposal View', requiresAuth: false },
         { path: '/auth/signin', name: 'Sign In', requiresAuth: false },
@@ -103,13 +106,13 @@ export default function DiagnosticPage() {
             }
           },
           {
-            name: 'Create proposal',
+            name: 'Read customers',
             test: async () => {
-              // Dry run - rollback
-              const { error } = await supabase.rpc('test_create_permission', { 
-                table_name: 'proposals' 
-              }).single();
-              return { success: !error || error.code === 'PGRST116', error: error?.message };
+              const { data, error } = await supabase
+                .from('customers')
+                .select('id')
+                .limit(1);
+              return { success: !error, error: error?.message };
             }
           }
         ];
@@ -131,13 +134,15 @@ export default function DiagnosticPage() {
         }
       }
 
-      // Check environment variables (client-side only)
-      results.environment = {
-        NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-        NODE_ENV: process.env.NODE_ENV,
-      };
+      // Check environment variables (only on client side)
+      if (typeof window !== 'undefined') {
+        results.environment = {
+          NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+          NODE_ENV: process.env.NODE_ENV || 'production',
+        };
+      }
 
     } catch (e: any) {
       results.errors.push({ type: 'general', message: e.message });
@@ -156,6 +161,14 @@ export default function DiagnosticPage() {
       <CheckCircle className="w-4 h-4 text-green-500" /> : 
       <XCircle className="w-4 h-4 text-red-500" />;
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
@@ -235,7 +248,9 @@ export default function DiagnosticPage() {
                             {diagnostics.auth.profile?.role || 'No role'}
                           </Badge>
                         </p>
-                        <p><strong>Organization:</strong> {diagnostics.auth.profile?.organizations?.name || 'None'}</p>
+                        {diagnostics.auth.profile?.organizations && (
+                          <p><strong>Organization:</strong> {diagnostics.auth.profile.organizations.name || 'None'}</p>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -255,7 +270,7 @@ export default function DiagnosticPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {Object.entries(diagnostics.database).map(([table, info]: [string, any]) => (
+                    {Object.entries(diagnostics.database || {}).map(([table, info]: [string, any]) => (
                       <div key={table} className="flex items-center justify-between py-2 border-b">
                         <div className="flex items-center gap-2">
                           <StatusIcon success={info.accessible} />
@@ -335,7 +350,7 @@ export default function DiagnosticPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {Object.entries(diagnostics.environment).map(([key, value]) => (
+                    {Object.entries(diagnostics.environment || {}).map(([key, value]) => (
                       <div key={key} className="flex items-center justify-between py-2 border-b">
                         <span className="font-mono text-sm">{key}</span>
                         {typeof value === 'boolean' ? (
@@ -355,14 +370,16 @@ export default function DiagnosticPage() {
             <h3 className="font-medium mb-2">Quick Actions</h3>
             <div className="flex gap-2 flex-wrap">
               <Button variant="outline" size="sm" asChild>
-                <a href="/proposals" target="_blank">Test Proposals Page</a>
+                <a href="/proposals">Test Proposals Page</a>
               </Button>
               <Button variant="outline" size="sm" asChild>
-                <a href="/api/health" target="_blank">API Health Check</a>
+                <a href="/api/health">API Health Check</a>
               </Button>
               <Button variant="outline" size="sm" onClick={() => {
-                navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
-                alert('Diagnostics copied to clipboard');
+                if (typeof window !== 'undefined') {
+                  navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
+                  alert('Diagnostics copied to clipboard');
+                }
               }}>
                 Copy Diagnostics JSON
               </Button>
