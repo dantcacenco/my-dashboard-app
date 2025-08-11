@@ -16,10 +16,13 @@ const supabaseAdmin = createClient(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
+    
+    // Await the params
+    const { id } = await params;
     
     // Check if user is boss/admin
     const { data: { user } } = await supabase.auth.getUser();
@@ -38,7 +41,7 @@ export async function DELETE(
     }
 
     // Delete the user (this will cascade to profile)
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(params.id);
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
 
     if (error) {
       console.error('Error deleting user:', error);
