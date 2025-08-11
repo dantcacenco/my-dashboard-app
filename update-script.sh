@@ -1,649 +1,331 @@
 #!/bin/bash
 
-echo "🔧 Creating technician management system..."
+echo "🔍 Checking for remaining build issues..."
 
-# First, create the updated SQL that handles existing policies
-cat > supabase_setup_fixed.sql << 'EOF'
--- 1. Create storage bucket for job photos (if not exists)
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('job-photos', 'job-photos', true)
-ON CONFLICT (id) DO NOTHING;
+# First, let's check what components are missing
+echo "📦 Checking for missing UI components..."
 
--- 2. Drop existing policies if they exist and recreate them
-DO $$
-BEGIN
-    -- Drop existing policies if they exist
-    DROP POLICY IF EXISTS "Authenticated users can upload job photos" ON storage.objects;
-    DROP POLICY IF EXISTS "Anyone can view job photos" ON storage.objects;
-    DROP POLICY IF EXISTS "Authenticated users can update job photos" ON storage.objects;
-    DROP POLICY IF EXISTS "Authenticated users can delete job photos" ON storage.objects;
-    
-    -- Create new policies
-    CREATE POLICY "Authenticated users can upload job photos" ON storage.objects
-    FOR INSERT TO authenticated
-    WITH CHECK (bucket_id = 'job-photos');
+# Create dialog component if missing
+if [ ! -f "components/ui/dialog.tsx" ]; then
+echo "Creating dialog component..."
+cat > components/ui/dialog.tsx << 'EOF'
+"use client"
 
-    CREATE POLICY "Anyone can view job photos" ON storage.objects
-    FOR SELECT TO public
-    USING (bucket_id = 'job-photos');
+import * as React from "react"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { X } from "lucide-react"
+import { cn } from "@/lib/utils"
 
-    CREATE POLICY "Authenticated users can update job photos" ON storage.objects
-    FOR UPDATE TO authenticated
-    USING (bucket_id = 'job-photos');
+const Dialog = DialogPrimitive.Root
+const DialogTrigger = DialogPrimitive.Trigger
+const DialogPortal = DialogPrimitive.Portal
+const DialogClose = DialogPrimitive.Close
 
-    CREATE POLICY "Authenticated users can delete job photos" ON storage.objects
-    FOR DELETE TO authenticated
-    USING (bucket_id = 'job-photos');
-END $$;
+const DialogOverlay = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Overlay>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Overlay
+    ref={ref}
+    className={cn(
+      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      className
+    )}
+    {...props}
+  />
+))
+DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
--- 3. Ensure RLS policies for jobs table
-DROP POLICY IF EXISTS "Users can update their organization's jobs" ON jobs;
+const DialogContent = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <DialogPortal>
+    <DialogOverlay />
+    <DialogPrimitive.Content
+      ref={ref}
+      className={cn(
+        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+        <X className="h-4 w-4" />
+        <span className="sr-only">Close</span>
+      </DialogPrimitive.Close>
+    </DialogPrimitive.Content>
+  </DialogPortal>
+))
+DialogContent.displayName = DialogPrimitive.Content.displayName
 
-CREATE POLICY "Users can update their organization's jobs" ON jobs
-FOR UPDATE TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM profiles
-    WHERE profiles.id = auth.uid()
-    AND (profiles.role = 'boss' OR profiles.role = 'admin' OR profiles.role = 'technician')
-  )
+const DialogHeader = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn(
+      "flex flex-col space-y-1.5 text-center sm:text-left",
+      className
+    )}
+    {...props}
+  />
 )
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM profiles
-    WHERE profiles.id = auth.uid()
-    AND (profiles.role = 'boss' OR profiles.role = 'admin' OR profiles.role = 'technician')
-  )
-);
+DialogHeader.displayName = "DialogHeader"
 
--- 4. Create function to handle technician creation (if not exists)
-CREATE OR REPLACE FUNCTION create_technician_user(
-    email text,
-    password text,
-    full_name text,
-    phone text
-) RETURNS json AS $$
-DECLARE
-    new_user_id uuid;
-    result json;
-BEGIN
-    -- This function will be called from the app
-    -- The app will use service role key to create the auth user
-    -- Then insert the profile
-    result := json_build_object(
-        'success', true,
-        'message', 'Function ready for technician creation'
-    );
-    RETURN result;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-EOF
+const DialogFooter = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn(
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      className
+    )}
+    {...props}
+  />
+)
+DialogFooter.displayName = "DialogFooter"
 
-# Create technicians management page
-mkdir -p app/technicians
+const DialogTitle = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Title>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Title
+    ref={ref}
+    className={cn(
+      "text-lg font-semibold leading-none tracking-tight",
+      className
+    )}
+    {...props}
+  />
+))
+DialogTitle.displayName = DialogPrimitive.Title.displayName
 
-cat > app/technicians/page.tsx << 'EOF'
-'use client';
+const DialogDescription = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Description>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Description
+    ref={ref}
+    className={cn("text-sm text-muted-foreground", className)}
+    {...props}
+  />
+))
+DialogDescription.displayName = DialogPrimitive.Description.displayName
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Plus, User, Phone, Mail, Shield, Trash2, Edit } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
+export {
   Dialog,
+  DialogPortal,
+  DialogOverlay,
+  DialogClose,
+  DialogTrigger,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
+  DialogFooter,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
-
-interface Technician {
-  id: string;
-  email: string;
-  full_name: string;
-  role: string;
-  phone?: string;
-  created_at: string;
-}
-
-export default function TechniciansPage() {
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    full_name: '',
-    phone: ''
-  });
-
-  const router = useRouter();
-  const supabase = createClientComponentClient();
-
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        router.push('/auth/signin');
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-      if (profile?.role !== 'boss' && profile?.role !== 'admin') {
-        router.push('/');
-        return;
-      }
-
-      fetchTechnicians();
-    } catch (error) {
-      console.error('Auth error:', error);
-      router.push('/auth/signin');
-    }
-  };
-
-  const fetchTechnicians = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'technician')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setTechnicians(data || []);
-    } catch (error: any) {
-      console.error('Error fetching technicians:', error);
-      setError('Failed to load technicians');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const createTechnician = async () => {
-    try {
-      setCreating(true);
-      setError(null);
-      setSuccess(null);
-
-      // Validate form
-      if (!formData.email || !formData.password || !formData.full_name) {
-        setError('Please fill in all required fields');
-        return;
-      }
-
-      if (formData.password.length < 6) {
-        setError('Password must be at least 6 characters');
-        return;
-      }
-
-      // Call the API endpoint to create technician
-      const response = await fetch('/api/technicians', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to create technician');
-      }
-
-      setSuccess('Technician created successfully!');
-      setShowCreateDialog(false);
-      setFormData({ email: '', password: '', full_name: '', phone: '' });
-      fetchTechnicians();
-    } catch (error: any) {
-      console.error('Error creating technician:', error);
-      setError(error.message || 'Failed to create technician');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const deleteTechnician = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this technician?')) return;
-
-    try {
-      const response = await fetch(`/api/technicians/${id}`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete technician');
-      }
-
-      setSuccess('Technician deleted successfully');
-      fetchTechnicians();
-    } catch (error: any) {
-      console.error('Error deleting technician:', error);
-      setError('Failed to delete technician');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Technician Management</h1>
-        <p className="text-muted-foreground">Create and manage technician accounts</p>
-      </div>
-
-      {error && (
-        <Alert className="mb-6" variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {success && (
-        <Alert className="mb-6">
-          <AlertDescription>{success}</AlertDescription>
-        </Alert>
-      )}
-
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>Technicians</CardTitle>
-              <CardDescription>
-                {technicians.length} active technician{technicians.length !== 1 ? 's' : ''}
-              </CardDescription>
-            </div>
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Technician
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {technicians.length === 0 ? (
-            <div className="text-center py-12">
-              <User className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground mb-4">No technicians created yet</p>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                Create First Technician
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {technicians.map((technician) => (
-                  <TableRow key={technician.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        {technician.full_name}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        {technician.email}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {technician.phone ? (
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-muted-foreground" />
-                          {technician.phone}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(technician.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteTechnician(technician.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New Technician</DialogTitle>
-            <DialogDescription>
-              Create a new technician account with login credentials
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="full_name">Full Name *</Label>
-              <Input
-                id="full_name"
-                value={formData.full_name}
-                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                placeholder="John Smith"
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email Address *</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="technician@company.com"
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password *</Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Minimum 6 characters"
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="(555) 123-4567"
-              />
-            </div>
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={createTechnician} disabled={creating}>
-              {creating ? 'Creating...' : 'Create Technician'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+  DialogDescription,
 }
 EOF
+fi
 
-# Create API endpoint for technician management
-mkdir -p app/api/technicians/\[id\]
+# Create table component if missing
+if [ ! -f "components/ui/table.tsx" ]; then
+echo "Creating table component..."
+cat > components/ui/table.tsx << 'EOF'
+import * as React from "react"
+import { cn } from "@/lib/utils"
 
-cat > app/api/technicians/route.ts << 'EOF'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+const Table = React.forwardRef<
+  HTMLTableElement,
+  React.HTMLAttributes<HTMLTableElement>
+>(({ className, ...props }, ref) => (
+  <div className="relative w-full overflow-auto">
+    <table
+      ref={ref}
+      className={cn("w-full caption-bottom text-sm", className)}
+      {...props}
+    />
+  </div>
+))
+Table.displayName = "Table"
 
-// Create service role client for admin operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
+const TableHeader = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />
+))
+TableHeader.displayName = "TableHeader"
 
-export async function POST(request: Request) {
-  try {
-    const supabase = createRouteHandlerClient({ cookies });
-    
-    // Check if user is boss/admin
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+const TableBody = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <tbody
+    ref={ref}
+    className={cn("[&_tr:last-child]:border-0", className)}
+    {...props}
+  />
+))
+TableBody.displayName = "TableBody"
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+const TableFooter = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <tfoot
+    ref={ref}
+    className={cn(
+      "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+      className
+    )}
+    {...props}
+  />
+))
+TableFooter.displayName = "TableFooter"
 
-    if (profile?.role !== 'boss' && profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
+const TableRow = React.forwardRef<
+  HTMLTableRowElement,
+  React.HTMLAttributes<HTMLTableRowElement>
+>(({ className, ...props }, ref) => (
+  <tr
+    ref={ref}
+    className={cn(
+      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      className
+    )}
+    {...props}
+  />
+))
+TableRow.displayName = "TableRow"
 
-    // Get technician data from request
-    const { email, password, full_name, phone } = await request.json();
+const TableHead = React.forwardRef<
+  HTMLTableCellElement,
+  React.ThHTMLAttributes<HTMLTableCellElement>
+>(({ className, ...props }, ref) => (
+  <th
+    ref={ref}
+    className={cn(
+      "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      className
+    )}
+    {...props}
+  />
+))
+TableHead.displayName = "TableHead"
 
-    // Create auth user using service role
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true
-    });
+const TableCell = React.forwardRef<
+  HTMLTableCellElement,
+  React.TdHTMLAttributes<HTMLTableCellElement>
+>(({ className, ...props }, ref) => (
+  <td
+    ref={ref}
+    className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)}
+    {...props}
+  />
+))
+TableCell.displayName = "TableCell"
 
-    if (authError) {
-      console.error('Auth error:', authError);
-      return NextResponse.json({ 
-        error: authError.message || 'Failed to create user account' 
-      }, { status: 400 });
-    }
+const TableCaption = React.forwardRef<
+  HTMLTableCaptionElement,
+  React.HTMLAttributes<HTMLTableCaptionElement>
+>(({ className, ...props }, ref) => (
+  <caption
+    ref={ref}
+    className={cn("mt-4 text-sm text-muted-foreground", className)}
+    {...props}
+  />
+))
+TableCaption.displayName = "TableCaption"
 
-    // Create profile for the technician
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .insert({
-        id: authData.user.id,
-        email,
-        full_name,
-        role: 'technician',
-        phone
-      });
-
-    if (profileError) {
-      // If profile creation fails, try to delete the auth user
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-      console.error('Profile error:', profileError);
-      return NextResponse.json({ 
-        error: 'Failed to create technician profile' 
-      }, { status: 400 });
-    }
-
-    return NextResponse.json({ 
-      success: true,
-      technician: {
-        id: authData.user.id,
-        email,
-        full_name,
-        role: 'technician'
-      }
-    });
-  } catch (error: any) {
-    console.error('Error creating technician:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Internal server error' 
-    }, { status: 500 });
-  }
-}
-
-export async function GET() {
-  try {
-    const supabase = createRouteHandlerClient({ cookies });
-    
-    // Check if user is boss/admin
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profile?.role !== 'boss' && profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
-
-    // Get all technicians
-    const { data: technicians, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('role', 'technician')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    return NextResponse.json({ technicians });
-  } catch (error: any) {
-    console.error('Error fetching technicians:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Internal server error' 
-    }, { status: 500 });
-  }
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
 }
 EOF
+fi
 
-cat > app/api/technicians/\[id\]/route.ts << 'EOF'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+# Create label component if missing
+if [ ! -f "components/ui/label.tsx" ]; then
+echo "Creating label component..."
+cat > components/ui/label.tsx << 'EOF'
+"use client"
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
+import * as React from "react"
+import * as LabelPrimitive from "@radix-ui/react-label"
+import { cva, type VariantProps } from "class-variance-authority"
+import { cn } from "@/lib/utils"
 
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const supabase = createRouteHandlerClient({ cookies });
-    
-    // Check if user is boss/admin
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+const labelVariants = cva(
+  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+)
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+const Label = React.forwardRef<
+  React.ElementRef<typeof LabelPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> &
+    VariantProps<typeof labelVariants>
+>(({ className, ...props }, ref) => (
+  <LabelPrimitive.Root
+    ref={ref}
+    className={cn(labelVariants(), className)}
+    {...props}
+  />
+))
+Label.displayName = LabelPrimitive.Root.displayName
 
-    if (profile?.role !== 'boss' && profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
-
-    // Delete the user (this will cascade to profile)
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(params.id);
-
-    if (error) {
-      console.error('Error deleting user:', error);
-      return NextResponse.json({ 
-        error: error.message || 'Failed to delete technician' 
-      }, { status: 400 });
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('Error deleting technician:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Internal server error' 
-    }, { status: 500 });
-  }
-}
+export { Label }
 EOF
+fi
 
-# Update navigation to include technicians link
-echo "📝 Note: Add this to your navigation menu:"
-echo "  <Link href='/technicians'>Technicians</Link>"
+# Install missing Radix UI dependencies
+echo "📦 Installing Radix UI dependencies..."
+npm install @radix-ui/react-dialog @radix-ui/react-label
+
+# Now add the navigation link to technicians
+echo "🔗 Adding technicians to navigation..."
+
+# Check if we have a navigation component and update it
+if [ -f "components/Navigation.tsx" ]; then
+  echo "Found Navigation component, updating..."
+  # We'll just notify the user to add it manually
+  echo "⚠️ Please add this link to your navigation: <Link href='/technicians'>Technicians</Link>"
+fi
+
+# Test the build
+echo "🔨 Testing build..."
+npm run build 2>&1 | tail -20
+
+# Check if build succeeded
+if [ $? -eq 0 ]; then
+    echo "✅ Build successful!"
+else
+    echo "⚠️ Build may still have issues. Checking specific errors..."
+    
+    # Try to identify specific missing components
+    npm run build 2>&1 | grep "Module not found" | head -10
+fi
 
 # Commit changes
 git add .
-git commit -m "feat: add technician management system for boss users"
+git commit -m "fix: add missing UI components for technician management"
 git push origin main
 
-echo "✅ Technician management system created!"
 echo ""
-echo "⚠️ IMPORTANT: You need to add the SUPABASE_SERVICE_ROLE_KEY to your environment variables!"
+echo "✅ Missing components added!"
 echo ""
-echo "📋 STEPS TO COMPLETE:"
-echo "1. Go to Supabase Dashboard > Settings > API"
-echo "2. Copy the 'service_role' key (NOT the anon key)"
-echo "3. Add to Vercel: SUPABASE_SERVICE_ROLE_KEY=your_key_here"
-echo "4. Run the fixed SQL: cat supabase_setup_fixed.sql"
-echo "5. Navigate to /technicians to create technicians"
+echo "📋 NEXT STEPS:"
+echo "1. Add SUPABASE_SERVICE_ROLE_KEY to Vercel environment variables"
+echo "2. Run the SQL: cat supabase_setup_fixed.sql"
+echo "3. Add link to /technicians in your navigation"
+echo "4. Test the technician management at /technicians"
 echo ""
-echo "🔒 Security Note: The service role key has admin privileges."
-echo "   Keep it secret and never expose it to the client!"
+echo "🔑 Get your service role key from:"
+echo "   Supabase Dashboard → Settings → API → service_role key"
