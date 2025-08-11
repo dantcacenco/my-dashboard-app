@@ -1,400 +1,428 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { formatDate, formatCurrency } from '@/lib/utils'
-import { 
-  ArrowLeft,
-  Edit,
-  MapPin,
-  Phone,
-  Mail,
-  Calendar,
-  Clock,
-  Camera,
-  Package,
-  User,
-  FileText
-} from 'lucide-react'
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { MapPin, Phone, Clock, Calendar, User, AlertCircle, Camera, CheckCircle, PlayCircle, PauseCircle } from 'lucide-react';
+import { format } from 'date-fns';
+import PhotoUpload from './PhotoUpload';
+import type { Job, Customer, Proposal } from '@/app/types';
 
 interface JobDetailViewProps {
-  job: any
-  userRole: string
-  userId: string
+  jobId: string;
 }
 
-export default function JobDetailView({ job, userRole, userId }: JobDetailViewProps) {
-  const router = useRouter()
-  const supabase = createClient()
-  
-  const isBossOrAdmin = userRole === 'boss' || userRole === 'admin'
-  const isTechnician = userRole === 'technician'
+export default function JobDetailView({ jobId }: JobDetailViewProps) {
+  const [job, setJob] = useState<Job | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const supabase = createClientComponentClient();
 
-  const handleStatusChange = async (newStatus: string) => {
+  useEffect(() => {
+    fetchJob();
+  }, [jobId]);
+
+  const fetchJob = async () => {
     try {
+      setLoading(true);
+      setError(null);
+      
+      const { data, error } = await supabase
+        .from('jobs')
+        .select(`
+          *,
+          customers (
+            id,
+            name,
+            email,
+            phone,
+            address
+          ),
+          proposals (
+            id,
+            proposal_number,
+            title,
+            total
+          ),
+          profiles:assigned_technician_id (
+            id,
+            full_name,
+            email,
+            phone
+          )
+        `)
+        .eq('id', jobId)
+        .single();
+
+      if (error) throw error;
+      
+      setJob(data as Job);
+      setCompletionNotes(data.completion_notes || '');
+    } catch (error: any) {
+      console.error('Error fetching job:', error);
+      setError(error.message || 'Failed to load job');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateJobStatus = async (newStatus: string, additionalData?: any) => {
+    try {
+      setUpdating(true);
+      setError(null);
+
+      const updates: any = {
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      };
+
+      // Add status-specific updates
+      if (newStatus === 'in_progress' && !job?.actual_start_time) {
+        updates.actual_start_time = new Date().toISOString();
+      } else if (newStatus === 'completed') {
+        updates.actual_end_time = new Date().toISOString();
+        updates.completion_notes = completionNotes;
+      }
+
+      // Merge any additional data
+      if (additionalData) {
+        Object.assign(updates, additionalData);
+      }
+
       const { error } = await supabase
         .from('jobs')
-        .update({ status: newStatus })
-        .eq('id', job.id)
+        .update(updates)
+        .eq('id', jobId);
 
-      if (error) throw error
+      if (error) throw error;
 
       // Log activity
       await supabase
         .from('job_activity_log')
         .insert({
-          job_id: job.id,
-          user_id: userId,
-          activity_type: 'status_change',
-          description: `Status changed to ${newStatus}`,
-          old_value: job.status,
-          new_value: newStatus
-        })
+          job_id: jobId,
+          user_id: (await supabase.auth.getUser()).data.user?.id,
+          action: `Status changed to ${newStatus}`,
+          details: additionalData || {}
+        });
 
-      router.refresh()
+      await fetchJob();
+      
+      // Show success message
+      setError(null);
     } catch (error: any) {
-      console.error('Error updating status:', error)
-      alert('Failed to update status')
+      console.error('Error updating job status:', error);
+      setError(`Failed to update status: ${error.message || 'Unknown error'}`);
+    } finally {
+      setUpdating(false);
     }
+  };
+
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      'scheduled': 'bg-blue-500',
+      'in_progress': 'bg-yellow-500',
+      'needs_attention': 'bg-red-500',
+      'completed': 'bg-green-500',
+      'cancelled': 'bg-gray-500'
+    };
+    return colors[status] || 'bg-gray-500';
+  };
+
+  const getNextStatus = () => {
+    if (!job) return null;
+    
+    const statusFlow: Record<string, { next: string; label: string; icon: any }> = {
+      'scheduled': { next: 'in_progress', label: 'Start Job', icon: PlayCircle },
+      'in_progress': { next: 'completed', label: 'Complete Job', icon: CheckCircle },
+      'needs_attention': { next: 'in_progress', label: 'Resume Job', icon: PlayCircle }
+    };
+    
+    return statusFlow[job.status];
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
   }
 
+  if (!job) {
+    return (
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>Job not found</AlertDescription>
+      </Alert>
+    );
+  }
+
+  const nextStatus = getNextStatus();
+  const customer = job.customers as Customer;
+  const proposal = job.proposals as Proposal | null;
+  const technician = job.profiles as any;
+
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      {/* Header */}
+    <div className="container mx-auto p-6 max-w-7xl">
+      {error && (
+        <Alert className="mb-6" variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="mb-6">
-        <Link
-          href="/jobs"
-          className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Back to Jobs
-        </Link>
-
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Job #{job.job_number}
-            </h1>
-            <p className="mt-1 text-gray-600">{job.title}</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Badge className="capitalize">
-              {job.job_type}
-            </Badge>
-            {isBossOrAdmin && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push(`/jobs/${job.id}/edit`)}
-              >
-                <Edit className="h-4 w-4 mr-1" />
-                Edit
-              </Button>
-            )}
-          </div>
-        </div>
+        <Button variant="outline" onClick={() => router.push('/jobs')}>
+          ← Back to Jobs
+        </Button>
       </div>
 
-      {/* Status and Quick Actions */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Job Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm text-gray-600">Current Status:</span>
-            <Badge className="capitalize">
-              {job.status.replace('_', ' ')}
-            </Badge>
-          </div>
-          
-          {(isBossOrAdmin || isTechnician) && (
-            <div className="flex flex-wrap gap-2">
-              {job.status === 'scheduled' && (
-                <Button
-                  size="sm"
-                  onClick={() => handleStatusChange('started')}
-                >
-                  Start Job
-                </Button>
-              )}
-              {job.status === 'started' && (
-                <Button
-                  size="sm"
-                  onClick={() => handleStatusChange('in_progress')}
-                >
-                  Mark In Progress
-                </Button>
-              )}
-              {job.status === 'in_progress' && (
-                <>
-                  <Button
-                    size="sm"
-                    onClick={() => handleStatusChange('rough_in')}
-                  >
-                    Complete Rough-In
-                  </Button>
-                </>
-              )}
-              {job.status === 'rough_in' && (
-                <Button
-                  size="sm"
-                  onClick={() => handleStatusChange('final')}
-                >
-                  Move to Final
-                </Button>
-              )}
-              {job.status === 'final' && (
-                <Button
-                  size="sm"
-                  onClick={() => handleStatusChange('complete')}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  Complete Job
-                </Button>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Customer Information */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Customer Information</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Name</p>
-              <p className="font-medium">{job.customers.name}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Contact</p>
-              <div className="space-y-1">
-                {job.customers.phone && (
-                  <a href={`tel:${job.customers.phone}`} className="flex items-center gap-2 text-blue-600 hover:underline">
-                    <Phone className="h-4 w-4" />
-                    {job.customers.phone}
-                  </a>
-                )}
-                {job.customers.email && (
-                  <a href={`mailto:${job.customers.email}`} className="flex items-center gap-2 text-blue-600 hover:underline">
-                    <Mail className="h-4 w-4" />
-                    {job.customers.email}
-                  </a>
-                )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="text-2xl">{job.title}</CardTitle>
+                  <CardDescription>Job #{job.job_number}</CardDescription>
+                </div>
+                <Badge className={`${getStatusColor(job.status)} text-white`}>
+                  {job.status.replace('_', ' ').toUpperCase()}
+                </Badge>
               </div>
-            </div>
-            <div className="md:col-span-2">
-              <p className="text-sm text-gray-600 mb-1">Service Address</p>
-              <p className="font-medium flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                {job.service_address || job.customers.address || 'No address provided'}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="details" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="details">Details</TabsTrigger>
+                  <TabsTrigger value="photos">Photos</TabsTrigger>
+                  <TabsTrigger value="notes">Notes</TabsTrigger>
+                  <TabsTrigger value="activity">Activity</TabsTrigger>
+                </TabsList>
 
-      {/* Schedule & Assignment */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Schedule & Assignment</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Scheduled</p>
-              <p className="font-medium flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                {job.scheduled_date ? formatDate(job.scheduled_date) : 'Not scheduled'}
-                {job.scheduled_time && ` at ${job.scheduled_time}`}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Assigned Technician</p>
-              <p className="font-medium flex items-center gap-2">
-                <User className="h-4 w-4" />
-                {job.assigned_technician?.full_name || job.assigned_technician?.email || 'Unassigned'}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                <TabsContent value="details" className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="font-semibold mb-2">Schedule</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <span>{job.scheduled_date ? format(new Date(job.scheduled_date), 'PPP') : 'Not scheduled'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <span>{job.scheduled_time || 'No time set'}</span>
+                        </div>
+                      </div>
+                    </div>
 
-      {/* Time Tracking */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Time Tracking
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {job.job_time_entries?.length > 0 ? (
-            <div className="space-y-2">
-              {job.job_time_entries.map((entry: any) => (
-                <div key={entry.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                    <div>
+                      <h3 className="font-semibold mb-2">Assigned Technician</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <span>{technician?.full_name || 'Unassigned'}</span>
+                        </div>
+                        {technician?.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                            <span>{technician.phone}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
-                    <p className="text-sm">
-                      {formatDate(entry.clock_in_time)} - 
-                      {entry.clock_out_time ? formatDate(entry.clock_out_time) : 'Active'}
+                    <h3 className="font-semibold mb-2">Job Description</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {job.description || 'No description provided'}
                     </p>
-                    {entry.is_edited && (
-                      <p className="text-xs text-gray-500">Edited: {entry.edit_reason}</p>
-                    )}
                   </div>
+
+                  {job.boss_notes && (
+                    <div>
+                      <h3 className="font-semibold mb-2">Boss Notes</h3>
+                      <p className="text-sm text-muted-foreground p-3 bg-yellow-50 rounded">
+                        {job.boss_notes}
+                      </p>
+                    </div>
+                  )}
+
                   <div>
-                    {entry.total_hours && (
-                      <Badge variant="outline">{entry.total_hours} hours</Badge>
+                    <h3 className="font-semibold mb-2">Service Location</h3>
+                    <div className="flex items-start gap-2 text-sm">
+                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p>{job.service_address || customer?.address || 'No address provided'}</p>
+                        {(job.service_city || job.service_state || job.service_zip) && (
+                          <p>{[job.service_city, job.service_state, job.service_zip].filter(Boolean).join(', ')}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {job.status === 'in_progress' && (
+                    <div>
+                      <h3 className="font-semibold mb-2">Completion Notes</h3>
+                      <Textarea
+                        value={completionNotes}
+                        onChange={(e) => setCompletionNotes(e.target.value)}
+                        placeholder="Add notes about the completed work..."
+                        className="min-h-[100px]"
+                      />
+                    </div>
+                  )}
+
+                  {nextStatus && (
+                    <div className="pt-4">
+                      <Button
+                        onClick={() => updateJobStatus(nextStatus.next)}
+                        disabled={updating}
+                        className="w-full md:w-auto"
+                      >
+                        <nextStatus.icon className="h-4 w-4 mr-2" />
+                        {updating ? 'Updating...' : nextStatus.label}
+                      </Button>
+
+                      {job.status === 'in_progress' && (
+                        <Button
+                          onClick={() => updateJobStatus('needs_attention')}
+                          disabled={updating}
+                          variant="destructive"
+                          className="w-full md:w-auto ml-0 md:ml-2 mt-2 md:mt-0"
+                        >
+                          <AlertCircle className="h-4 w-4 mr-2" />
+                          Mark Needs Attention
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="photos">
+                  <PhotoUpload jobId={jobId} />
+                </TabsContent>
+
+                <TabsContent value="notes">
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="font-semibold mb-2">Job Notes</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {job.notes || 'No notes added'}
+                      </p>
+                    </div>
+                    {job.completion_notes && (
+                      <div>
+                        <h3 className="font-semibold mb-2">Completion Notes</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {job.completion_notes}
+                        </p>
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500">No time entries yet</p>
-          )}
-          
-          {isTechnician && (
-            <Button className="mt-4 w-full" variant="outline">
-              <Clock className="h-4 w-4 mr-2" />
-              Clock In/Out
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+                </TabsContent>
 
-      {/* Photos */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Camera className="h-5 w-5" />
-            Photos
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {job.job_photos?.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {job.job_photos.map((photo: any) => (
-                <div key={photo.id} className="relative">
-                  <img
-                    src={photo.photo_url}
-                    alt={photo.caption || 'Job photo'}
-                    className="w-full h-32 object-cover rounded"
-                  />
-                  <Badge className="absolute top-2 right-2 text-xs">
-                    {photo.photo_type}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500">No photos uploaded yet</p>
-          )}
-          
-          <Button className="mt-4" variant="outline">
-            <Camera className="h-4 w-4 mr-2" />
-            Upload Photos
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Materials */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Materials Used
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {job.job_materials?.length > 0 ? (
-            <div className="space-y-2">
-              {job.job_materials.map((material: any) => (
-                <div key={material.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                  <div>
-                    <p className="font-medium">{material.material_name}</p>
-                    {material.model_number && (
-                      <p className="text-sm text-gray-600">Model: {material.model_number}</p>
-                    )}
-                    {material.serial_number && (
-                      <p className="text-sm text-gray-600">Serial: {material.serial_number}</p>
-                    )}
+                <TabsContent value="activity">
+                  <div className="text-sm text-muted-foreground">
+                    Activity log will be implemented soon
                   </div>
-                  <Badge variant="outline">Qty: {material.quantity}</Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500">No materials recorded yet</p>
-          )}
-          
-          <Button className="mt-4" variant="outline">
-            <Package className="h-4 w-4 mr-2" />
-            Add Materials
-          </Button>
-        </CardContent>
-      </Card>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </div>
 
-      {/* Notes */}
-      {(job.boss_notes || job.completion_notes) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Notes
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {job.boss_notes && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Customer Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
               <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Instructions from Boss</p>
-                <p className="whitespace-pre-wrap">{job.boss_notes}</p>
+                <p className="font-semibold">{customer?.name}</p>
+                {customer?.email && (
+                  <p className="text-sm text-muted-foreground">{customer.email}</p>
+                )}
+                {customer?.phone && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{customer.phone}</span>
+                  </div>
+                )}
               </div>
-            )}
-            {job.completion_notes && (
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Completion Notes</p>
-                <p className="whitespace-pre-wrap">{job.completion_notes}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
 
-      {/* Linked Proposal */}
-      {job.proposals && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Linked Proposal</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="font-medium">Proposal #{job.proposals.proposal_number}</p>
-                <p className="text-sm text-gray-600">
-                  Total: {formatCurrency(job.proposals.total)}
-                </p>
-              </div>
-              {isBossOrAdmin && (
-                <Link href={`/proposals/${job.proposals.id}`}>
-                  <Button variant="outline" size="sm">
+          {proposal && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Related Proposal</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <p className="text-sm">
+                    <span className="font-semibold">Proposal #:</span> {proposal.proposal_number}
+                  </p>
+                  <p className="text-sm">
+                    <span className="font-semibold">Title:</span> {proposal.title}
+                  </p>
+                  <p className="text-sm">
+                    <span className="font-semibold">Total:</span> ${proposal.total.toFixed(2)}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-3"
+                    onClick={() => router.push(`/proposals/${proposal.id}`)}
+                  >
                     View Proposal
                   </Button>
-                </Link>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Time Tracking</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 text-sm">
+                {job.actual_start_time && (
+                  <div>
+                    <span className="font-semibold">Started:</span>
+                    <p className="text-muted-foreground">
+                      {format(new Date(job.actual_start_time), 'PPp')}
+                    </p>
+                  </div>
+                )}
+                {job.actual_end_time && (
+                  <div>
+                    <span className="font-semibold">Completed:</span>
+                    <p className="text-muted-foreground">
+                      {format(new Date(job.actual_end_time), 'PPp')}
+                    </p>
+                  </div>
+                )}
+                {!job.actual_start_time && (
+                  <p className="text-muted-foreground">Not started yet</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
