@@ -1,64 +1,52 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import ProposalsList from '@/components/proposals/ProposalsList'
-import { Button } from '@/components/ui/button'
-import Link from 'next/link'
-import { Plus } from 'lucide-react'
+import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import ProposalsList from './ProposalsList';
+
+export const metadata: Metadata = {
+  title: 'Proposals | Service Pro',
+  description: 'Manage your service proposals',
+};
 
 export default async function ProposalsPage() {
-  const supabase = await createClient()
-  
+  const supabase = await createClient();
+
   // Check authentication
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser();
+  
   if (!user) {
-    redirect('/auth/sign-in')
+    redirect('/auth/login');
   }
 
-  // Get user profile to check role
+  // Get user profile
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single()
+    .single();
 
-  // Check if user has admin or boss role
-  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
-    redirect('/')
+  // Allow both admin and boss roles
+  if (!profile || (profile.role !== 'admin' && profile.role !== 'boss')) {
+    redirect('/');
   }
 
-  // Fetch proposals with customer information
+  // Fetch proposals with customer data
   const { data: proposals, error } = await supabase
     .from('proposals')
     .select(`
       *,
-      customers (
+      customers!inner (
         id,
         name,
         email,
         phone
       )
     `)
-    .order('created_at', { ascending: false })
+    .order('updated_at', { ascending: false });
 
   if (error) {
-    console.error('Error fetching proposals:', error)
+    console.error('Error fetching proposals:', error);
   }
 
-  return (
-    <div className="p-6">
-      <div className="mb-6 flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Proposals</h1>
-        <Link href="/proposals/new">
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            New Proposal
-          </Button>
-        </Link>
-      </div>
-      <ProposalsList 
-        proposals={proposals || []} 
-        userRole={profile?.role || 'boss'}
-      />
-    </div>
-  )
+  return <ProposalsList initialProposals={proposals || []} />;
 }

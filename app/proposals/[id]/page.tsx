@@ -2,30 +2,39 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import ProposalView from './ProposalView'
 
-export default async function ProposalPage({
-  params
-}: {
+interface PageProps {
   params: Promise<{ id: string }>
-}) {
+}
+
+export default async function ProposalPage({ params }: PageProps) {
   const { id } = await params
   const supabase = await createClient()
+
+  // Get current user
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
   
-  // Check if user is authenticated
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
-  if (error || !user) {
-    redirect('/sign-in')
+  if (authError || !user) {
+    redirect('/auth/login')
   }
 
-  // Get user profile to check role
-  const { data: profile } = await supabase
+  // Get user profile
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  // Get proposal with customer information and proposal items
-  const { data: proposal } = await supabase
+  if (profileError || !profile) {
+    redirect('/')
+  }
+
+  // Check authorization - allow both admin and boss
+  if (profile.role !== 'admin' && profile.role !== 'boss') {
+    redirect('/')
+  }
+
+  // Get proposal with all related data
+  const { data: proposal, error } = await supabase
     .from('proposals')
     .select(`
       *,
@@ -51,15 +60,15 @@ export default async function ProposalPage({
     .eq('id', id)
     .single()
 
-  if (!proposal) {
+  if (error || !proposal) {
+    console.error('Error fetching proposal:', error)
     redirect('/proposals')
   }
 
   return (
     <ProposalView 
       proposal={proposal} 
-      userRole={profile?.role || null}
-      userId={user.id}
+      userRole={profile.role}
     />
   )
 }
