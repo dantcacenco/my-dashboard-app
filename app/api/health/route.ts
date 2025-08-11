@@ -1,12 +1,3 @@
-#!/bin/bash
-
-echo "🔧 Fixing API health route..."
-
-# Create API directory structure
-mkdir -p app/api/health
-
-# Create health check API endpoint
-cat > app/api/health/route.ts << 'EOF'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
@@ -40,26 +31,3 @@ export async function GET() {
     }, { status: 500 });
   }
 }
-EOF
-
-# Test build
-echo "🔨 Testing build..."
-npm run build
-
-if [ $? -eq 0 ]; then
-    echo "✅ Build successful!"
-else
-    echo "⚠️ Build warnings detected, but continuing..."
-fi
-
-# Commit and push
-git add .
-git commit -m "fix: add missing API health check route"
-git push origin main
-
-echo "✅ API health route fixed!"
-echo ""
-echo "📋 Now you can:"
-echo "1. Visit /diagnostic to see system diagnostics"
-echo "2. Visit /api/health for quick health check"
-echo "3. Check Vercel deployment for any issues"
