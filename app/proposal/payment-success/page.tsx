@@ -5,17 +5,19 @@ import PaymentSuccessView from './PaymentSuccessView'
 export default async function PaymentSuccessPage({
   searchParams
 }: {
-  searchParams: Promise<{ session_id?: string; proposal_id?: string }>
+  searchParams: { session_id?: string; proposal_id?: string }
 }) {
-  const params = await searchParams
   const supabase = await createClient()
+  
+  const proposalId = searchParams.proposal_id
+  const sessionId = searchParams.session_id
 
-  if (!params.session_id || !params.proposal_id) {
+  if (!proposalId) {
     redirect('/')
   }
 
-  // Get the proposal with all payment details
-  const { data: proposal, error } = await supabase
+  // Get proposal with customer info
+  const { data: proposal } = await supabase
     .from('proposals')
     .select(`
       *,
@@ -27,18 +29,13 @@ export default async function PaymentSuccessPage({
         address
       )
     `)
-    .eq('id', params.proposal_id)
+    .eq('id', proposalId)
     .single()
 
-  if (error || !proposal) {
-    console.error('Error fetching proposal:', error)
+  if (!proposal) {
     redirect('/')
   }
 
-  return (
-    <PaymentSuccessView 
-      proposal={proposal}
-      sessionId={params.session_id}
-    />
-  )
+  // Auto-redirect to proposal after showing success
+  return <PaymentSuccessView proposal={proposal} />
 }

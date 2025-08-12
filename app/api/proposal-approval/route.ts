@@ -1,139 +1,140 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { Resend } from 'resend'
-
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(request: NextRequest) {
   try {
-    const { proposalId, approved, customerNotes, customerName } = await request.json()
-
-    if (!proposalId) {
-      return NextResponse.json(
-        { error: 'Proposal ID is required' },
-        { status: 400 }
-      )
-    }
+    const body = await request.json()
+    const { proposalId, action, reason, token } = body
 
     const supabase = await createClient()
-    const now = new Date().toISOString()
 
-    // Get proposal details for email
-    const { data: proposalData } = await supabase
+    // Verify the proposal and token
+    const { data: proposal, error: proposalError } = await supabase
       .from('proposals')
       .select(`
         *,
-        customers (name, email, phone)
+        customers (*)
       `)
       .eq('id', proposalId)
+      .eq('customer_view_token', token)
       .single()
 
-    const updateData: any = {
-      status: approved ? 'approved' : 'rejected',
-      customer_notes: customerNotes || null
-    }
-
-    if (approved) {
-      updateData.approved_at = now
-    } else {
-      updateData.rejected_at = now
-    }
-
-    // Update proposal
-    const { data: proposal, error } = await supabase
-      .from('proposals')
-      .update(updateData)
-      .eq('id', proposalId)
-      .select(`
-        *,
-        customers (id, name, email, phone)
-      `)
-      .single()
-
-    if (error) {
-      console.error('Error updating proposal:', error)
+    if (proposalError || !proposal) {
       return NextResponse.json(
-        { error: 'Failed to update proposal' },
-        { status: 500 }
+        { error: 'Invalid proposal or token' },
+        { status: 404 }
       )
     }
 
-    // Send notification email to business
-    if (approved && proposalData) {
-      const businessEmail = process.env.BUSINESS_EMAIL || 'dantcacenco@gmail.com'
-      const fromEmail = process.env.EMAIL_FROM || 'onboarding@resend.dev'
-      
-      const emailHtml = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: #10b981; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-              .content { padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; }
-              .details { background: white; padding: 15px; border-radius: 6px; margin: 15px 0; }
-              .footer { padding: 20px; text-align: center; color: #666; font-size: 14px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>🎉 Proposal Approved!</h1>
-              </div>
-              <div class="content">
-                <h2>Great news! Proposal #${proposalData.proposal_number} has been approved</h2>
-                
-                <div class="details">
-                  <h3>Customer Details:</h3>
-                  <p><strong>Name:</strong> ${proposalData.customers.name}</p>
-                  <p><strong>Email:</strong> ${proposalData.customers.email}</p>
-                  <p><strong>Phone:</strong> ${proposalData.customers.phone}</p>
-                  <p><strong>Approved by:</strong> ${customerName || proposalData.customers.name}</p>
-                  <p><strong>Total Amount:</strong> $${proposalData.total.toFixed(2)}</p>
-                  ${customerNotes ? `<p><strong>Customer Notes:</strong> ${customerNotes}</p>` : ''}
-                </div>
-                
-                <div class="details">
-                  <h3>Next Steps:</h3>
-                  <ul>
-                    <li>Customer will be prompted to pay 50% deposit ($${(proposalData.total * 0.5).toFixed(2)})</li>
-                    <li>Contact customer to schedule project start</li>
-                    <li>Prepare materials and equipment</li>
-                  </ul>
-                </div>
-                
-                <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-              </div>
-              <div class="footer">
-                <p>This is an automated notification from Service Pro</p>
-              </div>
-            </div>
-          </body>
-        </html>
-      `
-
-      try {
-        await resend.emails.send({
-          from: `Service Pro <${fromEmail}>`,
-          to: [businessEmail],
-          subject: `✅ Proposal #${proposalData.proposal_number} APPROVED by ${proposalData.customers.name}`,
-          html: emailHtml,
-          text: `Proposal #${proposalData.proposal_number} has been approved by ${proposalData.customers.name}. Total: $${proposalData.total.toFixed(2)}`
+    // Update proposal based on action
+    if (action === 'approve') {
+      // Update proposal status
+      const { error: updateError } = await supabase
+        .from('proposals')
+        .update({
+          status: 'approved',
+          approved_at: new Date().toISOString()
         })
-      } catch (emailError) {
-        console.error('Error sending approval email:', emailError)
-        // Don't fail the approval if email fails
+        .eq('id', proposalId)
+
+      if (updateError) {
+        return NextResponse.json(
+          { error: 'Failed to approve proposal' },
+          { status: 500 }
+        )
       }
+
+      // Auto-create job
+      const today = new Date()
+      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
+      const { count } = await supabase
+        .from('jobs')
+        .select('*', { count: 'exact', head: true })
+        .ilike('job_number', `JOB-${dateStr}-%`)
+
+      const jobNumber = `JOB-${dateStr}-${String((count || 0) + 1).padStart(3, '0')}`
+
+      // Create job
+      const { data: job, error: jobError } = await supabase
+        .from('jobs')
+        .insert({
+          job_number: jobNumber,
+          customer_id: proposal.customer_id,
+          customer_name: proposal.customers?.name || 'Unknown',
+          customer_email: proposal.customers?.email,
+          customer_phone: proposal.customers?.phone,
+          service_address: proposal.customers?.address || '',
+          total_value: proposal.total,
+          status: 'pending',
+          notes: `Auto-created from approved Proposal #${proposal.proposal_number}`,
+          created_by: proposal.created_by
+        })
+        .select()
+        .single()
+
+      if (!jobError && job) {
+        // Link job to proposal
+        await supabase
+          .from('job_proposals')
+          .insert({
+            job_id: job.id,
+            proposal_id: proposalId,
+            attached_by: proposal.created_by
+          })
+
+        // Update proposal with job_id
+        await supabase
+          .from('proposals')
+          .update({ job_id: job.id })
+          .eq('id', proposalId)
+
+        // Send email notifications (implement with your email service)
+        // TODO: Send email to boss
+        // TODO: Send confirmation to customer
+      }
+
+      // Log activity
+      await supabase
+        .from('proposal_activities')
+        .insert({
+          proposal_id: proposalId,
+          activity_type: 'approved',
+          description: 'Proposal approved by customer',
+          metadata: { job_id: job?.id }
+        })
+
+    } else if (action === 'reject') {
+      // Update proposal status
+      const { error: updateError } = await supabase
+        .from('proposals')
+        .update({
+          status: 'rejected',
+          rejected_at: new Date().toISOString(),
+          customer_notes: reason
+        })
+        .eq('id', proposalId)
+
+      if (updateError) {
+        return NextResponse.json(
+          { error: 'Failed to reject proposal' },
+          { status: 500 }
+        )
+      }
+
+      // Log activity
+      await supabase
+        .from('proposal_activities')
+        .insert({
+          proposal_id: proposalId,
+          activity_type: 'rejected',
+          description: 'Proposal rejected by customer',
+          metadata: { reason }
+        })
     }
 
-    return NextResponse.json({ 
-      success: true,
-      proposal 
-    })
-
+    return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error('Error in proposal approval:', error)
+    console.error('Proposal approval error:', error)
     return NextResponse.json(
       { error: error.message || 'Failed to process approval' },
       { status: 500 }

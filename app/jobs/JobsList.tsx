@@ -2,191 +2,228 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { formatDate } from '@/lib/utils'
-import { 
-  Eye, 
-  MapPin, 
-  Calendar,
-  User,
-  Briefcase,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Wrench
-} from 'lucide-react'
-
-interface Job {
-  id: string
-  job_number: string
-  title: string
-  job_type: string
-  status: string
-  scheduled_date: string | null
-  scheduled_time: string | null
-  customers: {
-    id: string
-    name: string
-    address: string | null
-  }
-  assigned_technician: {
-    id: string
-    full_name: string | null
-    email: string
-  } | null
-}
+import { Button } from '@/components/ui/button'
+import { MapPin, Phone, Mail, Calendar, DollarSign, FileText, Users } from 'lucide-react'
 
 interface JobsListProps {
-  jobs: Job[]
+  jobs: any[]
   userRole: string
-  userId: string
 }
 
-export default function JobsList({ jobs, userRole, userId }: JobsListProps) {
-  const [filter, setFilter] = useState<string>('all')
+export default function JobsList({ jobs, userRole }: JobsListProps) {
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list')
 
-  const getJobTypeIcon = (type: string) => {
-    switch (type) {
-      case 'installation':
-        return <Briefcase className="h-4 w-4" />
-      case 'repair':
-        return <Wrench className="h-4 w-4" />
-      case 'maintenance':
-        return <CheckCircle className="h-4 w-4" />
-      case 'emergency':
-        return <AlertCircle className="h-4 w-4" />
-      default:
-        return <Clock className="h-4 w-4" />
-    }
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0
+    }).format(amount)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'scheduled':
-        return 'bg-blue-100 text-blue-800'
-      case 'started':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'in_progress':
-        return 'bg-orange-100 text-orange-800'
-      case 'rough_in':
-        return 'bg-purple-100 text-purple-800'
-      case 'final':
-        return 'bg-indigo-100 text-indigo-800'
-      case 'complete':
-        return 'bg-green-100 text-green-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
+      case 'pending': return 'bg-yellow-100 text-yellow-800'
+      case 'in_progress': return 'bg-blue-100 text-blue-800'
+      case 'completed': return 'bg-green-100 text-green-800'
+      case 'cancelled': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
     }
   }
-
-  const filteredJobs = filter === 'all' 
-    ? jobs 
-    : jobs.filter(job => job.status === filter)
 
   if (jobs.length === 0) {
     return (
       <Card>
-        <CardContent className="pt-6">
-          <div className="text-center text-muted-foreground">
-            {userRole === 'technician' 
-              ? 'No jobs assigned to you yet.'
-              : 'No jobs found. Create your first job to get started.'}
-          </div>
+        <CardContent className="text-center py-12">
+          <p className="text-gray-500">No jobs found</p>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <>
-      {/* Filter buttons */}
-      <div className="mb-4 flex gap-2">
-        <Button
-          variant={filter === 'all' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setFilter('all')}
-        >
-          All Jobs ({jobs.length})
-        </Button>
-        <Button
-          variant={filter === 'scheduled' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setFilter('scheduled')}
-        >
-          Scheduled
-        </Button>
-        <Button
-          variant={filter === 'in_progress' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setFilter('in_progress')}
-        >
-          In Progress
-        </Button>
-        <Button
-          variant={filter === 'complete' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setFilter('complete')}
-        >
-          Complete
-        </Button>
+    <div className="space-y-4">
+      {/* View Toggle */}
+      <div className="flex justify-end">
+        <div className="flex gap-2">
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode('list')}
+          >
+            List View
+          </Button>
+          <Button
+            variant={viewMode === 'grid' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode('grid')}
+          >
+            Grid View
+          </Button>
+        </div>
       </div>
 
-      {/* Jobs grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredJobs.map((job) => (
-          <Card key={job.id}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    {getJobTypeIcon(job.job_type)}
-                    {job.title}
-                  </CardTitle>
-                  <CardDescription>
-                    #{job.job_number} • {job.customers?.name || 'No customer'}
-                  </CardDescription>
+      {viewMode === 'list' ? (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Job #</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Customer</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Address</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Value</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tasks</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Created</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {jobs.map((job) => (
+                    <tr key={job.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <Link href={`/jobs/${job.id}`} className="font-medium text-blue-600 hover:text-blue-700">
+                          {job.job_number}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-medium">{job.customer_name}</p>
+                          {job.customer_email && (
+                            <p className="text-sm text-gray-500">{job.customer_email}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm">{job.service_address}</p>
+                        {job.service_city && (
+                          <p className="text-sm text-gray-500">
+                            {job.service_city}, {job.service_state} {job.service_zip}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatCurrency(job.total_value)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge className={getStatusColor(job.status)}>
+                          {job.status.replace('_', ' ')}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm">
+                          {job.tasks?.[0]?.count || 0} tasks
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {formatDate(job.created_at)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link href={`/jobs/${job.id}`}>
+                          <Button size="sm" variant="outline">
+                            View
+                          </Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {jobs.map((job) => (
+            <Card key={job.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-lg">{job.job_number}</CardTitle>
+                    <Badge className={`mt-2 ${getStatusColor(job.status)}`}>
+                      {job.status.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                  <span className="text-lg font-bold text-green-600">
+                    {formatCurrency(job.total_value)}
+                  </span>
                 </div>
-                <Badge className={getStatusColor(job.status)}>
-                  {job.status.replace('_', ' ')}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm">
-                {job.scheduled_date && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Calendar className="h-4 w-4" />
-                    {formatDate(job.scheduled_date)}
-                    {job.scheduled_time && ` at ${job.scheduled_time}`}
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <p className="font-medium">{job.customer_name}</p>
+                  {job.customer_email && (
+                    <p className="text-sm text-gray-500 flex items-center mt-1">
+                      <Mail className="h-3 w-3 mr-1" />
+                      {job.customer_email}
+                    </p>
+                  )}
+                  {job.customer_phone && (
+                    <p className="text-sm text-gray-500 flex items-center mt-1">
+                      <Phone className="h-3 w-3 mr-1" />
+                      {job.customer_phone}
+                    </p>
+                  )}
+                </div>
+
+                {job.service_address && (
+                  <div className="text-sm text-gray-600">
+                    <p className="flex items-start">
+                      <MapPin className="h-3 w-3 mr-1 mt-0.5" />
+                      <span>
+                        {job.service_address}
+                        {job.service_city && (
+                          <>, {job.service_city}, {job.service_state} {job.service_zip}</>
+                        )}
+                      </span>
+                    </p>
                   </div>
                 )}
-                {job.customers?.address && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <MapPin className="h-4 w-4" />
-                    {job.customers.address}
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center text-gray-500">
+                    <Users className="h-3 w-3 mr-1" />
+                    {job.tasks?.[0]?.count || 0} tasks
+                  </span>
+                  <span className="flex items-center text-gray-500">
+                    <Calendar className="h-3 w-3 mr-1" />
+                    {formatDate(job.created_at)}
+                  </span>
+                </div>
+
+                {job.job_proposals?.length > 0 && (
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-gray-500 mb-1">Linked Proposals:</p>
+                    {job.job_proposals.map((jp: any) => (
+                      <Badge key={jp.proposal_id} variant="outline" className="text-xs mr-1">
+                        #{jp.proposals?.proposal_number}
+                      </Badge>
+                    ))}
                   </div>
                 )}
-                {job.assigned_technician && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <User className="h-4 w-4" />
-                    {job.assigned_technician.full_name || job.assigned_technician.email}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Link href={`/jobs/${job.id}`} className="w-full">
-                <Button variant="outline" size="sm" className="w-full">
-                  <Eye className="h-4 w-4 mr-1" />
-                  View Details
-                </Button>
-              </Link>
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
-    </>
+
+                <Link href={`/jobs/${job.id}`} className="block">
+                  <Button className="w-full" variant="outline">
+                    View Details
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

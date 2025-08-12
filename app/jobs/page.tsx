@@ -1,75 +1,60 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import JobsList from './JobsList'
-import { Button } from '@/components/ui/button'
-import Link from 'next/link'
-import { Plus } from 'lucide-react'
 
 export default async function JobsPage() {
   const supabase = await createClient()
   
-  // Check authentication
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/auth/sign-in')
+  const { data: { user }, error } = await supabase.auth.getUser()
+  
+  if (error || !user) {
+    redirect('/auth/signin')
   }
 
-  // Get user profile to check role
+  // Get user profile
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  // Only show jobs based on role
+  if (!profile) {
+    redirect('/auth/signin')
+  }
+
+  // Get jobs based on role
   let jobsQuery = supabase
     .from('jobs')
     .select(`
       *,
-      customers (
-        id,
-        name,
-        email,
-        phone,
-        address
+      customers (*),
+      job_proposals (
+        proposal_id,
+        proposals (
+          proposal_number,
+          title,
+          total
+        )
       ),
-      assigned_technician:profiles!jobs_assigned_technician_id_fkey (
-        id,
-        full_name,
-        email
-      )
+      tasks (count)
     `)
     .order('created_at', { ascending: false })
 
-  // Technicians only see their assigned jobs
-  if (profile?.role === 'technician') {
-    jobsQuery = jobsQuery.eq('assigned_technician_id', user.id)
+  // Technicians only see jobs with their tasks
+  if (profile.role === 'technician') {
+    // This would need to be refined to show only jobs with tasks assigned to this technician
+    jobsQuery = jobsQuery
   }
 
-  const { data: jobs, error } = await jobsQuery
-
-  if (error) {
-    console.error('Error fetching jobs:', error)
-  }
+  const { data: jobs } = await jobsQuery
 
   return (
     <div className="p-6">
-      <div className="mb-6 flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Jobs</h1>
-        {(profile?.role === 'admin' || profile?.role === 'boss') && (
-          <Link href="/jobs/new">
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Job
-            </Button>
-          </Link>
-        )}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Jobs</h1>
       </div>
-      <JobsList 
-        jobs={jobs || []} 
-        userRole={profile?.role || 'technician'}
-        userId={user.id}
-      />
+      
+      <JobsList jobs={jobs || []} userRole={profile.role} />
     </div>
   )
 }

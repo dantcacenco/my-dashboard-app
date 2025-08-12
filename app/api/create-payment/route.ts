@@ -1,149 +1,137 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
 import { createClient } from '@/lib/supabase/server'
+import { getBillComClient, shouldUseBillCom } from '@/lib/billcom/client'
+import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-07-30.basil'
+// Initialize Stripe (keeping for fallback)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2025-07-30.basil',
 })
 
 export async function POST(request: NextRequest) {
   try {
-    const {
-      proposal_id,
-      proposal_number,
-      customer_name,
-      customer_email,
-      amount,
-      payment_type,
-      description,
-      payment_stage = 'deposit'
-    } = await request.json()
+    const body = await request.json()
+    const { proposalId, amount, paymentStage, customerEmail, useStripe } = body
 
-    console.log('Creating payment for:', {
-      proposal_id,
-      payment_stage,
-      amount,
-      payment_type
-    })
-
-    if (!proposal_id || !amount || !customer_email) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
-    }
-
-    // Get the proposal with customer_view_token
     const supabase = await createClient()
-    const { data: proposal, error: fetchError } = await supabase
+
+    // Get proposal details
+    const { data: proposal, error: proposalError } = await supabase
       .from('proposals')
-      .select('customer_view_token, total')
-      .eq('id', proposal_id)
+      .select('*')
+      .eq('id', proposalId)
       .single()
 
-    if (fetchError || !proposal) {
-      console.error('Error fetching proposal:', fetchError)
+    if (proposalError || !proposal) {
       return NextResponse.json(
         { error: 'Proposal not found' },
         { status: 404 }
       )
     }
 
-    // Ensure customer_view_token exists
-    let customerViewToken = proposal.customer_view_token
-    if (!customerViewToken) {
-      const { data: tokenData, error: tokenError } = await supabase
-        .from('proposals')
-        .update({ customer_view_token: crypto.randomUUID() })
-        .eq('id', proposal_id)
-        .select('customer_view_token')
-        .single()
-      
-      if (tokenError || !tokenData) {
-        console.error('Error generating token:', tokenError)
-        return NextResponse.json(
-          { error: 'Failed to generate customer token' },
-          { status: 500 }
-        )
+    // Determine payment processor
+    const useBillCom = useStripe === false || shouldUseBillCom()
+
+    if (useBillCom) {
+      // Use Bill.com
+      try {
+        const billcom = getBillComClient()
+        
+        // Create invoice in Bill.com
+        const invoice = await billcom.createInvoice({
+          customerId: proposal.customer_id,
+          invoiceNumber: `${proposal.proposal_number}-${paymentStage}`,
+          date: new Date().toISOString(),
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+          amount: amount,
+          description: `${paymentStage} payment for Proposal #${proposal.proposal_number}`,
+          lineItems: [{
+            description: `${paymentStage} Payment - ${proposal.title}`,
+            amount: amount
+          }]
+        })
+
+        // Send invoice to customer
+        await billcom.sendInvoice(invoice.id, customerEmail)
+
+        // Get payment URL
+        const paymentUrl = await billcom.getPaymentUrl(invoice.id)
+
+        // Update proposal with Bill.com invoice ID
+        await supabase
+          .from('proposals')
+          .update({
+            billcom_invoice_id: invoice.id,
+            payment_initiated_at: new Date().toISOString(),
+            last_payment_attempt: new Date().toISOString()
+          })
+          .eq('id', proposalId)
+
+        return NextResponse.json({
+          success: true,
+          paymentUrl: paymentUrl,
+          invoiceId: invoice.id,
+          processor: 'billcom'
+        })
+      } catch (billcomError: any) {
+        console.error('Bill.com error:', billcomError)
+        
+        // Fallback to Stripe if Bill.com fails
+        if (process.env.STRIPE_SECRET_KEY) {
+          console.log('Falling back to Stripe...')
+        } else {
+          return NextResponse.json(
+            { error: billcomError.message || 'Payment processing failed' },
+            { status: 500 }
+          )
+        }
       }
-      customerViewToken = tokenData.customer_view_token
     }
 
-    // Create or update payment stage record
-    const { error: stageError } = await supabase
-      .from('payment_stages')
-      .upsert({
-        proposal_id,
-        stage: payment_stage,
-        amount: amount,
-        percentage: payment_stage === 'deposit' ? 50 : payment_stage === 'roughin' ? 30 : 20,
-        due_date: new Date().toISOString().split('T')[0],
-        paid: false
-      }, {
-        onConflict: 'proposal_id,stage'
-      })
-
-    if (stageError) {
-      console.error('Error creating payment stage:', stageError)
-    }
-
-    // Define payment method types
-    const paymentMethodTypes = payment_type === 'ach' 
-      ? ['us_bank_account' as const] 
-      : ['card' as const]
-
-    // Create Stripe checkout session
+    // Stripe fallback (keeping existing Stripe code for safety)
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: paymentMethodTypes,
+      payment_method_types: ['card'],
       line_items: [
         {
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Service Pro - ${description}`,
-              description: `${description} for proposal ${proposal_number}`,
+              name: `${paymentStage} Payment - Proposal #${proposal.proposal_number}`,
+              description: proposal.title,
             },
-            unit_amount: Math.round(amount * 100) // Convert to cents
+            unit_amount: Math.round(amount * 100), // Convert to cents for Stripe
           },
-          quantity: 1
-        }
+          quantity: 1,
+        },
       ],
       mode: 'payment',
-      customer_email: customer_email,
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://servicepro-hvac.vercel.app'}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposal_id}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://servicepro-hvac.vercel.app'}/proposal/view/${customerViewToken}?payment=cancelled`,
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || request.headers.get('origin')}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposalId}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || request.headers.get('origin')}/proposal/view/${proposal.customer_view_token}`,
+      customer_email: customerEmail,
       metadata: {
-        proposal_id,
-        proposal_number,
-        customer_name,
-        payment_type: payment_type || 'card',
-        payment_stage: payment_stage,
-        customer_view_token: customerViewToken
+        proposal_id: proposalId,
+        payment_stage: paymentStage,
       },
-      billing_address_collection: 'required',
-      phone_number_collection: {
-        enabled: true
-      },
-      ...(payment_type === 'ach' && {
-        payment_method_options: {
-          us_bank_account: {
-            financial_connections: {
-              permissions: ['payment_method' as const]
-            }
-          }
-        }
+    })
+
+    // Update proposal with session ID
+    await supabase
+      .from('proposals')
+      .update({
+        stripe_session_id: session.id,
+        payment_initiated_at: new Date().toISOString(),
+        last_payment_attempt: new Date().toISOString()
       })
+      .eq('id', proposalId)
+
+    return NextResponse.json({
+      success: true,
+      paymentUrl: session.url,
+      sessionId: session.id,
+      processor: 'stripe'
     })
-
-    console.log('Stripe session created successfully:', session.id)
-
-    return NextResponse.json({ 
-      checkout_url: session.url,
-      session_id: session.id 
-    })
-
   } catch (error: any) {
-    console.error('Error creating Stripe checkout session:', error)
+    console.error('Payment API error:', error)
     return NextResponse.json(
       { error: error.message || 'Failed to create payment session' },
       { status: 500 }
