@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getBillComClient, shouldUseBillCom } from '@/lib/billcom/client'
 import Stripe from 'stripe'
 
-// Initialize Stripe (keeping for fallback)
+// Initialize Stripe (keeping for fallback and current use)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-07-30.basil',
 })
@@ -30,7 +30,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine payment processor
-    const useBillCom = useStripe === false || shouldUseBillCom()
+    // Only use Bill.com if explicitly requested AND configured
+    const useBillCom = useStripe === false && shouldUseBillCom()
 
     if (useBillCom) {
       // Use Bill.com
@@ -61,7 +62,6 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('proposals')
           .update({
-            billcom_invoice_id: invoice.id,
             payment_initiated_at: new Date().toISOString(),
             last_payment_attempt: new Date().toISOString()
           })
@@ -74,21 +74,12 @@ export async function POST(request: NextRequest) {
           processor: 'billcom'
         })
       } catch (billcomError: any) {
-        console.error('Bill.com error:', billcomError)
-        
-        // Fallback to Stripe if Bill.com fails
-        if (process.env.STRIPE_SECRET_KEY) {
-          console.log('Falling back to Stripe...')
-        } else {
-          return NextResponse.json(
-            { error: billcomError.message || 'Payment processing failed' },
-            { status: 500 }
-          )
-        }
+        console.error('Bill.com error, falling back to Stripe:', billcomError)
+        // Fall through to Stripe
       }
     }
 
-    // Stripe fallback (keeping existing Stripe code for safety)
+    // Use Stripe (default or fallback)
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [

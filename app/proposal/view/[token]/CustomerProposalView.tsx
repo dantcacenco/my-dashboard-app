@@ -145,7 +145,7 @@ export default function CustomerProposalView({ proposal, token }: CustomerPropos
           amount: amount,
           paymentStage: stage,
           customerEmail: proposal.customers?.email,
-          useStripe: false // Use Bill.com by default
+          useStripe: true // Use Bill.com by default
         })
       })
 
