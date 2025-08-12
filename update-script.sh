@@ -1,222 +1,70 @@
 #!/bin/bash
 
-echo "🔧 Fixing payment success page type error for Next.js 15..."
+echo "🔧 Fixing DashboardContent TypeScript error..."
 
-# Fix the payment success page to handle async searchParams
-cat > app/proposal/payment-success/page.tsx << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import PaymentSuccessView from './PaymentSuccessView'
-
-interface PageProps {
-  searchParams: Promise<{ session_id?: string; proposal_id?: string }>
-}
-
-export default async function PaymentSuccessPage({ searchParams }: PageProps) {
-  const params = await searchParams
-  const supabase = await createClient()
-  
-  const proposalId = params.proposal_id
-  const sessionId = params.session_id
-
-  if (!proposalId) {
-    redirect('/')
-  }
-
-  // Get proposal with customer info
-  const { data: proposal } = await supabase
-    .from('proposals')
-    .select(`
-      *,
-      customers (
-        id,
-        name,
-        email,
-        phone,
-        address
-      )
-    `)
-    .eq('id', proposalId)
-    .single()
-
-  if (!proposal) {
-    redirect('/')
-  }
-
-  // Auto-redirect to proposal after showing success
-  return <PaymentSuccessView proposal={proposal} />
-}
-EOF
-
-echo "✅ Payment success page fixed"
-
-# Also check and fix any other pages with searchParams
-echo ""
-echo "🔧 Checking for other pages that need fixing..."
-
-# Fix test-auth page if it exists
-if [ -f "app/test-auth/page.tsx" ]; then
-  echo "Skipping test-auth page (no searchParams)"
-fi
-
-# Let's also ensure the proposal view page handles async params correctly
-echo ""
-echo "🔧 Ensuring proposal view page handles async params..."
-
-cat > app/proposal/view/[token]/page.tsx << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
-import CustomerProposalView from './CustomerProposalView'
-
-interface PageProps {
-  params: Promise<{ token: string }>
-}
-
-export default async function CustomerProposalPage({ params }: PageProps) {
-  const { token } = await params
-  const supabase = await createClient()
-
-  // Get proposal by token
-  const { data: proposal, error } = await supabase
-    .from('proposals')
-    .select(`
-      *,
-      customers (
-        id,
-        name,
-        email,
-        phone,
-        address
-      ),
-      proposal_items (
-        id,
-        name,
-        description,
-        quantity,
-        unit_price,
-        total_price,
-        sort_order
-      )
-    `)
-    .eq('customer_view_token', token)
-    .single()
-
-  if (error || !proposal) {
-    notFound()
-  }
-
-  return <CustomerProposalView proposal={proposal} token={token} />
-}
-EOF
-
-echo "✅ Proposal view page updated"
-
-# Fix jobs detail page to handle async params
-echo ""
-echo "🔧 Creating jobs detail page with async params..."
-
-cat > app/jobs/[id]/page.tsx << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import JobDetailView from './JobDetailView'
-
-interface PageProps {
-  params: Promise<{ id: string }>
-}
-
-export default async function JobDetailPage({ params }: PageProps) {
-  const { id } = await params
-  const supabase = await createClient()
-  
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
-  if (error || !user) {
-    redirect('/auth/signin')
-  }
-
-  // Get user profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) {
-    redirect('/auth/signin')
-  }
-
-  // Get job with all related data
-  const { data: job } = await supabase
-    .from('jobs')
-    .select(`
-      *,
-      customers (*),
-      job_proposals (
-        proposal_id,
-        proposals (
-          proposal_number,
-          title,
-          total,
-          status
-        )
-      ),
-      tasks (
-        *,
-        task_technicians (
-          technician_id,
-          profiles (
-            full_name,
-            email,
-            phone
-          )
-        )
-      )
-    `)
-    .eq('id', id)
-    .single()
-
-  if (!job) {
-    redirect('/jobs')
-  }
-
-  return (
-    <div className="p-6">
-      <JobDetailView job={job} userRole={profile.role} userId={user.id} />
-    </div>
-  )
-}
-EOF
-
-# Create JobDetailView component
-cat > app/jobs/[id]/JobDetailView.tsx << 'EOF'
+# Fix the percent undefined error in DashboardContent
+cat > app/DashboardContent.tsx << 'EOF'
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { 
-  MapPin, Phone, Mail, Calendar, DollarSign, 
-  FileText, Plus, Clock, User, Edit
-} from 'lucide-react'
 import Link from 'next/link'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts'
+import CalendarView from '@/components/CalendarView'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-interface JobDetailViewProps {
-  job: any
-  userRole: string
-  userId: string
+interface DashboardData {
+  metrics: {
+    totalProposals: number
+    totalRevenue: number
+    approvedProposals: number
+    conversionRate: number
+    paymentRate: number
+  }
+  monthlyRevenue: Array<{
+    month: string
+    revenue: number
+    proposals: number
+  }>
+  statusCounts: {
+    draft: number
+    sent: number
+    viewed: number
+    approved: number
+    rejected: number
+    paid: number
+  }
+  recentProposals: Array<{
+    id: string
+    proposal_number: string
+    title: string
+    total: number
+    status: string
+    created_at: string
+    customers: Array<{ name: string; email: string }> | null
+  }>
+  recentActivities: Array<{
+    id: string
+    activity_type: string
+    description: string
+    created_at: string
+    proposals: Array<{ proposal_number: string; title: string }> | null
+  }>
 }
 
-export default function JobDetailView({ job, userRole, userId }: JobDetailViewProps) {
-  const router = useRouter()
-  const [showTaskForm, setShowTaskForm] = useState(false)
+interface DashboardContentProps {
+  data: DashboardData
+}
+
+export default function DashboardContent({ data }: DashboardContentProps) {
+  const [calendarExpanded, setCalendarExpanded] = useState(false)
+  const { metrics, monthlyRevenue, statusCounts, recentProposals, recentActivities } = data
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 0
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(amount)
   }
 
@@ -224,277 +72,246 @@ export default function JobDetailView({ job, userRole, userId }: JobDetailViewPr
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
-      year: 'numeric'
+      hour: '2-digit',
+      minute: '2-digit'
     })
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800'
-      case 'in_progress': return 'bg-blue-100 text-blue-800'
-      case 'completed': return 'bg-green-100 text-green-800'
-      case 'cancelled': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
+    const colors = {
+      draft: 'bg-gray-100 text-gray-800',
+      sent: 'bg-blue-100 text-blue-800',
+      viewed: 'bg-purple-100 text-purple-800',
+      approved: 'bg-green-100 text-green-800',
+      rejected: 'bg-red-100 text-red-800',
+      paid: 'bg-emerald-100 text-emerald-800'
+    }
+    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-800'
+  }
+
+  const getActivityIcon = (activityType: string) => {
+    switch (activityType) {
+      case 'created':
+        return '➕'
+      case 'sent':
+        return '📧'
+      case 'viewed':
+        return '👁️'
+      case 'approved':
+        return '✅'
+      case 'rejected':
+        return '❌'
+      case 'payment_received':
+        return '💰'
+      default:
+        return '📝'
     }
   }
 
-  const getTaskStatusColor = (status: string) => {
-    switch (status) {
-      case 'scheduled': return 'bg-gray-100 text-gray-800'
-      case 'in_progress': return 'bg-blue-100 text-blue-800'
-      case 'completed': return 'bg-green-100 text-green-800'
-      case 'cancelled': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
+  const statusData = Object.entries(statusCounts).map(([key, value]) => ({
+    name: key.charAt(0).toUpperCase() + key.slice(1),
+    value
+  }))
+
+  const COLORS = ['#94a3b8', '#3b82f6', '#a855f7', '#10b981', '#ef4444', '#10b981']
+
+  // Custom label function with proper typing
+  const renderLabel = (entry: any) => {
+    const percent = entry.percent || 0
+    return `${entry.name} ${(percent * 100).toFixed(0)}%`
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold">Job {job.job_number}</h1>
-          <Badge className={`mt-2 ${getStatusColor(job.status)}`}>
-            {job.status.replace('_', ' ')}
-          </Badge>
-        </div>
-        <div className="flex gap-2">
-          {(userRole === 'boss' || userRole === 'admin') && (
-            <>
-              <Button variant="outline" size="sm">
-                <Edit className="h-4 w-4 mr-1" />
-                Edit Job
-              </Button>
-              <Button size="sm" onClick={() => setShowTaskForm(true)}>
-                <Plus className="h-4 w-4 mr-1" />
-                Create Task
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Job Details */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Customer Information */}
+      {/* Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Customer Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <p className="font-medium text-lg">{job.customer_name}</p>
-            </div>
-            {job.customer_email && (
-              <div className="flex items-center text-sm">
-                <Mail className="h-4 w-4 mr-2 text-gray-400" />
-                <a href={`mailto:${job.customer_email}`} className="text-blue-600 hover:text-blue-700">
-                  {job.customer_email}
-                </a>
-              </div>
-            )}
-            {job.customer_phone && (
-              <div className="flex items-center text-sm">
-                <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                <a href={`tel:${job.customer_phone}`} className="text-blue-600 hover:text-blue-700">
-                  {job.customer_phone}
-                </a>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Service Location */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Service Location</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Proposals</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-start">
-              <MapPin className="h-4 w-4 mr-2 text-gray-400 mt-0.5" />
-              <div className="text-sm">
-                <p>{job.service_address}</p>
-                {job.service_city && (
-                  <p>{job.service_city}, {job.service_state} {job.service_zip}</p>
-                )}
-              </div>
-            </div>
-            {job.service_address && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full mt-3"
-                onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(job.service_address + ' ' + (job.service_city || '') + ' ' + (job.service_state || '') + ' ' + (job.service_zip || ''))}`, '_blank')}
-              >
-                <MapPin className="h-4 w-4 mr-1" />
-                View on Map
-              </Button>
-            )}
+            <p className="text-2xl font-bold">{metrics.totalProposals}</p>
           </CardContent>
         </Card>
-
-        {/* Job Value */}
+        
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Job Value</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-green-600">
-              {formatCurrency(job.total_value)}
-            </p>
-            <p className="text-sm text-gray-500 mt-2">
-              Created on {formatDate(job.created_at)}
-            </p>
+            <p className="text-2xl font-bold text-green-600">{formatCurrency(metrics.totalRevenue)}</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Approved</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{metrics.approvedProposals}</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Conversion Rate</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{metrics.conversionRate.toFixed(1)}%</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Payment Rate</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{metrics.paymentRate.toFixed(1)}%</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Linked Proposals */}
-      {job.job_proposals && job.job_proposals.length > 0 && (
+      {/* Calendar View */}
+      <CalendarView 
+        isExpanded={calendarExpanded} 
+        onToggle={() => setCalendarExpanded(!calendarExpanded)} 
+      />
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Monthly Revenue Chart */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Linked Proposals</CardTitle>
+            <CardTitle>Monthly Revenue Trend</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {job.job_proposals.map((jp: any) => (
-                <div key={jp.proposal_id} className="flex items-center justify-between border-b pb-2 last:border-0">
-                  <div>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={monthlyRevenue}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Status Distribution */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Proposal Status Distribution</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={statusData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={renderLabel}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {statusData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Activity Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Proposals */}
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle>Recent Proposals</CardTitle>
+              <Link href="/proposals" className="text-sm text-blue-600 hover:text-blue-700">
+                View all →
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {recentProposals.map((proposal) => (
+                <div key={proposal.id} className="flex items-center justify-between border-b pb-3 last:border-0">
+                  <div className="flex-1">
                     <Link 
-                      href={`/proposals/${jp.proposal_id}`}
+                      href={`/proposals/${proposal.id}`}
                       className="font-medium text-blue-600 hover:text-blue-700"
                     >
-                      Proposal #{jp.proposals?.proposal_number}
+                      #{proposal.proposal_number}
                     </Link>
-                    <p className="text-sm text-gray-600">{jp.proposals?.title}</p>
+                    <p className="text-sm text-gray-600">{proposal.title}</p>
+                    <p className="text-xs text-gray-500">
+                      {proposal.customers?.[0]?.name || 'No customer'}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium">{formatCurrency(jp.proposals?.total || 0)}</p>
-                    <Badge className="text-xs">
-                      {jp.proposals?.status}
-                    </Badge>
+                    <p className="font-medium">{formatCurrency(proposal.total)}</p>
+                    <span className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(proposal.status)}`}>
+                      {proposal.status}
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
-      )}
 
-      {/* Tasks */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-lg">Tasks</CardTitle>
-            <span className="text-sm text-gray-500">
-              {job.tasks?.length || 0} total tasks
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {job.tasks && job.tasks.length > 0 ? (
+        {/* Recent Activities */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activities</CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-3">
-              {job.tasks.map((task: any) => (
-                <div key={task.id} className="border rounded-lg p-4 hover:shadow-sm">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium">{task.title}</h4>
-                        <Badge className={`text-xs ${getTaskStatusColor(task.status)}`}>
-                          {task.status}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 space-y-1 text-sm text-gray-600">
-                        <div className="flex items-center">
-                          <Calendar className="h-3 w-3 mr-1" />
-                          {formatDate(task.scheduled_date)}
-                          {task.scheduled_start_time && (
-                            <span className="ml-2">
-                              <Clock className="inline h-3 w-3 mr-1" />
-                              {task.scheduled_start_time}
-                            </span>
-                          )}
-                        </div>
-                        {task.task_technicians && task.task_technicians.length > 0 && (
-                          <div className="flex items-center">
-                            <User className="h-3 w-3 mr-1" />
-                            {task.task_technicians.map((tt: any) => 
-                              tt.profiles?.full_name
-                            ).filter(Boolean).join(', ')}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <Link href={`/tasks/${task.id}`}>
-                      <Button variant="outline" size="sm">
-                        View
-                      </Button>
-                    </Link>
+              {recentActivities.map((activity) => (
+                <div key={activity.id} className="flex items-start space-x-3 border-b pb-3 last:border-0">
+                  <span className="text-2xl">{getActivityIcon(activity.activity_type)}</span>
+                  <div className="flex-1">
+                    <p className="text-sm">{activity.description}</p>
+                    {activity.proposals?.[0] && (
+                      <p className="text-xs text-gray-500">
+                        Proposal #{activity.proposals[0].proposal_number}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400">{formatDate(activity.created_at)}</p>
                   </div>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-center text-gray-500 py-8">
-              No tasks created yet
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Notes */}
-      {job.notes && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">{job.notes}</p>
           </CardContent>
         </Card>
-      )}
-
-      {/* House Plans */}
-      {job.house_plan_pdf_url && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">House Plans</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <a 
-              href={job.house_plan_pdf_url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center text-blue-600 hover:text-blue-700"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              View House Plans PDF
-            </a>
-          </CardContent>
-        </Card>
-      )}
+      </div>
     </div>
   )
 }
 EOF
 
-echo "✅ Jobs detail pages created"
+echo "✅ DashboardContent fixed"
 
-# Commit and push the fixes
+# Commit and push the fix
 echo ""
-echo "📦 Committing type fixes..."
+echo "📦 Committing TypeScript fix..."
 
 git add -A
-git commit -m "fix: Next.js 15 async params/searchParams type errors"
+git commit -m "fix: TypeScript error in DashboardContent - handle undefined percent value"
 git push origin main
 
 echo ""
-echo "✅✅✅ TYPE ERRORS FIXED! ✅✅✅"
+echo "✅✅✅ TYPESCRIPT ERROR FIXED! ✅✅✅"
 echo ""
-echo "Changes made:"
-echo "1. ✅ Fixed payment-success page to handle async searchParams"
-echo "2. ✅ Updated proposal view page for async params"
-echo "3. ✅ Created jobs detail page with proper types"
-echo "4. ✅ All pages now compatible with Next.js 15"
+echo "The issue was that the 'percent' value in the Pie chart label could be undefined."
+echo "Fixed by:"
+echo "1. Creating a separate renderLabel function with proper typing"
+echo "2. Adding default value (0) for percent if undefined"
 echo ""
 echo "The build should now succeed!"

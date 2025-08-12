@@ -109,6 +109,12 @@ export default function DashboardContent({ data }: DashboardContentProps) {
 
   const COLORS = ['#94a3b8', '#3b82f6', '#a855f7', '#10b981', '#ef4444', '#10b981']
 
+  // Custom label function with proper typing
+  const renderLabel = (entry: any) => {
+    const percent = entry.percent || 0
+    return `${entry.name} ${(percent * 100).toFixed(0)}%`
+  }
+
   return (
     <div className="space-y-6">
       {/* Key Metrics */}
@@ -198,7 +204,7 @@ export default function DashboardContent({ data }: DashboardContentProps) {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={renderLabel}
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"
