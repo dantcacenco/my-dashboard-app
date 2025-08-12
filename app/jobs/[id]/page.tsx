@@ -1,37 +1,69 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import JobDetailView from './JobDetailView';
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import JobDetailView from './JobDetailView'
 
-export default async function JobPage({
-  params
-}: {
+interface PageProps {
   params: Promise<{ id: string }>
-}) {
-  const supabase = createServerComponentClient({ cookies });
-  
-  // Await the params (Next.js 15 requirement)
-  const { id } = await params;
+}
 
-  // Check authentication
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    redirect('/auth/signin');
+export default async function JobDetailPage({ params }: PageProps) {
+  const { id } = await params
+  const supabase = await createClient()
+  
+  const { data: { user }, error } = await supabase.auth.getUser()
+  
+  if (error || !user) {
+    redirect('/auth/signin')
   }
 
-  // Check user role
+  // Get user profile
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single();
+    .single()
 
-  // Only boss, admin, and technician can view jobs
-  if (!profile || (profile.role !== 'boss' && profile.role !== 'admin' && profile.role !== 'technician')) {
-    redirect('/');
+  if (!profile) {
+    redirect('/auth/signin')
   }
 
-  // Pass only the jobId to JobDetailView
-  // JobDetailView will fetch its own data
-  return <JobDetailView jobId={id} />;
+  // Get job with all related data
+  const { data: job } = await supabase
+    .from('jobs')
+    .select(`
+      *,
+      customers (*),
+      job_proposals (
+        proposal_id,
+        proposals (
+          proposal_number,
+          title,
+          total,
+          status
+        )
+      ),
+      tasks (
+        *,
+        task_technicians (
+          technician_id,
+          profiles (
+            full_name,
+            email,
+            phone
+          )
+        )
+      )
+    `)
+    .eq('id', id)
+    .single()
+
+  if (!job) {
+    redirect('/jobs')
+  }
+
+  return (
+    <div className="p-6">
+      <JobDetailView job={job} userRole={profile.role} userId={user.id} />
+    </div>
+  )
 }

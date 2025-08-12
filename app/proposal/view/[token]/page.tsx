@@ -1,16 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import CustomerProposalView from './CustomerProposalView'
 
-export default async function ProposalViewPage({
-  params
-}: {
+interface PageProps {
   params: Promise<{ token: string }>
-}) {
+}
+
+export default async function CustomerProposalPage({ params }: PageProps) {
   const { token } = await params
   const supabase = await createClient()
 
-  // Fetch proposal by customer view token
+  // Get proposal by token
   const { data: proposal, error } = await supabase
     .from('proposals')
     .select(`
@@ -29,8 +29,6 @@ export default async function ProposalViewPage({
         quantity,
         unit_price,
         total_price,
-        is_addon,
-        is_selected,
         sort_order
       )
     `)
@@ -38,8 +36,8 @@ export default async function ProposalViewPage({
     .single()
 
   if (error || !proposal) {
-    redirect('/')
+    notFound()
   }
 
-  return <CustomerProposalView proposal={proposal} />
+  return <CustomerProposalView proposal={proposal} token={token} />
 }

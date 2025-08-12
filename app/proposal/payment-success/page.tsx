@@ -2,15 +2,16 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PaymentSuccessView from './PaymentSuccessView'
 
-export default async function PaymentSuccessPage({
-  searchParams
-}: {
-  searchParams: { session_id?: string; proposal_id?: string }
-}) {
+interface PageProps {
+  searchParams: Promise<{ session_id?: string; proposal_id?: string }>
+}
+
+export default async function PaymentSuccessPage({ searchParams }: PageProps) {
+  const params = await searchParams
   const supabase = await createClient()
   
-  const proposalId = searchParams.proposal_id
-  const sessionId = searchParams.session_id
+  const proposalId = params.proposal_id
+  const sessionId = params.session_id
 
   if (!proposalId) {
     redirect('/')

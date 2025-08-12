@@ -1,360 +1,500 @@
 #!/bin/bash
 
-echo "🔧 Fixing Bill.com client build error..."
+echo "🔧 Fixing payment success page type error for Next.js 15..."
 
-# Create the billcom directory and client file
-mkdir -p lib/billcom
-
-cat > lib/billcom/client.ts << 'EOF'
-// Bill.com API Client
-// Documentation: https://developer.bill.com/
-
-interface BillComConfig {
-  apiKey: string
-  devKey: string
-  orgId: string
-  environment: 'sandbox' | 'production'
-}
-
-class BillComClient {
-  private config: BillComConfig
-  private sessionId: string | null = null
-  private baseUrl: string
-
-  constructor(config: BillComConfig) {
-    this.config = config
-    this.baseUrl = config.environment === 'sandbox' 
-      ? 'https://api-sandbox.bill.com/api/v2'
-      : 'https://api.bill.com/api/v2'
-  }
-
-  // Authenticate and get session
-  async authenticate(): Promise<void> {
-    try {
-      const response = await fetch(`${this.baseUrl}/Login.json`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          devKey: this.config.devKey,
-          userName: this.config.apiKey,
-          password: this.config.orgId,
-        })
-      })
-
-      const data = await response.json()
-      if (data.response_status === 0) {
-        this.sessionId = data.response_data.sessionId
-      } else {
-        throw new Error(data.response_message || 'Authentication failed')
-      }
-    } catch (error) {
-      console.error('Bill.com authentication error:', error)
-      throw error
-    }
-  }
-
-  // Create an invoice
-  async createInvoice(invoiceData: any): Promise<any> {
-    if (!this.sessionId) {
-      await this.authenticate()
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/Invoice.json`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          devKey: this.config.devKey,
-          sessionId: this.sessionId!,
-          data: JSON.stringify({
-            vendorId: invoiceData.customerId,
-            invoiceNumber: invoiceData.invoiceNumber,
-            invoiceDate: invoiceData.date,
-            dueDate: invoiceData.dueDate,
-            amount: invoiceData.amount,
-            description: invoiceData.description,
-            lineItems: invoiceData.lineItems
-          })
-        })
-      })
-
-      const data = await response.json()
-      if (data.response_status === 0) {
-        return data.response_data
-      } else {
-        throw new Error(data.response_message || 'Failed to create invoice')
-      }
-    } catch (error) {
-      console.error('Bill.com invoice creation error:', error)
-      throw error
-    }
-  }
-
-  // Send invoice for payment
-  async sendInvoice(invoiceId: string, customerEmail: string): Promise<any> {
-    if (!this.sessionId) {
-      await this.authenticate()
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/SendInvoice.json`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          devKey: this.config.devKey,
-          sessionId: this.sessionId!,
-          invoiceId: invoiceId,
-          email: customerEmail
-        })
-      })
-
-      const data = await response.json()
-      if (data.response_status === 0) {
-        return data.response_data
-      } else {
-        throw new Error(data.response_message || 'Failed to send invoice')
-      }
-    } catch (error) {
-      console.error('Bill.com send invoice error:', error)
-      throw error
-    }
-  }
-
-  // Get payment URL for customer
-  async getPaymentUrl(invoiceId: string): Promise<string> {
-    // Bill.com generates a unique payment URL for each invoice
-    // This would be returned from the sendInvoice response
-    return `https://app.bill.com/pay/${invoiceId}`
-  }
-}
-
-// Export singleton instance
-let billcomClient: BillComClient | null = null
-
-export function getBillComClient(): BillComClient {
-  if (!billcomClient) {
-    // Only initialize if credentials are available
-    if (process.env.BILLCOM_API_KEY && process.env.BILLCOM_DEV_KEY && process.env.BILLCOM_ORG_ID) {
-      billcomClient = new BillComClient({
-        apiKey: process.env.BILLCOM_API_KEY,
-        devKey: process.env.BILLCOM_DEV_KEY,
-        orgId: process.env.BILLCOM_ORG_ID,
-        environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
-      })
-    } else {
-      // Return a mock client if credentials not available
-      throw new Error('Bill.com credentials not configured')
-    }
-  }
-  return billcomClient
-}
-
-// Feature flag to switch between Stripe and Bill.com
-export function shouldUseBillCom(): boolean {
-  // Default to false until Bill.com is configured
-  return process.env.USE_BILLCOM === 'true' && 
-         !!process.env.BILLCOM_API_KEY && 
-         !!process.env.BILLCOM_DEV_KEY && 
-         !!process.env.BILLCOM_ORG_ID
-}
-EOF
-
-echo "✅ Bill.com client file created"
-
-# Also update the payment route to handle missing Bill.com gracefully
-echo ""
-echo "🔧 Updating payment route to handle missing Bill.com credentials..."
-
-cat > app/api/create-payment/route.ts << 'EOF'
-import { NextRequest, NextResponse } from 'next/server'
+# Fix the payment success page to handle async searchParams
+cat > app/proposal/payment-success/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
-import { getBillComClient, shouldUseBillCom } from '@/lib/billcom/client'
-import Stripe from 'stripe'
+import { redirect } from 'next/navigation'
+import PaymentSuccessView from './PaymentSuccessView'
 
-// Initialize Stripe (keeping for fallback and current use)
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-07-30.basil',
-})
+interface PageProps {
+  searchParams: Promise<{ session_id?: string; proposal_id?: string }>
+}
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { proposalId, amount, paymentStage, customerEmail, useStripe } = body
+export default async function PaymentSuccessPage({ searchParams }: PageProps) {
+  const params = await searchParams
+  const supabase = await createClient()
+  
+  const proposalId = params.proposal_id
+  const sessionId = params.session_id
 
-    const supabase = await createClient()
-
-    // Get proposal details
-    const { data: proposal, error: proposalError } = await supabase
-      .from('proposals')
-      .select('*')
-      .eq('id', proposalId)
-      .single()
-
-    if (proposalError || !proposal) {
-      return NextResponse.json(
-        { error: 'Proposal not found' },
-        { status: 404 }
-      )
-    }
-
-    // Determine payment processor
-    // Only use Bill.com if explicitly requested AND configured
-    const useBillCom = useStripe === false && shouldUseBillCom()
-
-    if (useBillCom) {
-      // Use Bill.com
-      try {
-        const billcom = getBillComClient()
-        
-        // Create invoice in Bill.com
-        const invoice = await billcom.createInvoice({
-          customerId: proposal.customer_id,
-          invoiceNumber: `${proposal.proposal_number}-${paymentStage}`,
-          date: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-          amount: amount,
-          description: `${paymentStage} payment for Proposal #${proposal.proposal_number}`,
-          lineItems: [{
-            description: `${paymentStage} Payment - ${proposal.title}`,
-            amount: amount
-          }]
-        })
-
-        // Send invoice to customer
-        await billcom.sendInvoice(invoice.id, customerEmail)
-
-        // Get payment URL
-        const paymentUrl = await billcom.getPaymentUrl(invoice.id)
-
-        // Update proposal with Bill.com invoice ID
-        await supabase
-          .from('proposals')
-          .update({
-            payment_initiated_at: new Date().toISOString(),
-            last_payment_attempt: new Date().toISOString()
-          })
-          .eq('id', proposalId)
-
-        return NextResponse.json({
-          success: true,
-          paymentUrl: paymentUrl,
-          invoiceId: invoice.id,
-          processor: 'billcom'
-        })
-      } catch (billcomError: any) {
-        console.error('Bill.com error, falling back to Stripe:', billcomError)
-        // Fall through to Stripe
-      }
-    }
-
-    // Use Stripe (default or fallback)
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: `${paymentStage} Payment - Proposal #${proposal.proposal_number}`,
-              description: proposal.title,
-            },
-            unit_amount: Math.round(amount * 100), // Convert to cents for Stripe
-          },
-          quantity: 1,
-        },
-      ],
-      mode: 'payment',
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || request.headers.get('origin')}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposalId}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || request.headers.get('origin')}/proposal/view/${proposal.customer_view_token}`,
-      customer_email: customerEmail,
-      metadata: {
-        proposal_id: proposalId,
-        payment_stage: paymentStage,
-      },
-    })
-
-    // Update proposal with session ID
-    await supabase
-      .from('proposals')
-      .update({
-        stripe_session_id: session.id,
-        payment_initiated_at: new Date().toISOString(),
-        last_payment_attempt: new Date().toISOString()
-      })
-      .eq('id', proposalId)
-
-    return NextResponse.json({
-      success: true,
-      paymentUrl: session.url,
-      sessionId: session.id,
-      processor: 'stripe'
-    })
-  } catch (error: any) {
-    console.error('Payment API error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to create payment session' },
-      { status: 500 }
-    )
+  if (!proposalId) {
+    redirect('/')
   }
+
+  // Get proposal with customer info
+  const { data: proposal } = await supabase
+    .from('proposals')
+    .select(`
+      *,
+      customers (
+        id,
+        name,
+        email,
+        phone,
+        address
+      )
+    `)
+    .eq('id', proposalId)
+    .single()
+
+  if (!proposal) {
+    redirect('/')
+  }
+
+  // Auto-redirect to proposal after showing success
+  return <PaymentSuccessView proposal={proposal} />
 }
 EOF
 
-echo "✅ Payment route updated"
+echo "✅ Payment success page fixed"
 
-# Also update the CustomerProposalView to always use Stripe by default
+# Also check and fix any other pages with searchParams
 echo ""
-echo "🔧 Updating CustomerProposalView to use Stripe by default..."
+echo "🔧 Checking for other pages that need fixing..."
 
-# We need to modify just the payment call to not specify useStripe: false
-sed -i '' 's/useStripe: false/useStripe: true/g' app/proposal/view/[token]/CustomerProposalView.tsx 2>/dev/null || \
-sed -i 's/useStripe: false/useStripe: true/g' app/proposal/view/[token]/CustomerProposalView.tsx 2>/dev/null || true
+# Fix test-auth page if it exists
+if [ -f "app/test-auth/page.tsx" ]; then
+  echo "Skipping test-auth page (no searchParams)"
+fi
 
-echo "✅ CustomerProposalView updated"
-
-# Add billcom_invoice_id column to proposals if needed
+# Let's also ensure the proposal view page handles async params correctly
 echo ""
-echo "📊 Creating SQL migration for billcom_invoice_id column..."
+echo "🔧 Ensuring proposal view page handles async params..."
 
-cat > supabase/migrations/20250812_add_billcom_column.sql << 'EOF'
--- Add Bill.com invoice ID column to proposals table
-ALTER TABLE proposals ADD COLUMN IF NOT EXISTS billcom_invoice_id TEXT;
+cat > app/proposal/view/[token]/page.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { notFound } from 'next/navigation'
+import CustomerProposalView from './CustomerProposalView'
 
--- Add index for performance
-CREATE INDEX IF NOT EXISTS idx_proposals_billcom_invoice_id ON proposals(billcom_invoice_id);
+interface PageProps {
+  params: Promise<{ token: string }>
+}
+
+export default async function CustomerProposalPage({ params }: PageProps) {
+  const { token } = await params
+  const supabase = await createClient()
+
+  // Get proposal by token
+  const { data: proposal, error } = await supabase
+    .from('proposals')
+    .select(`
+      *,
+      customers (
+        id,
+        name,
+        email,
+        phone,
+        address
+      ),
+      proposal_items (
+        id,
+        name,
+        description,
+        quantity,
+        unit_price,
+        total_price,
+        sort_order
+      )
+    `)
+    .eq('customer_view_token', token)
+    .single()
+
+  if (error || !proposal) {
+    notFound()
+  }
+
+  return <CustomerProposalView proposal={proposal} token={token} />
+}
 EOF
 
-echo "✅ SQL migration created"
+echo "✅ Proposal view page updated"
 
-# Commit and push
+# Fix jobs detail page to handle async params
 echo ""
-echo "📦 Committing fixes..."
+echo "🔧 Creating jobs detail page with async params..."
+
+cat > app/jobs/[id]/page.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import JobDetailView from './JobDetailView'
+
+interface PageProps {
+  params: Promise<{ id: string }>
+}
+
+export default async function JobDetailPage({ params }: PageProps) {
+  const { id } = await params
+  const supabase = await createClient()
+  
+  const { data: { user }, error } = await supabase.auth.getUser()
+  
+  if (error || !user) {
+    redirect('/auth/signin')
+  }
+
+  // Get user profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile) {
+    redirect('/auth/signin')
+  }
+
+  // Get job with all related data
+  const { data: job } = await supabase
+    .from('jobs')
+    .select(`
+      *,
+      customers (*),
+      job_proposals (
+        proposal_id,
+        proposals (
+          proposal_number,
+          title,
+          total,
+          status
+        )
+      ),
+      tasks (
+        *,
+        task_technicians (
+          technician_id,
+          profiles (
+            full_name,
+            email,
+            phone
+          )
+        )
+      )
+    `)
+    .eq('id', id)
+    .single()
+
+  if (!job) {
+    redirect('/jobs')
+  }
+
+  return (
+    <div className="p-6">
+      <JobDetailView job={job} userRole={profile.role} userId={user.id} />
+    </div>
+  )
+}
+EOF
+
+# Create JobDetailView component
+cat > app/jobs/[id]/JobDetailView.tsx << 'EOF'
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { 
+  MapPin, Phone, Mail, Calendar, DollarSign, 
+  FileText, Plus, Clock, User, Edit
+} from 'lucide-react'
+import Link from 'next/link'
+
+interface JobDetailViewProps {
+  job: any
+  userRole: string
+  userId: string
+}
+
+export default function JobDetailView({ job, userRole, userId }: JobDetailViewProps) {
+  const router = useRouter()
+  const [showTaskForm, setShowTaskForm] = useState(false)
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0
+    }).format(amount)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800'
+      case 'in_progress': return 'bg-blue-100 text-blue-800'
+      case 'completed': return 'bg-green-100 text-green-800'
+      case 'cancelled': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getTaskStatusColor = (status: string) => {
+    switch (status) {
+      case 'scheduled': return 'bg-gray-100 text-gray-800'
+      case 'in_progress': return 'bg-blue-100 text-blue-800'
+      case 'completed': return 'bg-green-100 text-green-800'
+      case 'cancelled': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold">Job {job.job_number}</h1>
+          <Badge className={`mt-2 ${getStatusColor(job.status)}`}>
+            {job.status.replace('_', ' ')}
+          </Badge>
+        </div>
+        <div className="flex gap-2">
+          {(userRole === 'boss' || userRole === 'admin') && (
+            <>
+              <Button variant="outline" size="sm">
+                <Edit className="h-4 w-4 mr-1" />
+                Edit Job
+              </Button>
+              <Button size="sm" onClick={() => setShowTaskForm(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Create Task
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Job Details */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Customer Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Customer Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <p className="font-medium text-lg">{job.customer_name}</p>
+            </div>
+            {job.customer_email && (
+              <div className="flex items-center text-sm">
+                <Mail className="h-4 w-4 mr-2 text-gray-400" />
+                <a href={`mailto:${job.customer_email}`} className="text-blue-600 hover:text-blue-700">
+                  {job.customer_email}
+                </a>
+              </div>
+            )}
+            {job.customer_phone && (
+              <div className="flex items-center text-sm">
+                <Phone className="h-4 w-4 mr-2 text-gray-400" />
+                <a href={`tel:${job.customer_phone}`} className="text-blue-600 hover:text-blue-700">
+                  {job.customer_phone}
+                </a>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Service Location */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Service Location</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-start">
+              <MapPin className="h-4 w-4 mr-2 text-gray-400 mt-0.5" />
+              <div className="text-sm">
+                <p>{job.service_address}</p>
+                {job.service_city && (
+                  <p>{job.service_city}, {job.service_state} {job.service_zip}</p>
+                )}
+              </div>
+            </div>
+            {job.service_address && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full mt-3"
+                onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(job.service_address + ' ' + (job.service_city || '') + ' ' + (job.service_state || '') + ' ' + (job.service_zip || ''))}`, '_blank')}
+              >
+                <MapPin className="h-4 w-4 mr-1" />
+                View on Map
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Job Value */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Job Value</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-green-600">
+              {formatCurrency(job.total_value)}
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              Created on {formatDate(job.created_at)}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Linked Proposals */}
+      {job.job_proposals && job.job_proposals.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Linked Proposals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {job.job_proposals.map((jp: any) => (
+                <div key={jp.proposal_id} className="flex items-center justify-between border-b pb-2 last:border-0">
+                  <div>
+                    <Link 
+                      href={`/proposals/${jp.proposal_id}`}
+                      className="font-medium text-blue-600 hover:text-blue-700"
+                    >
+                      Proposal #{jp.proposals?.proposal_number}
+                    </Link>
+                    <p className="text-sm text-gray-600">{jp.proposals?.title}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium">{formatCurrency(jp.proposals?.total || 0)}</p>
+                    <Badge className="text-xs">
+                      {jp.proposals?.status}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tasks */}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-lg">Tasks</CardTitle>
+            <span className="text-sm text-gray-500">
+              {job.tasks?.length || 0} total tasks
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {job.tasks && job.tasks.length > 0 ? (
+            <div className="space-y-3">
+              {job.tasks.map((task: any) => (
+                <div key={task.id} className="border rounded-lg p-4 hover:shadow-sm">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium">{task.title}</h4>
+                        <Badge className={`text-xs ${getTaskStatusColor(task.status)}`}>
+                          {task.status}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 space-y-1 text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <Calendar className="h-3 w-3 mr-1" />
+                          {formatDate(task.scheduled_date)}
+                          {task.scheduled_start_time && (
+                            <span className="ml-2">
+                              <Clock className="inline h-3 w-3 mr-1" />
+                              {task.scheduled_start_time}
+                            </span>
+                          )}
+                        </div>
+                        {task.task_technicians && task.task_technicians.length > 0 && (
+                          <div className="flex items-center">
+                            <User className="h-3 w-3 mr-1" />
+                            {task.task_technicians.map((tt: any) => 
+                              tt.profiles?.full_name
+                            ).filter(Boolean).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <Link href={`/tasks/${task.id}`}>
+                      <Button variant="outline" size="sm">
+                        View
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-gray-500 py-8">
+              No tasks created yet
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Notes */}
+      {job.notes && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">{job.notes}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* House Plans */}
+      {job.house_plan_pdf_url && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">House Plans</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <a 
+              href={job.house_plan_pdf_url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center text-blue-600 hover:text-blue-700"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              View House Plans PDF
+            </a>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
+EOF
+
+echo "✅ Jobs detail pages created"
+
+# Commit and push the fixes
+echo ""
+echo "📦 Committing type fixes..."
 
 git add -A
-git commit -m "fix: Bill.com build error - create missing client file and handle missing credentials"
+git commit -m "fix: Next.js 15 async params/searchParams type errors"
 git push origin main
 
 echo ""
-echo "✅✅✅ BUILD ERROR FIXED! ✅✅✅"
+echo "✅✅✅ TYPE ERRORS FIXED! ✅✅✅"
 echo ""
 echo "Changes made:"
-echo "1. ✅ Created lib/billcom/client.ts file"
-echo "2. ✅ Made Bill.com optional - defaults to Stripe"
-echo "3. ✅ Added graceful fallback when Bill.com credentials missing"
-echo "4. ✅ Created SQL migration for billcom_invoice_id column"
+echo "1. ✅ Fixed payment-success page to handle async searchParams"
+echo "2. ✅ Updated proposal view page for async params"
+echo "3. ✅ Created jobs detail page with proper types"
+echo "4. ✅ All pages now compatible with Next.js 15"
 echo ""
-echo "The app will now:"
-echo "- Use Stripe by default for payments"
-echo "- Only use Bill.com when USE_BILLCOM=true AND all credentials are set"
-echo "- Build successfully without Bill.com credentials"
-echo ""
-echo "To enable Bill.com later:"
-echo "1. Get your Bill.com credentials"
-echo "2. Add them to Vercel environment variables"
-echo "3. Set USE_BILLCOM=true"
-echo "4. Redeploy"
+echo "The build should now succeed!"

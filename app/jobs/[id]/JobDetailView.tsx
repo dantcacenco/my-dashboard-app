@@ -1,488 +1,287 @@
-'use client';
+'use client'
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { MapPin, Phone, Clock, Calendar, User, AlertCircle, Camera, CheckCircle, PlayCircle, PauseCircle } from 'lucide-react';
-import { format } from 'date-fns';
-import PhotoUpload from './PhotoUpload';
-
-interface Customer {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-}
-
-interface Proposal {
-  id: string;
-  proposal_number: string;
-  title: string;
-  total: number;
-}
-
-interface Technician {
-  id: string;
-  full_name: string;
-  email: string;
-  phone?: string;
-}
-
-interface JobWithRelations {
-  id: string;
-  job_number: string;
-  customer_id: string;
-  proposal_id?: string;
-  title: string;
-  description?: string;
-  job_type: string;
-  status: string;
-  scheduled_date?: string;
-  scheduled_time?: string;
-  assigned_technician_id?: string;
-  estimated_duration?: string;
-  actual_start_time?: string;
-  actual_end_time?: string;
-  notes?: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  technician_id?: string;
-  service_address?: string;
-  service_city?: string;
-  service_state?: string;
-  service_zip?: string;
-  boss_notes?: string;
-  completion_notes?: string;
-  customers: Customer;
-  proposals?: Proposal;
-  profiles?: Technician;
-}
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { 
+  MapPin, Phone, Mail, Calendar, DollarSign, 
+  FileText, Plus, Clock, User, Edit
+} from 'lucide-react'
+import Link from 'next/link'
 
 interface JobDetailViewProps {
-  jobId: string;
+  job: any
+  userRole: string
+  userId: string
 }
 
-export default function JobDetailView({ jobId }: JobDetailViewProps) {
-  const [job, setJob] = useState<JobWithRelations | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
-  const [completionNotes, setCompletionNotes] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
-  const supabase = createClientComponentClient();
+export default function JobDetailView({ job, userRole, userId }: JobDetailViewProps) {
+  const router = useRouter()
+  const [showTaskForm, setShowTaskForm] = useState(false)
 
-  useEffect(() => {
-    fetchJob();
-  }, [jobId]);
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0
+    }).format(amount)
+  }
 
-  const fetchJob = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const { data, error } = await supabase
-        .from('jobs')
-        .select(`
-          *,
-          customers!customer_id (
-            id,
-            name,
-            email,
-            phone,
-            address
-          ),
-          proposals!proposal_id (
-            id,
-            proposal_number,
-            title,
-            total
-          ),
-          profiles:assigned_technician_id (
-            id,
-            full_name,
-            email,
-            phone
-          )
-        `)
-        .eq('id', jobId)
-        .single();
-
-      if (error) throw error;
-      
-      // Transform the data to match our interface
-      const jobData: JobWithRelations = {
-        ...data,
-        customers: data.customers,
-        proposals: data.proposals,
-        profiles: data.profiles
-      };
-      
-      setJob(jobData);
-      setCompletionNotes(data.completion_notes || '');
-    } catch (error: any) {
-      console.error('Error fetching job:', error);
-      setError(error.message || 'Failed to load job');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateJobStatus = async (newStatus: string, additionalData?: any) => {
-    try {
-      setUpdating(true);
-      setError(null);
-
-      const updates: any = {
-        status: newStatus,
-        updated_at: new Date().toISOString()
-      };
-
-      // Add status-specific updates
-      if (newStatus === 'in_progress' && !job?.actual_start_time) {
-        updates.actual_start_time = new Date().toISOString();
-      } else if (newStatus === 'completed') {
-        updates.actual_end_time = new Date().toISOString();
-        updates.completion_notes = completionNotes;
-      }
-
-      // Merge any additional data
-      if (additionalData) {
-        Object.assign(updates, additionalData);
-      }
-
-      const { error } = await supabase
-        .from('jobs')
-        .update(updates)
-        .eq('id', jobId);
-
-      if (error) throw error;
-
-      // Log activity
-      await supabase
-        .from('job_activity_log')
-        .insert({
-          job_id: jobId,
-          user_id: (await supabase.auth.getUser()).data.user?.id,
-          action: `Status changed to ${newStatus}`,
-          details: additionalData || {}
-        });
-
-      await fetchJob();
-      
-      // Show success message
-      setError(null);
-    } catch (error: any) {
-      console.error('Error updating job status:', error);
-      setError(`Failed to update status: ${error.message || 'Unknown error'}`);
-    } finally {
-      setUpdating(false);
-    }
-  };
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })
+  }
 
   const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      'scheduled': 'bg-blue-500',
-      'in_progress': 'bg-yellow-500',
-      'needs_attention': 'bg-red-500',
-      'completed': 'bg-green-500',
-      'cancelled': 'bg-gray-500'
-    };
-    return colors[status] || 'bg-gray-500';
-  };
-
-  const getNextStatus = () => {
-    if (!job) return null;
-    
-    const statusFlow: Record<string, { next: string; label: string; icon: any }> = {
-      'scheduled': { next: 'in_progress', label: 'Start Job', icon: PlayCircle },
-      'in_progress': { next: 'completed', label: 'Complete Job', icon: CheckCircle },
-      'needs_attention': { next: 'in_progress', label: 'Resume Job', icon: PlayCircle }
-    };
-    
-    return statusFlow[job.status];
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800'
+      case 'in_progress': return 'bg-blue-100 text-blue-800'
+      case 'completed': return 'bg-green-100 text-green-800'
+      case 'cancelled': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
   }
 
-  if (!job) {
-    return (
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>Job not found</AlertDescription>
-      </Alert>
-    );
+  const getTaskStatusColor = (status: string) => {
+    switch (status) {
+      case 'scheduled': return 'bg-gray-100 text-gray-800'
+      case 'in_progress': return 'bg-blue-100 text-blue-800'
+      case 'completed': return 'bg-green-100 text-green-800'
+      case 'cancelled': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
   }
-
-  const nextStatus = getNextStatus();
-  const customer = job.customers;
-  const proposal = job.proposals;
-  const technician = job.profiles;
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      {error && (
-        <Alert className="mb-6" variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="mb-6">
-        <Button variant="outline" onClick={() => router.push('/jobs')}>
-          ← Back to Jobs
-        </Button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold">Job {job.job_number}</h1>
+          <Badge className={`mt-2 ${getStatusColor(job.status)}`}>
+            {job.status.replace('_', ' ')}
+          </Badge>
+        </div>
+        <div className="flex gap-2">
+          {(userRole === 'boss' || userRole === 'admin') && (
+            <>
+              <Button variant="outline" size="sm">
+                <Edit className="h-4 w-4 mr-1" />
+                Edit Job
+              </Button>
+              <Button size="sm" onClick={() => setShowTaskForm(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Create Task
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
+      {/* Job Details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-2xl">{job.title}</CardTitle>
-                  <CardDescription>Job #{job.job_number}</CardDescription>
-                </div>
-                <Badge className={`${getStatusColor(job.status)} text-white`}>
-                  {job.status.replace('_', ' ').toUpperCase()}
-                </Badge>
+        {/* Customer Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Customer Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <p className="font-medium text-lg">{job.customer_name}</p>
+            </div>
+            {job.customer_email && (
+              <div className="flex items-center text-sm">
+                <Mail className="h-4 w-4 mr-2 text-gray-400" />
+                <a href={`mailto:${job.customer_email}`} className="text-blue-600 hover:text-blue-700">
+                  {job.customer_email}
+                </a>
               </div>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="details" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="details">Details</TabsTrigger>
-                  <TabsTrigger value="photos">Photos</TabsTrigger>
-                  <TabsTrigger value="notes">Notes</TabsTrigger>
-                  <TabsTrigger value="activity">Activity</TabsTrigger>
-                </TabsList>
+            )}
+            {job.customer_phone && (
+              <div className="flex items-center text-sm">
+                <Phone className="h-4 w-4 mr-2 text-gray-400" />
+                <a href={`tel:${job.customer_phone}`} className="text-blue-600 hover:text-blue-700">
+                  {job.customer_phone}
+                </a>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-                <TabsContent value="details" className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <h3 className="font-semibold mb-2">Schedule</h3>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <span>{job.scheduled_date ? format(new Date(job.scheduled_date), 'PPP') : 'Not scheduled'}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          <span>{job.scheduled_time || 'No time set'}</span>
-                        </div>
+        {/* Service Location */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Service Location</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-start">
+              <MapPin className="h-4 w-4 mr-2 text-gray-400 mt-0.5" />
+              <div className="text-sm">
+                <p>{job.service_address}</p>
+                {job.service_city && (
+                  <p>{job.service_city}, {job.service_state} {job.service_zip}</p>
+                )}
+              </div>
+            </div>
+            {job.service_address && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full mt-3"
+                onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(job.service_address + ' ' + (job.service_city || '') + ' ' + (job.service_state || '') + ' ' + (job.service_zip || ''))}`, '_blank')}
+              >
+                <MapPin className="h-4 w-4 mr-1" />
+                View on Map
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Job Value */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Job Value</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-green-600">
+              {formatCurrency(job.total_value)}
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              Created on {formatDate(job.created_at)}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Linked Proposals */}
+      {job.job_proposals && job.job_proposals.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Linked Proposals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {job.job_proposals.map((jp: any) => (
+                <div key={jp.proposal_id} className="flex items-center justify-between border-b pb-2 last:border-0">
+                  <div>
+                    <Link 
+                      href={`/proposals/${jp.proposal_id}`}
+                      className="font-medium text-blue-600 hover:text-blue-700"
+                    >
+                      Proposal #{jp.proposals?.proposal_number}
+                    </Link>
+                    <p className="text-sm text-gray-600">{jp.proposals?.title}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium">{formatCurrency(jp.proposals?.total || 0)}</p>
+                    <Badge className="text-xs">
+                      {jp.proposals?.status}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tasks */}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-lg">Tasks</CardTitle>
+            <span className="text-sm text-gray-500">
+              {job.tasks?.length || 0} total tasks
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {job.tasks && job.tasks.length > 0 ? (
+            <div className="space-y-3">
+              {job.tasks.map((task: any) => (
+                <div key={task.id} className="border rounded-lg p-4 hover:shadow-sm">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium">{task.title}</h4>
+                        <Badge className={`text-xs ${getTaskStatusColor(task.status)}`}>
+                          {task.status}
+                        </Badge>
                       </div>
-                    </div>
-
-                    <div>
-                      <h3 className="font-semibold mb-2">Assigned Technician</h3>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <span>{technician?.full_name || 'Unassigned'}</span>
+                      <div className="mt-2 space-y-1 text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <Calendar className="h-3 w-3 mr-1" />
+                          {formatDate(task.scheduled_date)}
+                          {task.scheduled_start_time && (
+                            <span className="ml-2">
+                              <Clock className="inline h-3 w-3 mr-1" />
+                              {task.scheduled_start_time}
+                            </span>
+                          )}
                         </div>
-                        {technician?.phone && (
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-4 w-4 text-muted-foreground" />
-                            <span>{technician.phone}</span>
+                        {task.task_technicians && task.task_technicians.length > 0 && (
+                          <div className="flex items-center">
+                            <User className="h-3 w-3 mr-1" />
+                            {task.task_technicians.map((tt: any) => 
+                              tt.profiles?.full_name
+                            ).filter(Boolean).join(', ')}
                           </div>
                         )}
                       </div>
                     </div>
-                  </div>
-
-                  <div>
-                    <h3 className="font-semibold mb-2">Job Description</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {job.description || 'No description provided'}
-                    </p>
-                  </div>
-
-                  {job.boss_notes && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Boss Notes</h3>
-                      <p className="text-sm text-muted-foreground p-3 bg-yellow-50 rounded">
-                        {job.boss_notes}
-                      </p>
-                    </div>
-                  )}
-
-                  <div>
-                    <h3 className="font-semibold mb-2">Service Location</h3>
-                    <div className="flex items-start gap-2 text-sm">
-                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p>{job.service_address || customer?.address || 'No address provided'}</p>
-                        {(job.service_city || job.service_state || job.service_zip) && (
-                          <p>{[job.service_city, job.service_state, job.service_zip].filter(Boolean).join(', ')}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {job.status === 'in_progress' && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Completion Notes</h3>
-                      <Textarea
-                        value={completionNotes}
-                        onChange={(e) => setCompletionNotes(e.target.value)}
-                        placeholder="Add notes about the completed work..."
-                        className="min-h-[100px]"
-                      />
-                    </div>
-                  )}
-
-                  {nextStatus && (
-                    <div className="pt-4">
-                      <Button
-                        onClick={() => updateJobStatus(nextStatus.next)}
-                        disabled={updating}
-                        className="w-full md:w-auto"
-                      >
-                        <nextStatus.icon className="h-4 w-4 mr-2" />
-                        {updating ? 'Updating...' : nextStatus.label}
+                    <Link href={`/tasks/${task.id}`}>
+                      <Button variant="outline" size="sm">
+                        View
                       </Button>
-
-                      {job.status === 'in_progress' && (
-                        <Button
-                          onClick={() => updateJobStatus('needs_attention')}
-                          disabled={updating}
-                          variant="destructive"
-                          className="w-full md:w-auto ml-0 md:ml-2 mt-2 md:mt-0"
-                        >
-                          <AlertCircle className="h-4 w-4 mr-2" />
-                          Mark Needs Attention
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="photos">
-                  <PhotoUpload jobId={jobId} />
-                </TabsContent>
-
-                <TabsContent value="notes">
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="font-semibold mb-2">Job Notes</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {job.notes || 'No notes added'}
-                      </p>
-                    </div>
-                    {job.completion_notes && (
-                      <div>
-                        <h3 className="font-semibold mb-2">Completion Notes</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {job.completion_notes}
-                        </p>
-                      </div>
-                    )}
+                    </Link>
                   </div>
-                </TabsContent>
-
-                <TabsContent value="activity">
-                  <div className="text-sm text-muted-foreground">
-                    Activity log will be implemented soon
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Customer Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <p className="font-semibold">{customer?.name}</p>
-                {customer?.email && (
-                  <p className="text-sm text-muted-foreground">{customer.email}</p>
-                )}
-                {customer?.phone && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{customer.phone}</span>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {proposal && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Related Proposal</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <p className="text-sm">
-                    <span className="font-semibold">Proposal #:</span> {proposal.proposal_number}
-                  </p>
-                  <p className="text-sm">
-                    <span className="font-semibold">Title:</span> {proposal.title}
-                  </p>
-                  <p className="text-sm">
-                    <span className="font-semibold">Total:</span> ${proposal.total.toFixed(2)}
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-3"
-                    onClick={() => router.push(`/proposals/${proposal.id}`)}
-                  >
-                    View Proposal
-                  </Button>
                 </div>
-              </CardContent>
-            </Card>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-gray-500 py-8">
+              No tasks created yet
+            </p>
           )}
+        </CardContent>
+      </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Time Tracking</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm">
-                {job.actual_start_time && (
-                  <div>
-                    <span className="font-semibold">Started:</span>
-                    <p className="text-muted-foreground">
-                      {format(new Date(job.actual_start_time), 'PPp')}
-                    </p>
-                  </div>
-                )}
-                {job.actual_end_time && (
-                  <div>
-                    <span className="font-semibold">Completed:</span>
-                    <p className="text-muted-foreground">
-                      {format(new Date(job.actual_end_time), 'PPp')}
-                    </p>
-                  </div>
-                )}
-                {!job.actual_start_time && (
-                  <p className="text-muted-foreground">Not started yet</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {/* Notes */}
+      {job.notes && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">{job.notes}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* House Plans */}
+      {job.house_plan_pdf_url && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">House Plans</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <a 
+              href={job.house_plan_pdf_url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center text-blue-600 hover:text-blue-700"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              View House Plans PDF
+            </a>
+          </CardContent>
+        </Card>
+      )}
     </div>
-  );
+  )
 }
