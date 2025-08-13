@@ -8,7 +8,7 @@ export default async function JobsPage() {
   const { data: { user }, error } = await supabase.auth.getUser()
   
   if (error || !user) {
-    redirect('/auth/signin')
+    redirect('/auth/login')
   }
 
   // Get user profile
@@ -19,7 +19,7 @@ export default async function JobsPage() {
     .single()
 
   if (!profile) {
-    redirect('/auth/signin')
+    redirect('/auth/login')
   }
 
   // Get jobs based on role

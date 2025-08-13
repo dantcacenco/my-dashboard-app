@@ -13,7 +13,7 @@ export default async function JobDetailPage({ params }: PageProps) {
   const { data: { user }, error } = await supabase.auth.getUser()
   
   if (error || !user) {
-    redirect('/auth/signin')
+    redirect('/auth/login')
   }
 
   // Get user profile
@@ -24,7 +24,7 @@ export default async function JobDetailPage({ params }: PageProps) {
     .single()
 
   if (!profile) {
-    redirect('/auth/signin')
+    redirect('/auth/login')
   }
 
   // Get job with all related data

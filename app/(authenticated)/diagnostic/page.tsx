@@ -88,7 +88,7 @@ export default function DiagnosticPage() {
         { path: '/technicians', name: 'Technicians', requiresAuth: true },
         { path: '/technician', name: 'Technician Portal', requiresAuth: true },
         { path: '/proposal/view/[token]', name: 'Customer Proposal View', requiresAuth: false },
-        { path: '/auth/signin', name: 'Sign In', requiresAuth: false },
+        { path: '/auth/login', name: 'Sign In', requiresAuth: false },
       ];
       results.routing = routes;
 
