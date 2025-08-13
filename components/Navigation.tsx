@@ -11,12 +11,14 @@ export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
 
   useEffect(() => {
-    async function getUserRole() {
+    async function getUserInfo() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
+        setUserEmail(user.email || null)
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
@@ -25,7 +27,7 @@ export default function Navigation() {
         setUserRole(profile?.role || null)
       }
     }
-    getUserRole()
+    getUserInfo()
   }, [])
 
   const handleSignOut = async () => {
@@ -47,39 +49,49 @@ export default function Navigation() {
   ]
 
   return (
-    <nav className="w-64 bg-white border-r border-gray-200 h-full flex flex-col">
-      <div className="p-6 border-b border-gray-200">
-        <h1 className="text-2xl font-bold text-gray-900">Service Pro</h1>
-      </div>
-      
-      <div className="flex-1 py-4">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+    <nav className="w-full bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 h-16">
+        {/* Logo */}
+        <div className="flex items-center">
+          <h1 className="text-xl font-bold text-gray-900 mr-8">Service Pro</h1>
           
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-6 py-3 text-gray-700 hover:bg-gray-100 transition-colors ${
-                isActive ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600' : ''
-              }`}
-            >
-              <Icon className="h-5 w-5" />
-              <span className="font-medium">{item.label}</span>
-            </Link>
-          )
-        })}
-      </div>
+          {/* Navigation Items */}
+          <div className="flex items-center space-x-1">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+              
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActive 
+                      ? 'bg-blue-50 text-blue-600' 
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
 
-      <div className="p-4 border-t border-gray-200">
-        <button
-          onClick={handleSignOut}
-          className="flex items-center gap-3 w-full px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <LogOut className="h-5 w-5" />
-          <span className="font-medium">Sign Out</span>
-        </button>
+        {/* User Menu */}
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-600">
+            {userEmail}
+          </div>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <LogOut className="h-4 w-4" />
+            <span>Sign Out</span>
+          </button>
+        </div>
       </div>
     </nav>
   )

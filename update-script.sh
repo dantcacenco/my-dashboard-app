@@ -1,8 +1,8 @@
 #!/bin/bash
 
-echo "🔧 Restoring original navigation styling..."
+echo "🔧 Converting navigation to horizontal top bar..."
 
-# Restore the Navigation component with original styling
+# Update Navigation component to horizontal layout
 cat > components/Navigation.tsx << 'EOF'
 'use client'
 
@@ -17,12 +17,14 @@ export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
 
   useEffect(() => {
-    async function getUserRole() {
+    async function getUserInfo() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
+        setUserEmail(user.email || null)
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
@@ -31,7 +33,7 @@ export default function Navigation() {
         setUserRole(profile?.role || null)
       }
     }
-    getUserRole()
+    getUserInfo()
   }, [])
 
   const handleSignOut = async () => {
@@ -53,56 +55,127 @@ export default function Navigation() {
   ]
 
   return (
-    <nav className="w-64 bg-white border-r border-gray-200 h-full flex flex-col">
-      <div className="p-6 border-b border-gray-200">
-        <h1 className="text-2xl font-bold text-gray-900">Service Pro</h1>
-      </div>
-      
-      <div className="flex-1 py-4">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+    <nav className="w-full bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 h-16">
+        {/* Logo */}
+        <div className="flex items-center">
+          <h1 className="text-xl font-bold text-gray-900 mr-8">Service Pro</h1>
           
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-6 py-3 text-gray-700 hover:bg-gray-100 transition-colors ${
-                isActive ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600' : ''
-              }`}
-            >
-              <Icon className="h-5 w-5" />
-              <span className="font-medium">{item.label}</span>
-            </Link>
-          )
-        })}
-      </div>
+          {/* Navigation Items */}
+          <div className="flex items-center space-x-1">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+              
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActive 
+                      ? 'bg-blue-50 text-blue-600' 
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
 
-      <div className="p-4 border-t border-gray-200">
-        <button
-          onClick={handleSignOut}
-          className="flex items-center gap-3 w-full px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <LogOut className="h-5 w-5" />
-          <span className="font-medium">Sign Out</span>
-        </button>
+        {/* User Menu */}
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-600">
+            {userEmail}
+          </div>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <LogOut className="h-4 w-4" />
+            <span>Sign Out</span>
+          </button>
+        </div>
       </div>
     </nav>
   )
 }
 EOF
 
-# Commit the fix
+# Update the authenticated layout to use horizontal navigation
+cat > app/\(authenticated\)/layout.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import Navigation from '@/components/Navigation'
+
+export default async function AuthenticatedLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/auth/login')
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navigation />
+      <main className="w-full">
+        {children}
+      </main>
+    </div>
+  )
+}
+EOF
+
+# Also update the technician layout to match
+cat > app/\(authenticated\)/technician/layout.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+
+export default async function TechnicianLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) redirect('/auth/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  // Only technicians can access this section
+  if (profile?.role !== 'technician') {
+    redirect('/dashboard')
+  }
+
+  return <>{children}</>
+}
+EOF
+
+# Commit the changes
 git add .
-git commit -m "fix: restore original navigation styling with light theme"
+git commit -m "feat: convert navigation to horizontal top bar layout"
 git push origin main
 
-echo "✅ Navigation styling restored!"
+echo "✅ Navigation converted to horizontal layout!"
 echo ""
-echo "The navigation now has:"
-echo "1. White background with gray borders"
-echo "2. Blue highlight for active items"
-echo "3. Clean, light theme appearance"
-echo "4. Role-based menu items (technicians only see My Tasks)"
+echo "Changes made:"
+echo "1. Navigation is now a horizontal bar at the top"
+echo "2. Logo on the left, menu items in the center, user info on the right"
+echo "3. Clean, modern appearance with proper spacing"
+echo "4. Active items highlighted in blue"
+echo "5. Role-based menu items still work"
 echo ""
-echo "Deploy this to restore the original look!"
+echo "Deploy to see the new horizontal navigation!"

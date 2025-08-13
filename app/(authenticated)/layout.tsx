@@ -9,16 +9,16 @@ export default async function AuthenticatedLayout({
 }) {
   const supabase = await createClient()
   
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
-  if (error || !user) {
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
     redirect('/auth/login')
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
-      <main className="flex-1">
+      <main className="w-full">
         {children}
       </main>
     </div>
