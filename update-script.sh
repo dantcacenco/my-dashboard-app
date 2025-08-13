@@ -1,8 +1,10 @@
 #!/bin/bash
 
-echo "🔧 Implementing Tasks System for Service Pro..."
+echo "🔧 Implementing Complete Tasks System for Service Pro..."
 
-# Create the Tasks List component for jobs
+# First, create all the Task components
+
+# Create TasksList component
 cat > app/jobs/[id]/TasksList.tsx << 'EOF'
 'use client'
 
@@ -246,7 +248,7 @@ export default function TasksList({ jobId, canEdit }: TasksListProps) {
 }
 EOF
 
-# Create the CreateTaskModal component
+# Create CreateTaskModal component
 cat > app/jobs/[id]/CreateTaskModal.tsx << 'EOF'
 'use client'
 
@@ -296,7 +298,6 @@ export default function CreateTaskModal({ jobId, onClose, onSuccess }: CreateTas
     
     if (data) {
       setJobData(data)
-      // Pre-fill address from job's service address
       setFormData(prev => ({
         ...prev,
         address: data.service_address || data.customers?.address || ''
@@ -316,11 +317,9 @@ export default function CreateTaskModal({ jobId, onClose, onSuccess }: CreateTas
     setLoading(true)
 
     try {
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      // Create the task
       const { data: task, error: taskError } = await supabase
         .from('tasks')
         .insert({
@@ -335,13 +334,12 @@ export default function CreateTaskModal({ jobId, onClose, onSuccess }: CreateTas
 
       if (taskError) throw taskError
 
-      // Assign technicians if selected
       if (selectedTechnicians.length > 0) {
         const assignments = selectedTechnicians.map((techId, index) => ({
           task_id: task.id,
           technician_id: techId,
           assigned_by: user.id,
-          is_lead: index === 0 // First technician is lead
+          is_lead: index === 0
         }))
 
         const { error: assignError } = await supabase
@@ -473,7 +471,7 @@ export default function CreateTaskModal({ jobId, onClose, onSuccess }: CreateTas
 }
 EOF
 
-# Create the EditTaskModal component
+# Create EditTaskModal component
 cat > app/jobs/[id]/EditTaskModal.tsx << 'EOF'
 'use client'
 
@@ -510,7 +508,6 @@ export default function EditTaskModal({ task, onClose, onSuccess }: EditTaskModa
   const supabase = createClient()
 
   useEffect(() => {
-    // Set initial technicians
     const techIds = task.task_technicians?.map((tt: any) => tt.technician_id) || []
     setSelectedTechnicians(techIds)
   }, [task])
@@ -520,11 +517,9 @@ export default function EditTaskModal({ task, onClose, onSuccess }: EditTaskModa
     setLoading(true)
 
     try {
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      // Update the task
       const { error: taskError } = await supabase
         .from('tasks')
         .update({
@@ -535,14 +530,11 @@ export default function EditTaskModal({ task, onClose, onSuccess }: EditTaskModa
 
       if (taskError) throw taskError
 
-      // Update technician assignments
-      // First delete existing assignments
       await supabase
         .from('task_technicians')
         .delete()
         .eq('task_id', task.id)
 
-      // Then add new assignments
       if (selectedTechnicians.length > 0) {
         const assignments = selectedTechnicians.map((techId, index) => ({
           task_id: task.id,
@@ -700,51 +692,517 @@ export default function EditTaskModal({ task, onClose, onSuccess }: EditTaskModa
 }
 EOF
 
-# Update JobDetailView to include Tasks tab
-cat > app/jobs/[id]/JobDetailView_update.tsx << 'EOF'
-// Add this import at the top
+# Now, completely replace the JobDetailView.tsx file with Tasks tab included
+cat > app/jobs/[id]/JobDetailView.tsx << 'EOF'
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { Calendar, Clock, User, MapPin, DollarSign, Briefcase, Edit, ChevronLeft, FileText, Upload, Camera, Users, ClipboardList } from 'lucide-react'
+import { format } from 'date-fns'
+import EditJobModal from './EditJobModal'
+import PhotoUpload from './PhotoUpload'
+import { TechnicianSearch } from '@/components/technician/TechnicianSearch'
 import TasksList from './TasksList'
 
-// In the Tabs section, add a new Tasks tab after the Details tab:
-<TabsContent value="tasks" className="mt-4">
-  <TasksList jobId={job.id} canEdit={userRole === 'boss' || userRole === 'admin'} />
-</TabsContent>
+interface JobDetailViewProps {
+  job: any
+}
 
-// Also add the Tasks tab trigger in TabsList:
-<TabsTrigger value="tasks">Tasks</TabsTrigger>
+export default function JobDetailView({ job: initialJob }: JobDetailViewProps) {
+  const [job, setJob] = useState(initialJob)
+  const [loading, setLoading] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedTechnicians, setSelectedTechnicians] = useState<string[]>([])
+  const [technicians, setTechnicians] = useState<any[]>([])
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [bossNotes, setBossNotes] = useState(job.boss_notes || '')
+  const [completionNotes, setCompletionNotes] = useState(job.completion_notes || '')
+  const [savingNotes, setSavingNotes] = useState(false)
+  
+  const router = useRouter()
+  const supabase = createClient()
+  const adminClient = createAdminClient()
+
+  useEffect(() => {
+    fetchUserRole()
+    fetchJobTechnicians()
+  }, [job.id])
+
+  const fetchUserRole = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      
+      setUserRole(profile?.role || null)
+    }
+  }
+
+  const fetchJobTechnicians = async () => {
+    const { data } = await adminClient
+      .from('job_technicians')
+      .select('technician_id, profiles!job_technicians_technician_id_fkey(id, full_name, email)')
+      .eq('job_id', job.id)
+    
+    if (data) {
+      const techIds = data.map(jt => jt.technician_id)
+      const techProfiles = data.map(jt => jt.profiles).filter(Boolean)
+      setSelectedTechnicians(techIds)
+      setTechnicians(techProfiles)
+    }
+  }
+
+  const handleStatusUpdate = async (newStatus: string) => {
+    setLoading(true)
+    try {
+      const updateData: any = { 
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      }
+      
+      if (newStatus === 'in_progress' && !job.actual_start_time) {
+        updateData.actual_start_time = new Date().toISOString()
+      } else if (newStatus === 'completed' && !job.actual_end_time) {
+        updateData.actual_end_time = new Date().toISOString()
+      }
+
+      const { data, error } = await supabase
+        .from('jobs')
+        .update(updateData)
+        .eq('id', job.id)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setJob(data)
+      
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('job_activity_log').insert({
+          job_id: job.id,
+          user_id: user.id,
+          activity_type: 'status_change',
+          description: `Status changed from ${job.status} to ${newStatus}`,
+          old_value: job.status,
+          new_value: newStatus
+        })
+      }
+    } catch (error) {
+      console.error('Failed to update status:', error)
+      alert('Failed to update job status')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleTechnicianUpdate = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      await adminClient
+        .from('job_technicians')
+        .delete()
+        .eq('job_id', job.id)
+
+      if (selectedTechnicians.length > 0) {
+        const assignments = selectedTechnicians.map(techId => ({
+          job_id: job.id,
+          technician_id: techId,
+          assigned_by: user.id
+        }))
+
+        await adminClient
+          .from('job_technicians')
+          .insert(assignments)
+      }
+
+      await fetchJobTechnicians()
+      alert('Technicians updated successfully')
+    } catch (error) {
+      console.error('Error updating technicians:', error)
+      alert('Failed to update technicians')
+    }
+  }
+
+  const handleNotesUpdate = async (noteType: 'boss_notes' | 'completion_notes') => {
+    setSavingNotes(true)
+    try {
+      const value = noteType === 'boss_notes' ? bossNotes : completionNotes
+      
+      const { error } = await supabase
+        .from('jobs')
+        .update({ 
+          [noteType]: value,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', job.id)
+
+      if (error) throw error
+      
+      setJob({ ...job, [noteType]: value })
+      alert('Notes saved successfully')
+    } catch (error) {
+      console.error('Error saving notes:', error)
+      alert('Failed to save notes')
+    } finally {
+      setSavingNotes(false)
+    }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-500'
+      case 'in_progress': return 'bg-blue-500'
+      case 'pending': return 'bg-yellow-500'
+      case 'cancelled': return 'bg-red-500'
+      default: return 'bg-gray-500'
+    }
+  }
+
+  const canEdit = userRole === 'boss' || userRole === 'admin'
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/jobs')}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Back to Jobs
+          </Button>
+          <h1 className="text-2xl font-bold">Job #{job.job_number}</h1>
+          <Badge className={getStatusColor(job.status)} variant="secondary">
+            {job.status.replace('_', ' ')}
+          </Badge>
+        </div>
+        {canEdit && (
+          <Button onClick={() => setShowEditModal(true)}>
+            <Edit className="h-4 w-4 mr-2" />
+            Edit Job
+          </Button>
+        )}
+      </div>
+
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="tasks">Tasks</TabsTrigger>
+          <TabsTrigger value="technicians">Technicians</TabsTrigger>
+          <TabsTrigger value="files">Files</TabsTrigger>
+          <TabsTrigger value="photos">Photos</TabsTrigger>
+          <TabsTrigger value="notes">Notes</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Job Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <Briefcase className="h-4 w-4 text-gray-500" />
+                  <span className="font-medium">Type:</span>
+                  <span>{job.job_type}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Calendar className="h-4 w-4 text-gray-500" />
+                  <span className="font-medium">Scheduled:</span>
+                  <span>
+                    {job.scheduled_date ? format(new Date(job.scheduled_date), 'MMM d, yyyy') : 'Not scheduled'}
+                    {job.scheduled_time && ` at ${job.scheduled_time}`}
+                  </span>
+                </div>
+                {job.estimated_duration && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="h-4 w-4 text-gray-500" />
+                    <span className="font-medium">Duration:</span>
+                    <span>{job.estimated_duration}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm">
+                  <DollarSign className="h-4 w-4 text-gray-500" />
+                  <span className="font-medium">Value:</span>
+                  <span>${Number(job.total_value || 0).toFixed(2)}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Customer Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-1">
+                  <p className="font-medium">{job.customer_name}</p>
+                  {job.customer_email && (
+                    <p className="text-sm text-gray-600">{job.customer_email}</p>
+                  )}
+                  {job.customer_phone && (
+                    <p className="text-sm text-gray-600">{job.customer_phone}</p>
+                  )}
+                </div>
+                {job.service_address && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <MapPin className="h-4 w-4 text-gray-500 mt-0.5" />
+                    <div>
+                      <p>{job.service_address}</p>
+                      {(job.service_city || job.service_state || job.service_zip) && (
+                        <p>
+                          {[job.service_city, job.service_state, job.service_zip]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {job.description && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Description</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600 whitespace-pre-wrap">{job.description}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Status Management</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-2">
+                {job.status === 'pending' && (
+                  <Button
+                    onClick={() => handleStatusUpdate('in_progress')}
+                    disabled={loading}
+                  >
+                    Start Job
+                  </Button>
+                )}
+                {job.status === 'in_progress' && (
+                  <>
+                    <Button
+                      onClick={() => handleStatusUpdate('completed')}
+                      disabled={loading}
+                      variant="default"
+                    >
+                      Complete Job
+                    </Button>
+                    <Button
+                      onClick={() => handleStatusUpdate('pending')}
+                      disabled={loading}
+                      variant="outline"
+                    >
+                      Pause Job
+                    </Button>
+                  </>
+                )}
+                {job.status === 'completed' && (
+                  <Button
+                    onClick={() => handleStatusUpdate('in_progress')}
+                    disabled={loading}
+                    variant="outline"
+                  >
+                    Reopen Job
+                  </Button>
+                )}
+                {job.status !== 'cancelled' && job.status !== 'completed' && (
+                  <Button
+                    onClick={() => handleStatusUpdate('cancelled')}
+                    disabled={loading}
+                    variant="destructive"
+                  >
+                    Cancel Job
+                  </Button>
+                )}
+              </div>
+              
+              {job.actual_start_time && (
+                <p className="text-sm text-gray-600 mt-4">
+                  Started: {format(new Date(job.actual_start_time), 'MMM d, yyyy h:mm a')}
+                </p>
+              )}
+              {job.actual_end_time && (
+                <p className="text-sm text-gray-600">
+                  Completed: {format(new Date(job.actual_end_time), 'MMM d, yyyy h:mm a')}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tasks" className="mt-4">
+          <TasksList jobId={job.id} canEdit={canEdit} />
+        </TabsContent>
+
+        <TabsContent value="technicians" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Assigned Technicians</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {canEdit ? (
+                <>
+                  <TechnicianSearch
+                    selectedTechnicians={selectedTechnicians}
+                    onSelectionChange={setSelectedTechnicians}
+                  />
+                  <Button 
+                    onClick={handleTechnicianUpdate}
+                    disabled={loading}
+                  >
+                    Update Technicians
+                  </Button>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  {technicians.length > 0 ? (
+                    technicians.map((tech) => (
+                      <div key={tech.id} className="flex items-center gap-2 p-2 border rounded">
+                        <User className="h-4 w-4 text-gray-500" />
+                        <span>{tech.full_name}</span>
+                        <span className="text-sm text-gray-500">({tech.email})</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-500">No technicians assigned</p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="files" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Files & Documents</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600 mb-2">File upload coming soon</p>
+                <p className="text-sm text-gray-500">You'll be able to upload PDFs, documents, and other files here</p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="photos" className="space-y-4">
+          <PhotoUpload jobId={job.id} />
+        </TabsContent>
+
+        <TabsContent value="notes" className="space-y-4">
+          {(userRole === 'boss' || userRole === 'admin') && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Boss Notes (Private)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Textarea
+                  value={bossNotes}
+                  onChange={(e) => setBossNotes(e.target.value)}
+                  placeholder="Private notes only visible to boss/admin..."
+                  rows={4}
+                />
+                <Button 
+                  onClick={() => handleNotesUpdate('boss_notes')}
+                  disabled={savingNotes}
+                >
+                  Save Boss Notes
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Completion Notes</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Textarea
+                value={completionNotes}
+                onChange={(e) => setCompletionNotes(e.target.value)}
+                placeholder="Notes about job completion..."
+                rows={4}
+                disabled={!canEdit && userRole !== 'technician'}
+              />
+              {(canEdit || userRole === 'technician') && (
+                <Button 
+                  onClick={() => handleNotesUpdate('completion_notes')}
+                  disabled={savingNotes}
+                >
+                  Save Completion Notes
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {job.notes && (
+            <Card>
+              <CardHeader>
+                <CardTitle>General Notes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600 whitespace-pre-wrap">{job.notes}</p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {showEditModal && (
+        <EditJobModal
+          job={job}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={(updatedJob) => {
+            setJob(updatedJob)
+            setShowEditModal(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
 EOF
 
-echo "
-📝 Manual update needed for JobDetailView.tsx:
-
-1. Import TasksList at the top:
-   import TasksList from './TasksList'
-
-2. Add Tasks tab trigger after Details:
-   <TabsTrigger value=\"tasks\">Tasks</TabsTrigger>
-
-3. Add Tasks tab content after details tab:
-   <TabsContent value=\"tasks\" className=\"mt-4\">
-     <TasksList jobId={job.id} canEdit={userRole === 'boss' || userRole === 'admin'} />
-   </TabsContent>
-"
-
-# Commit changes
+# Commit all changes
 git add .
-git commit -m "feat: implement tasks system with create/edit/delete functionality"
+git commit -m "feat: complete tasks system implementation with automatic JobDetailView update"
 git push origin main
 
-echo "✅ Tasks system implementation complete!"
+echo "✅ Complete Tasks System Implementation Done!"
 echo ""
 echo "Features added:"
-echo "- Task creation with technician assignment"
-echo "- Task editing and status updates"
-echo "- Task deletion"
-echo "- Visual task cards with status badges"
-echo "- Technician assignment using existing TechnicianSearch component"
+echo "- TasksList component with full CRUD operations"
+echo "- CreateTaskModal for adding new tasks"
+echo "- EditTaskModal for updating existing tasks"
+echo "- Automatic JobDetailView update with Tasks tab"
+echo "- Task status management (scheduled, in_progress, completed, cancelled)"
+echo "- Technician assignment to tasks"
+echo "- Visual badges for task types and statuses"
 echo ""
-echo "Next steps:"
-echo "1. Test task creation from job detail page"
-echo "2. Verify technician assignments work"
-echo "3. Implement time tracking for tasks"
-echo "4. Add task completion workflow"
+echo "No manual updates needed - everything is automated!"
