@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TechniciansView from './TechniciansView'
+import FixOrphanedButton from './FixOrphanedButton'
 
 export default async function TechniciansPage() {
   const supabase = await createClient()
@@ -25,5 +26,14 @@ export default async function TechniciansPage() {
     .eq('role', 'technician')
     .order('full_name', { ascending: true })
 
-  return <TechniciansView technicians={technicians || []} />
+  return (
+    <>
+      <div className="p-6 pb-0">
+        <div className="flex justify-end">
+          <FixOrphanedButton />
+        </div>
+      </div>
+      <TechniciansView technicians={technicians || []} />
+    </>
+  )
 }

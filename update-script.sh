@@ -1,271 +1,252 @@
 #!/bin/bash
 
-echo "🔐 Setting up full auth user creation with Supabase Admin API..."
+echo "🔧 Fixing technician display issue..."
 
-# Step 1: Create admin client utility
-mkdir -p lib/supabase
-cat > lib/supabase/admin.ts << 'EOF'
-import { createClient } from '@supabase/supabase-js'
+# First, let's create a debug script to check the database
+cat > check-technicians.sql << 'SQLEOF'
+-- Check auth users and profiles
+SELECT 
+  'Auth Users' as source,
+  au.id,
+  au.email,
+  au.created_at,
+  au.user_metadata->>'full_name' as full_name,
+  au.user_metadata->>'role' as role
+FROM auth.users au
+ORDER BY au.created_at DESC;
 
-/**
- * Creates a Supabase Admin client with service role privileges
- * WARNING: This should ONLY be used in server-side code (API routes, server components)
- * NEVER expose this to the client side
- */
-export function createAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+-- Check profiles table
+SELECT 
+  'Profiles' as source,
+  p.id,
+  p.email,
+  p.full_name,
+  p.role,
+  p.is_active,
+  p.created_at
+FROM profiles p
+ORDER BY p.created_at DESC;
 
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('Missing Supabase environment variables')
+-- Check for orphaned auth users (no profile)
+SELECT 
+  'Orphaned Auth Users (no profile)' as issue,
+  au.id,
+  au.email,
+  au.created_at
+FROM auth.users au
+LEFT JOIN profiles p ON au.id = p.id
+WHERE p.id IS NULL;
+
+-- Check for technicians specifically
+SELECT 
+  'Technicians in Profiles' as category,
+  COUNT(*) as count
+FROM profiles
+WHERE role = 'technician';
+SQLEOF
+
+echo "✅ Created check-technicians.sql - Run this in Supabase SQL Editor to diagnose"
+echo ""
+
+# Now fix the TechniciansView to properly refresh
+cat > app/\(authenticated\)/technicians/TechniciansView.tsx << 'EOF'
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Plus, Edit, UserCheck, UserX, Phone, Mail, RefreshCw } from 'lucide-react'
+import AddTechnicianModal from './AddTechnicianModal'
+import { createClient } from '@/lib/supabase/client'
+
+interface Technician {
+  id: string
+  email: string
+  full_name: string | null
+  phone: string | null
+  is_active?: boolean
+  created_at: string
+}
+
+export default function TechniciansView({ technicians: initialTechnicians }: { technicians: Technician[] }) {
+  const [technicians, setTechnicians] = useState(initialTechnicians)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [selectedTechnician, setSelectedTechnician] = useState<Technician | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const router = useRouter()
+
+  // Function to refresh technicians list
+  const refreshTechnicians = async () => {
+    setIsRefreshing(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'technician')
+        .order('full_name', { ascending: true })
+
+      if (!error && data) {
+        setTechnicians(data)
+      }
+    } catch (error) {
+      console.error('Error refreshing technicians:', error)
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
-  return createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  })
+  const handleTechnicianCreated = async () => {
+    setShowAddModal(false)
+    // Wait a moment for the database to update
+    setTimeout(() => {
+      refreshTechnicians()
+      router.refresh()
+    }, 1000)
+  }
+
+  const activeTechnicians = technicians.filter(t => t.is_active !== false)
+  const inactiveTechnicians = technicians.filter(t => t.is_active === false)
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Technicians</h1>
+          <p className="text-muted-foreground">Manage your field technicians</p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={refreshTechnicians}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button onClick={() => setShowAddModal(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Technician
+          </Button>
+        </div>
+      </div>
+
+      {/* Active Technicians */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Active Technicians ({activeTechnicians.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {activeTechnicians.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No active technicians found</p>
+              <p className="text-sm mt-2">Click "Add Technician" to create one</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeTechnicians.map((tech) => (
+                <Card key={tech.id} className="border">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          <span className="text-blue-600 font-semibold">
+                            {tech.full_name?.charAt(0) || tech.email.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-medium">{tech.full_name || 'No name'}</div>
+                          <Badge variant="outline" className="mt-1">
+                            <UserCheck className="h-3 w-3 mr-1" />
+                            Active
+                          </Badge>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSelectedTechnician(tech)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Mail className="h-3 w-3" />
+                        {tech.email}
+                      </div>
+                      {tech.phone && (
+                        <div className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {tech.phone}
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-400 mt-2">
+                        ID: {tech.id.slice(0, 8)}...
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Inactive Technicians */}
+      {inactiveTechnicians.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Inactive Technicians ({inactiveTechnicians.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {inactiveTechnicians.map((tech) => (
+                <Card key={tech.id} className="border opacity-60">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2">
+                      <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
+                        <span className="text-gray-600 font-semibold">
+                          {tech.full_name?.charAt(0) || tech.email.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="font-medium">{tech.full_name || 'No name'}</div>
+                        <Badge variant="destructive" className="mt-1">
+                          <UserX className="h-3 w-3 mr-1" />
+                          Inactive
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {showAddModal && (
+        <AddTechnicianModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={handleTechnicianCreated}
+        />
+      )}
+    </div>
+  )
 }
 EOF
 
-# Step 2: Update the create technician API with full auth
-cat > app/api/technicians/create/route.ts << 'EOF'
-import { createClient } from '@/lib/supabase/server'
+# Create a sync technicians API endpoint to fix orphaned users
+cat > app/api/technicians/fix-orphaned/route.ts << 'EOF'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { NextResponse } from 'next/server'
-
-export async function POST(request: Request) {
-  try {
-    // Regular client for checking current user
-    const supabase = await createClient()
-    
-    // Check if user is boss/admin
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'boss' && profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-    }
-
-    const { email, password, full_name, phone } = await request.json()
-
-    // Validate input
-    if (!email || !password || !full_name) {
-      return NextResponse.json({ 
-        error: 'Email, password, and full name are required' 
-      }, { status: 400 })
-    }
-
-    if (password.length < 6) {
-      return NextResponse.json({ 
-        error: 'Password must be at least 6 characters' 
-      }, { status: 400 })
-    }
-
-    // Create admin client for user creation
-    const adminClient = createAdminClient()
-
-    // Create the auth user
-    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
-      email: email,
-      password: password,
-      email_confirm: true, // Auto-confirm email
-      user_metadata: {
-        full_name: full_name,
-        role: 'technician'
-      }
-    })
-
-    if (authError) {
-      console.error('Error creating auth user:', authError)
-      
-      // Check if user already exists
-      if (authError.message?.includes('already registered')) {
-        return NextResponse.json({ 
-          error: 'A user with this email already exists' 
-        }, { status: 400 })
-      }
-      
-      return NextResponse.json({ 
-        error: authError.message || 'Failed to create user account' 
-      }, { status: 500 })
-    }
-
-    if (!authData.user) {
-      return NextResponse.json({ 
-        error: 'Failed to create user account' 
-      }, { status: 500 })
-    }
-
-    // Create or update profile for the new user
-    const { data: newProfile, error: profileError } = await adminClient
-      .from('profiles')
-      .upsert({
-        id: authData.user.id,
-        email: email,
-        full_name: full_name,
-        phone: phone || null,
-        role: 'technician',
-        is_active: true
-      })
-      .select()
-      .single()
-
-    if (profileError) {
-      console.error('Error creating technician profile:', profileError)
-      // Note: Auth user was created, but profile failed
-      // In production, you might want to delete the auth user here
-      return NextResponse.json({ 
-        error: 'User created but profile setup failed. Please contact support.' 
-      }, { status: 500 })
-    }
-
-    return NextResponse.json({ 
-      success: true,
-      technician: newProfile,
-      credentials: {
-        email: email,
-        temporaryPassword: password
-      },
-      message: 'Technician created successfully!'
-    })
-
-  } catch (error) {
-    console.error('Error creating technician:', error)
-    return NextResponse.json({ 
-      error: 'Internal server error' 
-    }, { status: 500 })
-  }
-}
-EOF
-
-# Step 3: Create an API to update/deactivate technicians
-mkdir -p app/api/technicians/update
-cat > app/api/technicians/update/route.ts << 'EOF'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { NextResponse } from 'next/server'
-
-export async function PUT(request: Request) {
-  try {
-    const supabase = await createClient()
-    
-    // Check if user is boss/admin
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'boss' && profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-    }
-
-    const { technicianId, updates, resetPassword } = await request.json()
-
-    if (!technicianId) {
-      return NextResponse.json({ error: 'Technician ID required' }, { status: 400 })
-    }
-
-    const adminClient = createAdminClient()
-
-    // Update profile
-    const { data: updatedProfile, error: profileError } = await adminClient
-      .from('profiles')
-      .update({
-        full_name: updates.full_name,
-        phone: updates.phone,
-        is_active: updates.is_active,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', technicianId)
-      .select()
-      .single()
-
-    if (profileError) {
-      return NextResponse.json({ 
-        error: 'Failed to update technician profile' 
-      }, { status: 500 })
-    }
-
-    // Handle password reset if requested
-    let newPassword = null
-    if (resetPassword) {
-      // Generate a random password
-      newPassword = Math.random().toString(36).slice(-8) + 'A1!'
-      
-      const { error: passwordError } = await adminClient.auth.admin.updateUserById(
-        technicianId,
-        { password: newPassword }
-      )
-
-      if (passwordError) {
-        console.error('Error resetting password:', passwordError)
-        // Continue even if password reset fails
-      }
-    }
-
-    // Handle deactivation - disable auth access
-    if (updates.is_active === false) {
-      // Ban the user from logging in
-      const { error: banError } = await adminClient.auth.admin.updateUserById(
-        technicianId,
-        { ban_duration: '876000h' } // 100 years effectively permanent
-      )
-
-      if (banError) {
-        console.error('Error deactivating user auth:', banError)
-      }
-    } else if (updates.is_active === true) {
-      // Unban the user to allow login
-      const { error: unbanError } = await adminClient.auth.admin.updateUserById(
-        technicianId,
-        { ban_duration: 'none' }
-      )
-
-      if (unbanError) {
-        console.error('Error reactivating user auth:', unbanError)
-      }
-    }
-
-    return NextResponse.json({ 
-      success: true,
-      technician: updatedProfile,
-      ...(newPassword && { newPassword })
-    })
-
-  } catch (error) {
-    console.error('Error updating technician:', error)
-    return NextResponse.json({ 
-      error: 'Internal server error' 
-    }, { status: 500 })
-  }
-}
-EOF
-
-# Step 4: Create API to list all auth users (for sync)
-cat > app/api/technicians/sync/route.ts << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 /**
- * Sync auth users with profiles table
- * Useful for ensuring all auth users have profiles
+ * Fix orphaned auth users that don't have profiles
  */
 export async function POST(request: Request) {
   try {
@@ -289,17 +270,18 @@ export async function POST(request: Request) {
 
     const adminClient = createAdminClient()
 
-    // List all users
+    // Get all auth users
     const { data: { users }, error: listError } = await adminClient.auth.admin.listUsers()
 
     if (listError) {
       return NextResponse.json({ 
-        error: 'Failed to list users' 
+        error: 'Failed to list auth users' 
       }, { status: 500 })
     }
 
-    // Sync each user with profiles
-    const syncResults = []
+    const fixedUsers = []
+    const errors = []
+
     for (const authUser of users) {
       // Check if profile exists
       const { data: existingProfile } = await adminClient
@@ -308,44 +290,46 @@ export async function POST(request: Request) {
         .eq('id', authUser.id)
         .single()
 
-      if (!existingProfile) {
-        // Create profile for auth user
+      if (!existingProfile && authUser.email) {
+        // Create missing profile
         const { data: newProfile, error: createError } = await adminClient
           .from('profiles')
           .insert({
             id: authUser.id,
-            email: authUser.email!,
-            full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Unknown',
+            email: authUser.email,
+            full_name: authUser.user_metadata?.full_name || authUser.email.split('@')[0],
             role: authUser.user_metadata?.role || 'technician',
-            is_active: !authUser.banned_until
+            is_active: true
           })
           .select()
           .single()
 
-        syncResults.push({
-          userId: authUser.id,
-          email: authUser.email,
-          action: 'created',
-          success: !createError
-        })
-      } else {
-        syncResults.push({
-          userId: authUser.id,
-          email: authUser.email,
-          action: 'exists',
-          success: true
-        })
+        if (createError) {
+          errors.push({
+            userId: authUser.id,
+            email: authUser.email,
+            error: createError.message
+          })
+        } else {
+          fixedUsers.push({
+            userId: authUser.id,
+            email: authUser.email,
+            full_name: newProfile?.full_name
+          })
+        }
       }
     }
 
     return NextResponse.json({ 
       success: true,
-      totalUsers: users.length,
-      syncResults
+      message: `Fixed ${fixedUsers.length} orphaned users`,
+      fixedUsers,
+      errors,
+      totalAuthUsers: users.length
     })
 
   } catch (error) {
-    console.error('Error syncing users:', error)
+    console.error('Error fixing orphaned users:', error)
     return NextResponse.json({ 
       error: 'Internal server error' 
     }, { status: 500 })
@@ -353,279 +337,129 @@ export async function POST(request: Request) {
 }
 EOF
 
-# Step 5: Update the AddTechnicianModal to show credentials
-cat > app/\(authenticated\)/technicians/AddTechnicianModal.tsx << 'EOF'
+# Create a manual fix button component
+cat > app/\(authenticated\)/technicians/FixOrphanedButton.tsx << 'EOF'
 'use client'
 
-import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card } from '@/components/ui/card'
-import { X, Loader2, Check, Copy } from 'lucide-react'
+import { Wrench, Loader2 } from 'lucide-react'
+import { useState } from 'react'
 import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
 
-interface AddTechnicianModalProps {
-  onClose: () => void
-  onSuccess: () => void
-}
+export default function FixOrphanedButton() {
+  const [isFixing, setIsFixing] = useState(false)
+  const router = useRouter()
 
-export default function AddTechnicianModal({ onClose, onSuccess }: AddTechnicianModalProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [showCredentials, setShowCredentials] = useState(false)
-  const [credentials, setCredentials] = useState<{email: string, password: string} | null>(null)
-  const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    temporaryPassword: ''
-  })
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!formData.fullName || !formData.email || !formData.temporaryPassword) {
-      toast.error('Please fill in all required fields')
-      return
-    }
-
-    if (formData.temporaryPassword.length < 6) {
-      toast.error('Password must be at least 6 characters')
-      return
-    }
-
-    setIsLoading(true)
-
+  const handleFix = async () => {
+    setIsFixing(true)
     try {
-      const response = await fetch('/api/technicians/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.temporaryPassword,
-          full_name: formData.fullName,
-          phone: formData.phone
-        })
+      const response = await fetch('/api/technicians/fix-orphaned', {
+        method: 'POST'
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create technician')
+        throw new Error(data.error || 'Failed to fix orphaned users')
       }
 
-      // Show credentials
-      setCredentials({
-        email: formData.email,
-        password: formData.temporaryPassword
-      })
-      setShowCredentials(true)
-      
-      toast.success('Technician created successfully!')
-      
-      // Wait a bit then close
-      setTimeout(() => {
-        onSuccess()
-      }, 3000)
-      
+      if (data.fixedUsers.length > 0) {
+        toast.success(`Fixed ${data.fixedUsers.length} orphaned technician(s)`)
+        router.refresh()
+      } else {
+        toast.info('No orphaned technicians found')
+      }
+
+      console.log('Fix results:', data)
     } catch (error: any) {
-      toast.error(error.message || 'Failed to create technician')
-      setIsLoading(false)
+      toast.error(error.message || 'Failed to fix orphaned users')
+    } finally {
+      setIsFixing(false)
     }
   }
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text)
-    toast.success(`${label} copied to clipboard`)
-  }
-
-  if (showCredentials && credentials) {
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 w-full max-w-md">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Technician Created!</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-green-600 mb-4">
-              <Check className="h-5 w-5" />
-              <span className="font-medium">Account created successfully</span>
-            </div>
-
-            <Card className="p-4 bg-blue-50 border-blue-200">
-              <p className="text-sm font-medium mb-3">Share these credentials with the technician:</p>
-              
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Email:</span>
-                  <div className="flex items-center gap-2">
-                    <code className="bg-white px-2 py-1 rounded text-sm">{credentials.email}</code>
-                    <button
-                      onClick={() => copyToClipboard(credentials.email, 'Email')}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Password:</span>
-                  <div className="flex items-center gap-2">
-                    <code className="bg-white px-2 py-1 rounded text-sm">{credentials.password}</code>
-                    <button
-                      onClick={() => copyToClipboard(credentials.password, 'Password')}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-xs text-gray-600 mt-3">
-                The technician should change their password after first login.
-              </p>
-            </Card>
-
-            <Button onClick={onClose} className="w-full">
-              Done
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">Add New Technician</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="fullName">Full Name *</Label>
-            <Input
-              id="fullName"
-              type="text"
-              value={formData.fullName}
-              onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-              placeholder="John Smith"
-              required
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="email">Email Address *</Label>
-            <Input
-              id="email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="john@example.com"
-              required
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              This will be their login email
-            </p>
-          </div>
-
-          <div>
-            <Label htmlFor="phone">Phone Number</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              placeholder="(555) 123-4567"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="password">Temporary Password *</Label>
-            <Input
-              id="password"
-              type="text"
-              value={formData.temporaryPassword}
-              onChange={(e) => setFormData({ ...formData, temporaryPassword: e.target.value })}
-              placeholder="Min 6 characters"
-              required
-              minLength={6}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              You'll be able to copy this after creation
-            </p>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="flex-1"
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              className="flex-1"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                'Create Technician'
-              )}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleFix}
+      disabled={isFixing}
+    >
+      {isFixing ? (
+        <>
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          Fixing...
+        </>
+      ) : (
+        <>
+          <Wrench className="h-4 w-4 mr-2" />
+          Fix Missing Profiles
+        </>
+      )}
+    </Button>
   )
 }
 EOF
 
-# Commit everything
+# Update technicians page to include the fix button
+cat > app/\(authenticated\)/technicians/page.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import TechniciansView from './TechniciansView'
+import FixOrphanedButton from './FixOrphanedButton'
+
+export default async function TechniciansPage() {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  // Only boss/admin can manage technicians
+  if (profile?.role !== 'boss' && profile?.role !== 'admin') {
+    redirect('/dashboard')
+  }
+
+  const { data: technicians } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('role', 'technician')
+    .order('full_name', { ascending: true })
+
+  return (
+    <>
+      <div className="p-6 pb-0">
+        <div className="flex justify-end">
+          <FixOrphanedButton />
+        </div>
+      </div>
+      <TechniciansView technicians={technicians || []} />
+    </>
+  )
+}
+EOF
+
+# Commit the fix
 git add .
-git commit -m "feat: implement full auth user creation with Supabase Admin API"
+git commit -m "fix: technician not appearing in list - add profile sync and refresh"
 git push origin main
 
-echo "✅ Full auth user creation setup complete!"
+echo "✅ Fix implemented!"
 echo ""
-echo "🔐 IMPORTANT NEXT STEPS:"
+echo "📋 IMMEDIATE ACTIONS:"
 echo ""
-echo "1. Add SUPABASE_SERVICE_ROLE_KEY to Vercel environment variables"
-echo "   - Go to Vercel Dashboard → Settings → Environment Variables"
-echo "   - Add the key from Supabase Dashboard → Settings → API → Service Role Key"
+echo "1. Run the SQL in check-technicians.sql in Supabase to see the current state"
 echo ""
-echo "2. Redeploy your application for changes to take effect"
+echo "2. After deployment, go to /technicians and click 'Fix Missing Profiles' button"
+echo "   This will create profiles for any auth users missing them"
 echo ""
-echo "3. Test creating a technician:"
-echo "   - Go to /technicians"
-echo "   - Click 'Add Technician'"
-echo "   - The new technician can immediately log in with their credentials"
+echo "3. The page now has a refresh button to manually reload the list"
 echo ""
-echo "⚠️ SECURITY NOTES:"
-echo "- Service role key has FULL database access"
-echo "- NEVER expose it in client-side code"
-echo "- NEVER commit it to git"
-echo "- Only use in server-side API routes"
+echo "The issue was likely that the auth user was created but the profile wasn't."
+echo "The fix button will sync them up!"
