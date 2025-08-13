@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, Mail, Phone, UserCheck, RefreshCw } from 'lucide-react'
+import { Plus, Mail, Phone, UserCheck, UserX, RefreshCw, Edit2, Trash2 } from 'lucide-react'
 import AddTechnicianModal from './AddTechnicianModal'
+import EditTechnicianModal from './EditTechnicianModal'
+import { toast } from 'sonner'
 
 interface Technician {
   id: string
@@ -18,13 +20,38 @@ interface Technician {
   role: string
 }
 
-export default function TechniciansClientView({ technicians }: { technicians: Technician[] }) {
+export default function TechniciansClientView({ technicians: initialTechnicians }: { technicians: Technician[] }) {
+  const [technicians, setTechnicians] = useState(initialTechnicians)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingTechnician, setEditingTechnician] = useState<Technician | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const router = useRouter()
 
   const handleRefresh = () => {
+    setIsRefreshing(true)
     router.refresh()
-    window.location.reload()
+    setTimeout(() => setIsRefreshing(false), 1000)
+  }
+
+  const handleDelete = async (techId: string, email: string) => {
+    if (!confirm(`Are you sure you want to permanently delete ${email}? This cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/technicians/${techId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete technician')
+      }
+
+      toast.success('Technician deleted successfully')
+      setTechnicians(technicians.filter(t => t.id !== techId))
+    } catch (error) {
+      toast.error('Failed to delete technician')
+    }
   }
 
   const activeTechnicians = technicians.filter(t => t.is_active !== false)
@@ -36,16 +63,17 @@ export default function TechniciansClientView({ technicians }: { technicians: Te
         <div>
           <h1 className="text-3xl font-bold">Technicians</h1>
           <p className="text-muted-foreground">
-            Total: {technicians.length} technicians in database
+            Manage your field technicians
           </p>
         </div>
         <div className="flex gap-2">
           <Button
             variant="outline"
+            size="icon"
             onClick={handleRefresh}
+            disabled={isRefreshing}
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Force Refresh
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </Button>
           <Button onClick={() => setShowAddModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
@@ -53,18 +81,6 @@ export default function TechniciansClientView({ technicians }: { technicians: Te
           </Button>
         </div>
       </div>
-
-      {/* Debug info */}
-      {technicians.length > 0 && (
-        <Card className="mb-6 bg-blue-50 border-blue-200">
-          <CardContent className="p-4">
-            <p className="text-sm">
-              <strong>Debug Info:</strong> Found {technicians.length} total technicians
-              ({activeTechnicians.length} active, {inactiveTechnicians.length} inactive)
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Active Technicians */}
       <Card className="mb-6">
@@ -99,6 +115,23 @@ export default function TechniciansClientView({ technicians }: { technicians: Te
                           </Badge>
                         </div>
                       </div>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingTechnician(tech)}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => handleDelete(tech.id, tech.email)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                     <div className="space-y-1 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1">
@@ -111,9 +144,6 @@ export default function TechniciansClientView({ technicians }: { technicians: Te
                           {tech.phone}
                         </div>
                       )}
-                      <div className="text-xs text-gray-400 mt-2">
-                        Created: {new Date(tech.created_at).toLocaleDateString()}
-                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -134,19 +164,39 @@ export default function TechniciansClientView({ technicians }: { technicians: Te
               {inactiveTechnicians.map((tech) => (
                 <Card key={tech.id} className="border opacity-60">
                   <CardContent className="p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
-                        <span className="text-gray-600 font-semibold">
-                          {(tech.full_name || tech.email || 'T').charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div>
-                        <div className="font-medium">
-                          {tech.full_name || 'No name set'}
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-2">
+                        <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
+                          <span className="text-gray-600 font-semibold">
+                            {(tech.full_name || tech.email || 'T').charAt(0).toUpperCase()}
+                          </span>
                         </div>
-                        <Badge variant="destructive" className="mt-1">
-                          Inactive
-                        </Badge>
+                        <div>
+                          <div className="font-medium">
+                            {tech.full_name || 'No name set'}
+                          </div>
+                          <Badge variant="destructive" className="mt-1">
+                            <UserX className="h-3 w-3 mr-1" />
+                            Inactive
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingTechnician(tech)}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => handleDelete(tech.id, tech.email)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -157,21 +207,22 @@ export default function TechniciansClientView({ technicians }: { technicians: Te
         </Card>
       )}
 
-      {/* Raw data display for debugging */}
-      <details className="mt-6">
-        <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-900">
-          Show raw data (for debugging)
-        </summary>
-        <pre className="mt-2 p-4 bg-gray-100 rounded text-xs overflow-auto">
-          {JSON.stringify(technicians, null, 2)}
-        </pre>
-      </details>
-
       {showAddModal && (
         <AddTechnicianModal
           onClose={() => setShowAddModal(false)}
           onSuccess={() => {
             setShowAddModal(false)
+            handleRefresh()
+          }}
+        />
+      )}
+
+      {editingTechnician && (
+        <EditTechnicianModal
+          technician={editingTechnician}
+          onClose={() => setEditingTechnician(null)}
+          onSuccess={() => {
+            setEditingTechnician(null)
             handleRefresh()
           }}
         />
