@@ -47,12 +47,12 @@ export default function Navigation() {
   ]
 
   return (
-    <nav className="w-64 bg-gray-900 text-white h-full flex flex-col">
-      <div className="p-4">
-        <h1 className="text-2xl font-bold">Service Pro</h1>
+    <nav className="w-64 bg-white border-r border-gray-200 h-full flex flex-col">
+      <div className="p-6 border-b border-gray-200">
+        <h1 className="text-2xl font-bold text-gray-900">Service Pro</h1>
       </div>
       
-      <div className="flex-1">
+      <div className="flex-1 py-4">
         {navItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
@@ -61,24 +61,24 @@ export default function Navigation() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition-colors ${
-                isActive ? 'bg-gray-800 border-l-4 border-blue-500' : ''
+              className={`flex items-center gap-3 px-6 py-3 text-gray-700 hover:bg-gray-100 transition-colors ${
+                isActive ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600' : ''
               }`}
             >
               <Icon className="h-5 w-5" />
-              <span>{item.label}</span>
+              <span className="font-medium">{item.label}</span>
             </Link>
           )
         })}
       </div>
 
-      <div className="p-4">
+      <div className="p-4 border-t border-gray-200">
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-800 rounded transition-colors"
+          className="flex items-center gap-3 w-full px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <LogOut className="h-5 w-5" />
-          <span>Sign Out</span>
+          <span className="font-medium">Sign Out</span>
         </button>
       </div>
     </nav>

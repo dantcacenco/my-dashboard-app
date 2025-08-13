@@ -1,364 +1,108 @@
 #!/bin/bash
 
-echo "🔧 Force pushing the JobDetailView fix..."
+echo "🔧 Restoring original navigation styling..."
 
-# First, let's make sure we have the latest code
-git pull origin main --rebase
-
-# Remove the old JobDetailView completely and recreate it
-rm -f app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx
-
-# Create the fixed version without any type issues
-cat > app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx << 'EOF'
+# Restore the Navigation component with original styling
+cat > components/Navigation.tsx << 'EOF'
 'use client'
 
-import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { 
-  ArrowLeft, Edit, MapPin, Phone, Mail, Calendar, 
-  User, Plus, Upload, Camera
-} from 'lucide-react'
 import Link from 'next/link'
-import { toast } from 'sonner'
+import { usePathname } from 'next/navigation'
+import { LayoutDashboard, FileText, Users, Briefcase, DollarSign, LogOut, UserCog, Calendar } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
-interface JobDetailViewProps {
-  job: any
-  userRole: string
-  availableTechnicians: any[]
-}
+export default function Navigation() {
+  const pathname = usePathname()
+  const router = useRouter()
+  const [userRole, setUserRole] = useState<string | null>(null)
 
-export default function JobDetailView({ job, userRole, availableTechnicians }: JobDetailViewProps) {
-  const [assignedTechs, setAssignedTechs] = useState<string[]>([])
-  const [isAssigning, setIsAssigning] = useState(false)
-
-  const handleAssignTechnician = async (techId: string) => {
-    if (assignedTechs.includes(techId)) {
-      toast.info('Technician already assigned')
-      return
+  useEffect(() => {
+    async function getUserRole() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        setUserRole(profile?.role || null)
+      }
     }
+    getUserRole()
+  }, [])
 
-    setIsAssigning(true)
-    setAssignedTechs([...assignedTechs, techId])
-    toast.success('Technician assigned successfully')
-    setIsAssigning(false)
+  const handleSignOut = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/auth/login')
   }
 
-  // Simple function to determine badge variant - TypeScript safe
-  const getBadgeVariant = (status: string) => {
-    if (status === 'completed') return 'default' as const
-    if (status === 'in_progress') return 'secondary' as const
-    if (status === 'cancelled') return 'destructive' as const
-    return 'outline' as const
-  }
-
-  const copyAddress = () => {
-    const address = `${job.service_address || ''}${job.service_city ? `, ${job.service_city}` : ''}${job.service_state ? `, ${job.service_state}` : ''} ${job.service_zip || ''}`
-    navigator.clipboard.writeText(address.trim())
-    toast.success('Address copied to clipboard')
-  }
+  // Define navigation items based on role
+  const navItems = userRole === 'technician' ? [
+    { href: '/technician', label: 'My Tasks', icon: Calendar },
+  ] : [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/proposals', label: 'Proposals', icon: FileText },
+    { href: '/customers', label: 'Customers', icon: Users },
+    { href: '/jobs', label: 'Jobs', icon: Briefcase },
+    { href: '/invoices', label: 'Invoices', icon: DollarSign },
+    { href: '/technicians', label: 'Technicians', icon: UserCog },
+  ]
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/jobs">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold">{job.job_number}</h1>
-          <p className="text-muted-foreground">{job.title || 'Untitled Job'}</p>
-        </div>
-        {(userRole === 'boss' || userRole === 'admin') && (
-          <Button>
-            <Edit className="h-4 w-4 mr-2" />
-            Edit Job
-          </Button>
-        )}
+    <nav className="w-64 bg-white border-r border-gray-200 h-full flex flex-col">
+      <div className="p-6 border-b border-gray-200">
+        <h1 className="text-2xl font-bold text-gray-900">Service Pro</h1>
+      </div>
+      
+      <div className="flex-1 py-4">
+        {navItems.map((item) => {
+          const Icon = item.icon
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+          
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-6 py-3 text-gray-700 hover:bg-gray-100 transition-colors ${
+                isActive ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600' : ''
+              }`}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="font-medium">{item.label}</span>
+            </Link>
+          )
+        })}
       </div>
 
-      {/* Main Info Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {/* Customer Info */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Customer</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {job.customers ? (
-              <div className="space-y-2">
-                <div className="font-medium">{job.customers.name}</div>
-                {job.customers.email && (
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Mail className="h-3 w-3" />
-                    {job.customers.email}
-                  </div>
-                )}
-                {job.customers.phone && (
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Phone className="h-3 w-3" />
-                    {job.customers.phone}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <span className="text-muted-foreground">No customer info</span>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Job Info */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Job Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Type:</span>
-                <span className="text-sm font-medium capitalize">{job.job_type || 'Not set'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Status:</span>
-                <Badge variant={getBadgeVariant(job.status || 'scheduled')}>
-                  {(job.status || 'scheduled').replace('_', ' ')}
-                </Badge>
-              </div>
-              {job.scheduled_date && (
-                <div className="flex items-center gap-1 text-sm">
-                  <Calendar className="h-3 w-3 text-muted-foreground" />
-                  {new Date(job.scheduled_date).toLocaleDateString()}
-                  {job.scheduled_time && ` at ${job.scheduled_time}`}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Service Location */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Service Location</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {job.service_address ? (
-              <div className="space-y-1">
-                <div className="flex items-start gap-1">
-                  <MapPin className="h-3 w-3 text-muted-foreground mt-1" />
-                  <div className="text-sm">
-                    <div>{job.service_address}</div>
-                    {(job.service_city || job.service_state || job.service_zip) && (
-                      <div>
-                        {job.service_city && `${job.service_city}, `}
-                        {job.service_state} {job.service_zip}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full mt-2"
-                  onClick={copyAddress}
-                >
-                  Copy Address
-                </Button>
-              </div>
-            ) : (
-              <span className="text-muted-foreground text-sm">No address set</span>
-            )}
-          </CardContent>
-        </Card>
+      <div className="p-4 border-t border-gray-200">
+        <button
+          onClick={handleSignOut}
+          className="flex items-center gap-3 w-full px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <LogOut className="h-5 w-5" />
+          <span className="font-medium">Sign Out</span>
+        </button>
       </div>
-
-      {/* Tabs Section */}
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="technicians">Technicians</TabsTrigger>
-          <TabsTrigger value="files">Files</TabsTrigger>
-          <TabsTrigger value="photos">Photos</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
-        </TabsList>
-
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Job Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-medium mb-2">Description</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {job.description || 'No description provided'}
-                  </p>
-                </div>
-                {job.notes && (
-                  <div>
-                    <h3 className="font-medium mb-2">Notes</h3>
-                    <p className="text-sm text-muted-foreground">{job.notes}</p>
-                  </div>
-                )}
-                {job.proposals && (
-                  <div>
-                    <h3 className="font-medium mb-2">Related Proposal</h3>
-                    <div className="flex items-center justify-between p-3 border rounded">
-                      <div>
-                        <div className="font-medium">{job.proposals.proposal_number}</div>
-                        <div className="text-sm text-muted-foreground">{job.proposals.title}</div>
-                      </div>
-                      <Link href={`/proposals/${job.proposal_id}`}>
-                        <Button variant="outline" size="sm">View</Button>
-                      </Link>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Technicians Tab */}
-        <TabsContent value="technicians" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Assigned Technicians</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {(userRole === 'boss' || userRole === 'admin') && (
-                <div className="mb-4">
-                  <Label className="text-sm font-medium">Assign Technician</Label>
-                  <div className="flex gap-2 mt-2">
-                    <select 
-                      className="flex-1 px-3 py-2 border rounded-md"
-                      onChange={(e) => e.target.value && handleAssignTechnician(e.target.value)}
-                      disabled={isAssigning}
-                    >
-                      <option value="">Select a technician...</option>
-                      {availableTechnicians.map((tech) => (
-                        <option key={tech.id} value={tech.id}>
-                          {tech.full_name || tech.email}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-              
-              {assignedTechs.length > 0 ? (
-                <div className="space-y-2">
-                  {assignedTechs.map((techId) => {
-                    const tech = availableTechnicians.find(t => t.id === techId)
-                    return tech ? (
-                      <div key={techId} className="flex items-center gap-2 p-2 border rounded">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{tech.full_name || tech.email}</span>
-                      </div>
-                    ) : null
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  No technicians assigned yet
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Files Tab */}
-        <TabsContent value="files" className="mt-4">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>Files</CardTitle>
-                <Button size="sm">
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload Files
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                No files uploaded yet
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Photos Tab */}
-        <TabsContent value="photos" className="mt-4">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>Photos</CardTitle>
-                <Button size="sm">
-                  <Camera className="h-4 w-4 mr-2" />
-                  Upload Photos
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                No photos uploaded yet
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Notes Tab */}
-        <TabsContent value="notes" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {job.boss_notes && (userRole === 'boss' || userRole === 'admin') && (
-                <div className="p-3 bg-yellow-50 rounded mb-4">
-                  <p className="text-sm font-medium mb-1">Boss Notes:</p>
-                  <p className="text-sm whitespace-pre-wrap">{job.boss_notes}</p>
-                </div>
-              )}
-              {job.completion_notes && (
-                <div className="p-3 bg-green-50 rounded">
-                  <p className="text-sm font-medium mb-1">Completion Notes:</p>
-                  <p className="text-sm whitespace-pre-wrap">{job.completion_notes}</p>
-                </div>
-              )}
-              {!job.boss_notes && !job.completion_notes && (
-                <div className="text-center py-8 text-muted-foreground">
-                  No notes added yet
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+    </nav>
   )
 }
 EOF
 
-# Add and commit with a clear message
-git add -A
-git commit -m "fix: completely resolve Badge variant type error with TypeScript-safe implementation"
+# Commit the fix
+git add .
+git commit -m "fix: restore original navigation styling with light theme"
+git push origin main
 
-# Force push to ensure it's the latest
-git push origin main --force
-
-echo "✅ Fix has been force pushed!"
+echo "✅ Navigation styling restored!"
 echo ""
-echo "The JobDetailView has been completely rewritten with:"
-echo "1. TypeScript-safe getBadgeVariant function using 'as const'"
-echo "2. Proper null checks for all job properties"
-echo "3. Simplified structure to avoid type issues"
+echo "The navigation now has:"
+echo "1. White background with gray borders"
+echo "2. Blue highlight for active items"
+echo "3. Clean, light theme appearance"
+echo "4. Role-based menu items (technicians only see My Tasks)"
 echo ""
-echo "Wait a moment for Vercel to pick up the new commit, then check the deployment."
-echo "The new commit should be different from 83f8c66."
+echo "Deploy this to restore the original look!"
