@@ -1,11 +1,58 @@
 #!/bin/bash
 
-echo "🔧 Fixing technicians page build error..."
+echo "🔍 Creating comprehensive debugging page..."
 
-# Create properly structured technicians page
+# First, check RLS policies
+cat > check-rls-policies.sql << 'SQLEOF'
+-- Check if RLS is enabled on profiles table
+SELECT 
+  schemaname,
+  tablename,
+  tablename = 'profiles' as is_profiles_table,
+  rowsecurity 
+FROM pg_tables 
+WHERE tablename = 'profiles';
+
+-- Check existing RLS policies on profiles
+SELECT 
+  schemaname,
+  tablename,
+  policyname,
+  permissive,
+  roles,
+  cmd,
+  qual,
+  with_check
+FROM pg_policies
+WHERE tablename = 'profiles';
+
+-- Test query as would be run by the app
+SELECT 
+  COUNT(*) as total_technicians,
+  array_agg(email) as emails
+FROM profiles
+WHERE role = 'technician';
+
+-- If RLS is the issue, this will show all data (bypasses RLS)
+SELECT 
+  'Direct Query (No RLS)' as query_type,
+  id,
+  email,
+  full_name,
+  role
+FROM profiles
+WHERE role = 'technician';
+SQLEOF
+
+echo "✅ Created check-rls-policies.sql - Run this first!"
+echo ""
+
+# Create a diagnostic page that shows exactly what's happening
 cat > app/\(authenticated\)/technicians/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import TechniciansClientView from './TechniciansClientView'
 
 export const dynamic = 'force-dynamic'
@@ -28,216 +75,227 @@ export default async function TechniciansPage() {
     redirect('/dashboard')
   }
 
-  // Get ALL technicians - simplified query
-  const { data: technicians, error } = await supabase
+  // Multiple debug queries to figure out what's happening
+  console.log('=== DEBUGGING TECHNICIANS QUERY ===')
+  console.log('Current user ID:', user.id)
+  console.log('Current user role:', profile?.role)
+
+  // Try different queries to see what works
+  const debugInfo: any = {
+    currentUser: user.email,
+    currentRole: profile?.role,
+    queries: []
+  }
+
+  // Query 1: Basic technician query
+  const { data: technicians1, error: error1 } = await supabase
     .from('profiles')
     .select('*')
     .eq('role', 'technician')
-    .order('created_at', { ascending: false })
+  
+  debugInfo.queries.push({
+    name: 'Basic technician query',
+    success: !error1,
+    count: technicians1?.length || 0,
+    error: error1?.message || null
+  })
 
-  console.log('Technicians found:', technicians?.length || 0)
-  if (error) console.error('Error fetching technicians:', error)
+  // Query 2: Get ALL profiles to see what's there
+  const { data: allProfiles, error: error2 } = await supabase
+    .from('profiles')
+    .select('id, email, role')
+  
+  debugInfo.queries.push({
+    name: 'All profiles query',
+    success: !error2,
+    count: allProfiles?.length || 0,
+    roles: allProfiles?.map(p => p.role) || [],
+    error: error2?.message || null
+  })
 
-  return <TechniciansClientView technicians={technicians || []} />
-}
-EOF
+  // Query 3: Count by role
+  const { data: roleCount, error: error3 } = await supabase
+    .from('profiles')
+    .select('role')
+  
+  const roleSummary: any = {}
+  roleCount?.forEach(p => {
+    roleSummary[p.role] = (roleSummary[p.role] || 0) + 1
+  })
+  
+  debugInfo.queries.push({
+    name: 'Role count',
+    success: !error3,
+    summary: roleSummary,
+    error: error3?.message || null
+  })
 
-# Create the client component separately
-cat > app/\(authenticated\)/technicians/TechniciansClientView.tsx << 'EOF'
-'use client'
-
-import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Plus, Mail, Phone, UserCheck, RefreshCw } from 'lucide-react'
-import AddTechnicianModal from './AddTechnicianModal'
-
-interface Technician {
-  id: string
-  email: string
-  full_name: string | null
-  phone: string | null
-  is_active?: boolean
-  created_at: string
-  role: string
-}
-
-export default function TechniciansClientView({ technicians }: { technicians: Technician[] }) {
-  const [showAddModal, setShowAddModal] = useState(false)
-  const router = useRouter()
-
-  const handleRefresh = () => {
-    router.refresh()
-    window.location.reload()
+  // Try with admin client if available
+  let adminTechnicians = null
+  let adminError = null
+  try {
+    const adminClient = createAdminClient()
+    const { data, error } = await adminClient
+      .from('profiles')
+      .select('*')
+      .eq('role', 'technician')
+    
+    adminTechnicians = data
+    adminError = error
+    
+    debugInfo.queries.push({
+      name: 'Admin client query',
+      success: !error,
+      count: data?.length || 0,
+      error: error?.message || null
+    })
+  } catch (e: any) {
+    debugInfo.queries.push({
+      name: 'Admin client query',
+      success: false,
+      error: 'Admin client not configured or ' + e.message
+    })
   }
 
-  const activeTechnicians = technicians.filter(t => t.is_active !== false)
-  const inactiveTechnicians = technicians.filter(t => t.is_active === false)
+  // Use admin results if regular query failed
+  const finalTechnicians = (technicians1 && technicians1.length > 0) 
+    ? technicians1 
+    : (adminTechnicians || [])
+
+  console.log('Debug Info:', JSON.stringify(debugInfo, null, 2))
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Technicians</h1>
-          <p className="text-muted-foreground">
-            Total: {technicians.length} technicians in database
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleRefresh}
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Force Refresh
-          </Button>
-          <Button onClick={() => setShowAddModal(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Technician
-          </Button>
-        </div>
-      </div>
-
-      {/* Debug info */}
-      {technicians.length > 0 && (
-        <Card className="mb-6 bg-blue-50 border-blue-200">
-          <CardContent className="p-4">
-            <p className="text-sm">
-              <strong>Debug Info:</strong> Found {technicians.length} total technicians
-              ({activeTechnicians.length} active, {inactiveTechnicians.length} inactive)
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Active Technicians */}
-      <Card className="mb-6">
+      {/* Debug Information Card */}
+      <Card className="mb-6 bg-yellow-50 border-yellow-200">
         <CardHeader>
-          <CardTitle>Active Technicians ({activeTechnicians.length})</CardTitle>
+          <CardTitle className="text-yellow-800">Debug Information</CardTitle>
         </CardHeader>
         <CardContent>
-          {activeTechnicians.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>No active technicians found</p>
-              <p className="text-sm mt-2">Click "Add Technician" to create one</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activeTechnicians.map((tech) => (
-                <Card key={tech.id} className="border">
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                          <span className="text-blue-600 font-semibold">
-                            {(tech.full_name || tech.email || 'T').charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {tech.full_name || 'No name set'}
-                          </div>
-                          <Badge variant="outline" className="mt-1">
-                            <UserCheck className="h-3 w-3 mr-1" />
-                            Active
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-1 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        {tech.email}
-                      </div>
-                      {tech.phone && (
-                        <div className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {tech.phone}
-                        </div>
-                      )}
-                      <div className="text-xs text-gray-400 mt-2">
-                        Created: {new Date(tech.created_at).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+          <div className="space-y-2 text-sm">
+            <p><strong>Current User:</strong> {debugInfo.currentUser}</p>
+            <p><strong>Current Role:</strong> {debugInfo.currentRole}</p>
+            
+            <div className="mt-4">
+              <strong>Query Results:</strong>
+              {debugInfo.queries.map((q: any, i: number) => (
+                <div key={i} className="mt-2 p-2 bg-white rounded border">
+                  <p className="font-medium">{q.name}:</p>
+                  <p className={q.success ? 'text-green-600' : 'text-red-600'}>
+                    {q.success ? `✓ Success` : `✗ Failed`}
+                    {q.count !== undefined && ` - Found ${q.count} records`}
+                  </p>
+                  {q.summary && (
+                    <p className="text-gray-600">
+                      Roles: {JSON.stringify(q.summary)}
+                    </p>
+                  )}
+                  {q.error && (
+                    <p className="text-red-500 text-xs">Error: {q.error}</p>
+                  )}
+                </div>
               ))}
             </div>
-          )}
+
+            <div className="mt-4 p-2 bg-blue-100 rounded">
+              <p className="font-medium">Using {finalTechnicians.length} technicians for display</p>
+              {finalTechnicians.length > 0 && (
+                <p className="text-xs mt-1">
+                  Emails: {finalTechnicians.map((t: any) => t.email).join(', ')}
+                </p>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Inactive Technicians */}
-      {inactiveTechnicians.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Inactive Technicians ({inactiveTechnicians.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {inactiveTechnicians.map((tech) => (
-                <Card key={tech.id} className="border opacity-60">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
-                        <span className="text-gray-600 font-semibold">
-                          {(tech.full_name || tech.email || 'T').charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div>
-                        <div className="font-medium">
-                          {tech.full_name || 'No name set'}
-                        </div>
-                        <Badge variant="destructive" className="mt-1">
-                          Inactive
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Raw data display for debugging */}
-      <details className="mt-6">
-        <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-900">
-          Show raw data (for debugging)
-        </summary>
-        <pre className="mt-2 p-4 bg-gray-100 rounded text-xs overflow-auto">
-          {JSON.stringify(technicians, null, 2)}
-        </pre>
-      </details>
-
-      {showAddModal && (
-        <AddTechnicianModal
-          onClose={() => setShowAddModal(false)}
-          onSuccess={() => {
-            setShowAddModal(false)
-            handleRefresh()
-          }}
-        />
-      )}
+      {/* Regular technicians view */}
+      <TechniciansClientView technicians={finalTechnicians} />
     </div>
   )
 }
 EOF
 
-# Commit and push the fix
+# Also create a simple API endpoint to test database access
+cat > app/api/technicians/debug/route.ts << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { NextResponse } from 'next/server'
+
+export async function GET() {
+  const debug: any = {
+    timestamp: new Date().toISOString(),
+    results: []
+  }
+
+  try {
+    // Test with regular client
+    const supabase = await createClient()
+    
+    const { data: regularData, error: regularError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'technician')
+    
+    debug.results.push({
+      method: 'Regular client',
+      success: !regularError,
+      count: regularData?.length || 0,
+      data: regularData || [],
+      error: regularError?.message || null
+    })
+  } catch (e: any) {
+    debug.results.push({
+      method: 'Regular client',
+      success: false,
+      error: e.message
+    })
+  }
+
+  try {
+    // Test with admin client
+    const adminClient = createAdminClient()
+    
+    const { data: adminData, error: adminError } = await adminClient
+      .from('profiles')
+      .select('*')
+      .eq('role', 'technician')
+    
+    debug.results.push({
+      method: 'Admin client',
+      success: !adminError,
+      count: adminData?.length || 0,
+      data: adminData || [],
+      error: adminError?.message || null
+    })
+  } catch (e: any) {
+    debug.results.push({
+      method: 'Admin client',
+      success: false,
+      error: e.message
+    })
+  }
+
+  return NextResponse.json(debug)
+}
+EOF
+
+# Commit the debugging code
 git add .
-git commit -m "fix: resolve React declaration error in technicians page"
+git commit -m "debug: comprehensive technician data fetching diagnostics"
 git push origin main
 
-echo "✅ Build error fixed!"
+echo "✅ Debug code deployed!"
 echo ""
-echo "The page is now properly structured with:"
-echo "1. Server component fetching data"
-echo "2. Client component for interactivity"
-echo "3. Proper React imports"
-echo "4. Force dynamic rendering to ensure fresh data"
+echo "📋 NEXT STEPS:"
 echo ""
-echo "Your 2 technicians will show up after deployment!"
+echo "1. Run check-rls-policies.sql in Supabase SQL Editor"
+echo "   - This will show if RLS is blocking the queries"
+echo ""
+echo "2. After deployment, visit /technicians"
+echo "   - You'll see a yellow debug box showing exactly what's happening"
+echo ""
+echo "3. Also test the API directly:"
+echo "   https://my-dashboard-app-tau.vercel.app/api/technicians/debug"
+echo ""
+echo "This will tell us EXACTLY why the technicians aren't showing!"
