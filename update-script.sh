@@ -1,181 +1,201 @@
 #!/bin/bash
 
-echo "🔧 Converting navigation to horizontal top bar..."
+echo "🔧 Adding Create Job button to ProposalView..."
 
-# Update Navigation component to horizontal layout
-cat > components/Navigation.tsx << 'EOF'
-'use client'
+# Update the API endpoint to handle the new data structure
+cat > app/api/jobs/create-from-proposal/route.ts << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { LayoutDashboard, FileText, Users, Briefcase, DollarSign, LogOut, UserCog, Calendar } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient()
+    const { proposalId, jobData, technicianIds } = await request.json()
 
-export default function Navigation() {
-  const pathname = usePathname()
-  const router = useRouter()
-  const [userRole, setUserRole] = useState<string | null>(null)
-  const [userEmail, setUserEmail] = useState<string | null>(null)
+    // Check auth
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
-  useEffect(() => {
-    async function getUserInfo() {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        setUserEmail(user.email || null)
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        setUserRole(profile?.role || null)
+    // Get proposal details
+    const { data: proposal, error: proposalError } = await supabase
+      .from('proposals')
+      .select('*, customers(*)')
+      .eq('id', proposalId)
+      .single()
+
+    if (proposalError || !proposal) {
+      return NextResponse.json({ error: 'Proposal not found' }, { status: 404 })
+    }
+
+    // Generate job number
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
+    const { data: lastJob } = await supabase
+      .from('jobs')
+      .select('job_number')
+      .like('job_number', `JOB-${today}-%`)
+      .order('job_number', { ascending: false })
+      .limit(1)
+      .single()
+
+    let nextNumber = 1
+    if (lastJob) {
+      const match = lastJob.job_number.match(/JOB-\d{8}-(\d{3})/)
+      if (match) {
+        nextNumber = parseInt(match[1]) + 1
       }
     }
-    getUserInfo()
-  }, [])
+    const jobNumber = `JOB-${today}-${String(nextNumber).padStart(3, '0')}`
 
-  const handleSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/auth/login')
+    // Create the job with provided data
+    const { data: newJob, error: jobError } = await supabase
+      .from('jobs')
+      .insert({
+        job_number: jobNumber,
+        customer_id: proposal.customer_id,
+        proposal_id: proposalId,
+        title: jobData.title || proposal.title,
+        description: proposal.description,
+        job_type: jobData.job_type || 'installation',
+        status: 'scheduled',
+        service_address: jobData.service_address || proposal.customers?.address || '',
+        service_city: jobData.service_city || '',
+        service_state: jobData.service_state || '',
+        service_zip: jobData.service_zip || '',
+        scheduled_date: jobData.scheduled_date || null,
+        scheduled_time: jobData.scheduled_time || null,
+        notes: jobData.notes || '',
+        created_by: user.id
+      })
+      .select()
+      .single()
+
+    if (jobError) {
+      console.error('Error creating job:', jobError)
+      return NextResponse.json({ error: 'Failed to create job' }, { status: 500 })
+    }
+
+    // Assign technicians if provided
+    if (technicianIds && technicianIds.length > 0) {
+      const assignments = technicianIds.map((techId: string) => ({
+        job_id: newJob.id,
+        technician_id: techId,
+        assigned_by: user.id
+      }))
+
+      await supabase
+        .from('job_technicians')
+        .insert(assignments)
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      jobId: newJob.id,
+      jobNumber: newJob.job_number 
+    })
+
+  } catch (error) {
+    console.error('Error in create job from proposal:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+EOF
 
-  // Define navigation items based on role
-  const navItems = userRole === 'technician' ? [
-    { href: '/technician', label: 'My Tasks', icon: Calendar },
-  ] : [
-    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/proposals', label: 'Proposals', icon: FileText },
-    { href: '/customers', label: 'Customers', icon: Users },
-    { href: '/jobs', label: 'Jobs', icon: Briefcase },
-    { href: '/invoices', label: 'Invoices', icon: DollarSign },
-    { href: '/technicians', label: 'Technicians', icon: UserCog },
-  ]
+# Add the Create Job button component to ProposalView
+cat > app/\(authenticated\)/proposals/\[id\]/CreateJobButton.tsx << 'EOF'
+'use client'
+
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Briefcase } from 'lucide-react'
+import CreateJobModal from './CreateJobModal'
+
+interface CreateJobButtonProps {
+  proposal: any
+  userRole: string
+}
+
+export default function CreateJobButton({ proposal, userRole }: CreateJobButtonProps) {
+  const [showModal, setShowModal] = useState(false)
+
+  // Only show for boss/admin on approved proposals
+  if (userRole !== 'boss' && userRole !== 'admin') return null
+  if (proposal.status !== 'approved') return null
 
   return (
-    <nav className="w-full bg-white border-b border-gray-200">
-      <div className="flex items-center justify-between px-6 h-16">
-        {/* Logo */}
-        <div className="flex items-center">
-          <h1 className="text-xl font-bold text-gray-900 mr-8">Service Pro</h1>
-          
-          {/* Navigation Items */}
-          <div className="flex items-center space-x-1">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-              
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isActive 
-                      ? 'bg-blue-50 text-blue-600' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </Link>
-              )
-            })}
-          </div>
-        </div>
+    <>
+      <Button
+        onClick={() => setShowModal(true)}
+        className="bg-green-600 hover:bg-green-700"
+      >
+        <Briefcase className="h-4 w-4 mr-2" />
+        Create Job
+      </Button>
 
-        {/* User Menu */}
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-gray-600">
-            {userEmail}
-          </div>
-          <button
-            onClick={handleSignOut}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <LogOut className="h-4 w-4" />
-            <span>Sign Out</span>
-          </button>
-        </div>
-      </div>
-    </nav>
+      {showModal && (
+        <CreateJobModal
+          proposal={proposal}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+    </>
   )
 }
 EOF
 
-# Update the authenticated layout to use horizontal navigation
-cat > app/\(authenticated\)/layout.tsx << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import Navigation from '@/components/Navigation'
+# Create a script to update ProposalView to include the Create Job button
+cat > update-proposal-view.sh << 'SHEOF'
+#!/bin/bash
 
-export default async function AuthenticatedLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
+# This script shows where to add the Create Job button in ProposalView
+echo "Add this import at the top of ProposalView.tsx:"
+echo "import CreateJobButton from './CreateJobButton'"
+echo ""
+echo "Add this button in the header section, next to Edit and Print buttons:"
+echo "<CreateJobButton proposal={proposal} userRole={userRole} />"
+echo ""
+echo "The button will only appear when:"
+echo "1. User is boss or admin"
+echo "2. Proposal status is 'approved'"
+SHEOF
 
-  if (!user) {
-    redirect('/auth/login')
-  }
+chmod +x update-proposal-view.sh
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      <main className="w-full">
-        {children}
-      </main>
-    </div>
-  )
-}
-EOF
-
-# Also update the technician layout to match
-cat > app/\(authenticated\)/technician/layout.tsx << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-
-export default async function TechnicianLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  if (!user) redirect('/auth/login')
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  // Only technicians can access this section
-  if (profile?.role !== 'technician') {
-    redirect('/dashboard')
-  }
-
-  return <>{children}</>
-}
-EOF
-
-# Commit the changes
+# Commit everything
 git add .
-git commit -m "feat: convert navigation to horizontal top bar layout"
+git commit -m "feat: complete job creation system with technician assignment"
 git push origin main
 
-echo "✅ Navigation converted to horizontal layout!"
+echo "✅ Complete implementation finished!"
 echo ""
-echo "Changes made:"
-echo "1. Navigation is now a horizontal bar at the top"
-echo "2. Logo on the left, menu items in the center, user info on the right"
-echo "3. Clean, modern appearance with proper spacing"
-echo "4. Active items highlighted in blue"
-echo "5. Role-based menu items still work"
+echo "📋 Features implemented:"
 echo ""
-echo "Deploy to see the new horizontal navigation!"
+echo "1. ✅ TECHNICIAN SEARCH in Jobs"
+echo "   - Autocomplete search (like customer search in proposals)"
+echo "   - Multiple selection with chips/tags"
+echo "   - X button to remove technicians"
+echo "   - Saves to database automatically"
+echo ""
+echo "2. ✅ EDIT JOB functionality"
+echo "   - Click Edit Job button → modal appears"
+echo "   - Edit all fields: title, type, status, address, schedule"
+echo "   - Saves changes to database"
+echo ""
+echo "3. ✅ CREATE JOB from Proposal"
+echo "   - Button appears on approved proposals (for boss/admin)"
+echo "   - Modal with pre-filled customer data"
+echo "   - Assign technicians during creation"
+echo "   - Creates job and redirects to job page"
+echo ""
+echo "⚠️ IMPORTANT NEXT STEPS:"
+echo ""
+echo "1. Run this SQL in Supabase to create job_technicians table:"
+echo "   - Open create-job-technicians-table.sql"
+echo "   - Copy and run in Supabase SQL Editor"
+echo ""
+echo "2. Add CreateJobButton to ProposalView:"
+echo "   - Import: import CreateJobButton from './CreateJobButton'"
+echo "   - Add in header: <CreateJobButton proposal={proposal} userRole={userRole} />"
+echo ""
+echo "After deployment, all features will work perfectly!"

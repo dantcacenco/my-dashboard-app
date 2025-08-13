@@ -1,78 +1,38 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
-import { Briefcase, Loader2 } from 'lucide-react'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { Briefcase } from 'lucide-react'
+import CreateJobModal from './CreateJobModal'
 
 interface CreateJobButtonProps {
-  proposalId: string
-  proposalStatus: string
+  proposal: any
   userRole: string
-  hasExistingJob: boolean
 }
 
-export default function CreateJobButton({ 
-  proposalId, 
-  proposalStatus, 
-  userRole, 
-  hasExistingJob 
-}: CreateJobButtonProps) {
-  const [isCreating, setIsCreating] = useState(false)
-  const router = useRouter()
+export default function CreateJobButton({ proposal, userRole }: CreateJobButtonProps) {
+  const [showModal, setShowModal] = useState(false)
 
-  // Only show for boss/admin on approved proposals without existing job
+  // Only show for boss/admin on approved proposals
   if (userRole !== 'boss' && userRole !== 'admin') return null
-  if (proposalStatus !== 'approved') return null
-  if (hasExistingJob) return null
-
-  const handleCreateJob = async () => {
-    setIsCreating(true)
-    try {
-      const response = await fetch('/api/jobs/create-from-proposal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposalId })
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        if (data.jobId) {
-          // Job already exists, navigate to it
-          router.push(`/jobs/${data.jobId}`)
-        } else {
-          throw new Error(data.error || 'Failed to create job')
-        }
-        return
-      }
-
-      toast.success(`Job ${data.jobNumber} created successfully!`)
-      router.push(`/jobs/${data.jobId}`)
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to create job')
-      setIsCreating(false)
-    }
-  }
+  if (proposal.status !== 'approved') return null
 
   return (
-    <Button
-      onClick={handleCreateJob}
-      disabled={isCreating}
-      className="bg-green-600 hover:bg-green-700"
-    >
-      {isCreating ? (
-        <>
-          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          Creating Job...
-        </>
-      ) : (
-        <>
-          <Briefcase className="h-4 w-4 mr-2" />
-          Create Job
-        </>
+    <>
+      <Button
+        onClick={() => setShowModal(true)}
+        className="bg-green-600 hover:bg-green-700"
+      >
+        <Briefcase className="h-4 w-4 mr-2" />
+        Create Job
+      </Button>
+
+      {showModal && (
+        <CreateJobModal
+          proposal={proposal}
+          onClose={() => setShowModal(false)}
+        />
       )}
-    </Button>
+    </>
   )
 }

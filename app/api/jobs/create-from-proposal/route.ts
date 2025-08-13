@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
-    const { proposalId } = await request.json()
+    const { proposalId, jobData, technicianIds } = await request.json()
 
     // Check auth
     const { data: { user } } = await supabase.auth.getUser()
@@ -21,20 +21,6 @@ export async function POST(request: Request) {
 
     if (proposalError || !proposal) {
       return NextResponse.json({ error: 'Proposal not found' }, { status: 404 })
-    }
-
-    // Check if job already exists
-    const { data: existingJob } = await supabase
-      .from('job_proposals')
-      .select('job_id')
-      .eq('proposal_id', proposalId)
-      .single()
-
-    if (existingJob) {
-      return NextResponse.json({ 
-        error: 'Job already exists for this proposal',
-        jobId: existingJob.job_id 
-      }, { status: 400 })
     }
 
     // Generate job number
@@ -56,18 +42,24 @@ export async function POST(request: Request) {
     }
     const jobNumber = `JOB-${today}-${String(nextNumber).padStart(3, '0')}`
 
-    // Create the job
+    // Create the job with provided data
     const { data: newJob, error: jobError } = await supabase
       .from('jobs')
       .insert({
         job_number: jobNumber,
         customer_id: proposal.customer_id,
         proposal_id: proposalId,
-        title: proposal.title,
+        title: jobData.title || proposal.title,
         description: proposal.description,
-        job_type: 'installation',
+        job_type: jobData.job_type || 'installation',
         status: 'scheduled',
-        service_address: proposal.customers?.address || '',
+        service_address: jobData.service_address || proposal.customers?.address || '',
+        service_city: jobData.service_city || '',
+        service_state: jobData.service_state || '',
+        service_zip: jobData.service_zip || '',
+        scheduled_date: jobData.scheduled_date || null,
+        scheduled_time: jobData.scheduled_time || null,
+        notes: jobData.notes || '',
         created_by: user.id
       })
       .select()
@@ -78,14 +70,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create job' }, { status: 500 })
     }
 
-    // Create job-proposal link
-    await supabase
-      .from('job_proposals')
-      .insert({
+    // Assign technicians if provided
+    if (technicianIds && technicianIds.length > 0) {
+      const assignments = technicianIds.map((techId: string) => ({
         job_id: newJob.id,
-        proposal_id: proposalId,
-        attached_by: user.id
-      })
+        technician_id: techId,
+        assigned_by: user.id
+      }))
+
+      await supabase
+        .from('job_technicians')
+        .insert(assignments)
+    }
 
     return NextResponse.json({ 
       success: true, 
