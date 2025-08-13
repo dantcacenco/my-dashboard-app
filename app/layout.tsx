@@ -1,28 +1,25 @@
-import Layout from '@/components/Layout'
-import './globals.css'
-
-const defaultUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : 'http://localhost:3000'
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
 
 export const metadata = {
-  metadataBase: new URL(defaultUrl),
-  title: 'Service Pro - HVAC Management',
-  description: 'Professional HVAC proposal and job management system',
-}
+  title: "Service Pro - HVAC Management",
+  description: "Field Service Management for HVAC Businesses",
+};
+
+const inter = Inter({ subsets: ["latin"] });
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body>
-        <Layout>
-          {children}
-        </Layout>
+    <html lang="en" className={inter.className} suppressHydrationWarning>
+      <body className="bg-gray-50 text-gray-900">
+        {children}
+        <Toaster />
       </body>
     </html>
-  )
+  );
 }

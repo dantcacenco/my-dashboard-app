@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -10,39 +10,63 @@ export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const supabase = createClient()
 
-  // Navigation links
-  const navigationLinks = [
-    {
-      name: 'Dashboard',
-      href: '/'
-    },
-    {
-      name: 'Proposals',
-      href: '/proposals'
-    },
-    {
-      name: 'Customers',
-      href: '/customers'
-    },
-    {
-      name: 'Jobs',
-      href: '/jobs'
-    },
-    {
-      name: 'Invoices',
-      href: '/invoices'
+  useEffect(() => {
+    loadUserData()
+  }, [])
+
+  const loadUserData = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      setUserEmail(user.email || null)
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      
+      setUserRole(profile?.role || null)
     }
-  ]
+  }
+
+  // Define navigation links based on role
+  const getNavigationLinks = () => {
+    const baseLinks = []
+    
+    if (userRole === 'boss' || userRole === 'admin') {
+      baseLinks.push(
+        { name: 'Dashboard', href: '/dashboard' },
+        { name: 'Proposals', href: '/proposals' },
+        { name: 'Customers', href: '/customers' },
+        { name: 'Jobs', href: '/jobs' },
+        { name: 'Invoices', href: '/invoices' }
+      )
+      
+      if (userRole === 'boss') {
+        baseLinks.push({ name: 'Technicians', href: '/technicians' })
+      }
+    } else if (userRole === 'technician') {
+      baseLinks.push(
+        { name: 'My Tasks', href: '/technician' },
+        { name: 'Time Tracking', href: '/technician/time' },
+        { name: 'Jobs', href: '/jobs' }
+      )
+    }
+    
+    return baseLinks
+  }
+
+  const navigationLinks = getNavigationLinks()
 
   // Check if link is active
   const isActive = (href: string) => {
-    // Exact match for root/dashboard
-    if (href === '/') {
-      return pathname === '/'
+    if (href === '/dashboard' || href === '/') {
+      return pathname === '/dashboard' || pathname === '/'
     }
-    // For other routes, check if pathname starts with href
     return pathname.startsWith(href)
   }
 
@@ -51,7 +75,7 @@ export default function Navigation() {
     setIsLoading(true)
     try {
       await supabase.auth.signOut()
-      router.push('/auth/signin')
+      router.push('/auth/login')
     } catch (error) {
       console.error('Error signing out:', error)
     } finally {
@@ -66,7 +90,7 @@ export default function Navigation() {
           
           {/* Left side - Logo */}
           <div className="flex items-center">
-            <Link href="/" className="flex items-center">
+            <Link href={userRole === 'technician' ? '/technician' : '/dashboard'} className="flex items-center">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
                 <span className="text-white font-bold text-lg">S</span>
               </div>
@@ -105,7 +129,12 @@ export default function Navigation() {
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-900">Admin</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {userRole === 'boss' ? 'Boss' : userRole === 'admin' ? 'Admin' : userRole === 'technician' ? 'Technician' : 'User'}
+                  </p>
+                  {userEmail && (
+                    <p className="text-xs text-gray-500">{userEmail}</p>
+                  )}
                 </div>
               </div>
               <button
