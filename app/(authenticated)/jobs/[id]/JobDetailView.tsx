@@ -4,11 +4,11 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   ArrowLeft, Edit, MapPin, Phone, Mail, Calendar, 
-  Clock, User, Plus, Upload, Camera, FileText,
-  Briefcase, DollarSign
+  User, Plus, Upload, Camera
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -30,17 +30,23 @@ export default function JobDetailView({ job, userRole, availableTechnicians }: J
     }
 
     setIsAssigning(true)
-    // TODO: Implement API call to assign technician
     setAssignedTechs([...assignedTechs, techId])
     toast.success('Technician assigned successfully')
     setIsAssigning(false)
   }
 
-  const statusColors = {
-    scheduled: 'outline',
-    in_progress: 'secondary',
-    completed: 'default',
-    cancelled: 'destructive'
+  // Simple function to determine badge variant - TypeScript safe
+  const getBadgeVariant = (status: string) => {
+    if (status === 'completed') return 'default' as const
+    if (status === 'in_progress') return 'secondary' as const
+    if (status === 'cancelled') return 'destructive' as const
+    return 'outline' as const
+  }
+
+  const copyAddress = () => {
+    const address = `${job.service_address || ''}${job.service_city ? `, ${job.service_city}` : ''}${job.service_state ? `, ${job.service_state}` : ''} ${job.service_zip || ''}`
+    navigator.clipboard.writeText(address.trim())
+    toast.success('Address copied to clipboard')
   }
 
   return (
@@ -54,7 +60,7 @@ export default function JobDetailView({ job, userRole, availableTechnicians }: J
         </Link>
         <div className="flex-1">
           <h1 className="text-3xl font-bold">{job.job_number}</h1>
-          <p className="text-muted-foreground">{job.title}</p>
+          <p className="text-muted-foreground">{job.title || 'Untitled Job'}</p>
         </div>
         {(userRole === 'boss' || userRole === 'admin') && (
           <Button>
@@ -103,12 +109,12 @@ export default function JobDetailView({ job, userRole, availableTechnicians }: J
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Type:</span>
-                <span className="text-sm font-medium capitalize">{job.job_type}</span>
+                <span className="text-sm font-medium capitalize">{job.job_type || 'Not set'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Status:</span>
-                <Badge variant={statusColors[job.status as keyof typeof statusColors] || 'outline'}>
-                  {job.status.replace('_', ' ')}
+                <Badge variant={getBadgeVariant(job.status || 'scheduled')}>
+                  {(job.status || 'scheduled').replace('_', ' ')}
                 </Badge>
               </div>
               {job.scheduled_date && (
@@ -142,7 +148,12 @@ export default function JobDetailView({ job, userRole, availableTechnicians }: J
                     )}
                   </div>
                 </div>
-                <Button variant="outline" size="sm" className="w-full mt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full mt-2"
+                  onClick={copyAddress}
+                >
                   Copy Address
                 </Button>
               </div>
@@ -154,32 +165,49 @@ export default function JobDetailView({ job, userRole, availableTechnicians }: J
       </div>
 
       {/* Tabs Section */}
-      <Tabs defaultValue="tasks" className="w-full">
+      <Tabs defaultValue="overview" className="w-full">
         <TabsList>
-          <TabsTrigger value="tasks">Tasks</TabsTrigger>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="technicians">Technicians</TabsTrigger>
           <TabsTrigger value="files">Files</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
         </TabsList>
 
-        {/* Tasks Tab */}
-        <TabsContent value="tasks" className="mt-4">
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="mt-4">
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>Tasks</CardTitle>
-                {(userRole === 'boss' || userRole === 'admin') && (
-                  <Button size="sm">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Task
-                  </Button>
-                )}
-              </div>
+              <CardTitle>Job Overview</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                No tasks created yet
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium mb-2">Description</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {job.description || 'No description provided'}
+                  </p>
+                </div>
+                {job.notes && (
+                  <div>
+                    <h3 className="font-medium mb-2">Notes</h3>
+                    <p className="text-sm text-muted-foreground">{job.notes}</p>
+                  </div>
+                )}
+                {job.proposals && (
+                  <div>
+                    <h3 className="font-medium mb-2">Related Proposal</h3>
+                    <div className="flex items-center justify-between p-3 border rounded">
+                      <div>
+                        <div className="font-medium">{job.proposals.proposal_number}</div>
+                        <div className="text-sm text-muted-foreground">{job.proposals.title}</div>
+                      </div>
+                      <Link href={`/proposals/${job.proposal_id}`}>
+                        <Button variant="outline" size="sm">View</Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -194,7 +222,7 @@ export default function JobDetailView({ job, userRole, availableTechnicians }: J
             <CardContent>
               {(userRole === 'boss' || userRole === 'admin') && (
                 <div className="mb-4">
-                  <Label>Assign Technician</Label>
+                  <Label className="text-sm font-medium">Assign Technician</Label>
                   <div className="flex gap-2 mt-2">
                     <select 
                       className="flex-1 px-3 py-2 border rounded-md"
@@ -212,7 +240,19 @@ export default function JobDetailView({ job, userRole, availableTechnicians }: J
                 </div>
               )}
               
-              {assignedTechs.length === 0 && (
+              {assignedTechs.length > 0 ? (
+                <div className="space-y-2">
+                  {assignedTechs.map((techId) => {
+                    const tech = availableTechnicians.find(t => t.id === techId)
+                    return tech ? (
+                      <div key={techId} className="flex items-center gap-2 p-2 border rounded">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">{tech.full_name || tech.email}</span>
+                      </div>
+                    ) : null
+                  })}
+                </div>
+              ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   No technicians assigned yet
                 </div>
@@ -268,51 +308,27 @@ export default function JobDetailView({ job, userRole, availableTechnicians }: J
               <CardTitle>Notes</CardTitle>
             </CardHeader>
             <CardContent>
-              {job.notes ? (
-                <p className="text-sm whitespace-pre-wrap">{job.notes}</p>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  No notes added
-                </div>
-              )}
               {job.boss_notes && (userRole === 'boss' || userRole === 'admin') && (
-                <div className="mt-4 p-3 bg-yellow-50 rounded">
+                <div className="p-3 bg-yellow-50 rounded mb-4">
                   <p className="text-sm font-medium mb-1">Boss Notes:</p>
                   <p className="text-sm whitespace-pre-wrap">{job.boss_notes}</p>
+                </div>
+              )}
+              {job.completion_notes && (
+                <div className="p-3 bg-green-50 rounded">
+                  <p className="text-sm font-medium mb-1">Completion Notes:</p>
+                  <p className="text-sm whitespace-pre-wrap">{job.completion_notes}</p>
+                </div>
+              )}
+              {!job.boss_notes && !job.completion_notes && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No notes added yet
                 </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Related Proposal */}
-      {job.proposals && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Related Proposal</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">{job.proposals.proposal_number}</div>
-                <div className="text-sm text-muted-foreground">{job.proposals.title}</div>
-              </div>
-              <div className="text-right">
-                <div className="font-medium">${job.proposals.total?.toFixed(2)}</div>
-                <Link href={`/proposals/${job.proposal_id}`}>
-                  <Button variant="outline" size="sm" className="mt-2">
-                    View Proposal
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }
-
-// Add missing Label import to the component
-import { Label } from '@/components/ui/label'
