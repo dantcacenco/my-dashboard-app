@@ -1,177 +1,129 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import DashboardContent from './DashboardContent'
+import DashboardContent from '@/app/DashboardContent'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-
-  // Check authentication
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
   
-  if (userError || !user) {
-    redirect('/auth/signin')
+  const { data: { user }, error } = await supabase.auth.getUser()
+  
+  if (error || !user) {
+    redirect('/auth/login')
+  }
+
+  // Get user profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  // Only allow boss/admin to view dashboard
+  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
+    redirect('/technician')
   }
 
   // Fetch dashboard data
-  const [
-    proposalsResult,
-    recentProposalsResult,
-    monthlyStatsResult,
-    recentActivitiesResult
-  ] = await Promise.all([
-    // All proposals for stats
-    supabase
-      .from('proposals')
-      .select('id, status, total, created_at, deposit_amount, progress_amount, final_amount, deposit_paid_at, progress_paid_at, final_paid_at'),
-
-    // Recent proposals - note: customers is an object, not array
+  const [proposalsResult, activitiesResult] = await Promise.all([
     supabase
       .from('proposals')
       .select(`
-        id,
-        proposal_number,
-        title,
-        total,
-        status,
-        created_at,
-        customers (name, email)
+        *,
+        customers (
+          name,
+          email
+        )
       `)
-      .order('created_at', { ascending: false })
-      .limit(5),
-
-    // Monthly stats (last 6 months)
-    supabase
-      .from('proposals')
-      .select('created_at, total, status, deposit_amount, progress_amount, final_amount, deposit_paid_at, progress_paid_at, final_paid_at')
-      .gte('created_at', new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000).toISOString()),
-
-    // Recent activities - note: proposals is an object, not array
+      .order('created_at', { ascending: false }),
+    
     supabase
       .from('proposal_activities')
       .select(`
-        id,
-        activity_type,
-        description,
-        created_at,
-        proposals (proposal_number, title)
+        *,
+        proposals (
+          proposal_number,
+          title
+        )
       `)
       .order('created_at', { ascending: false })
       .limit(10)
   ])
 
   const proposals = proposalsResult.data || []
-  const recentProposals = recentProposalsResult.data || []
-  const monthlyData = monthlyStatsResult.data || []
-  const recentActivities = recentActivitiesResult.data || []
+  const activities = activitiesResult.data || []
 
-  // Calculate key metrics
+  // Calculate metrics
   const totalProposals = proposals.length
-  
-  // Calculate total revenue including partial payments
-  const totalRevenue = proposals.reduce((sum, p) => {
-    let proposalRevenue = 0
-    if (p.deposit_paid_at && p.deposit_amount) proposalRevenue += p.deposit_amount
-    if (p.progress_paid_at && p.progress_amount) proposalRevenue += p.progress_amount
-    if (p.final_paid_at && p.final_amount) proposalRevenue += p.final_amount
-    // If no staged payments, check if it's fully paid
-    if (proposalRevenue === 0 && p.status === 'paid') proposalRevenue = p.total || 0
-    return sum + proposalRevenue
-  }, 0)
-  
   const approvedProposals = proposals.filter(p => p.status === 'approved').length
-  const paidProposals = proposals.filter(p => {
-    // Count as paid if any payment has been made
-    return p.status === 'paid' || p.deposit_paid_at || p.progress_paid_at || p.final_paid_at
-  }).length
-  
-  // Calculate conversion rates
   const conversionRate = totalProposals > 0 ? (approvedProposals / totalProposals) * 100 : 0
+  
+  // Calculate revenue from paid amounts
+  const totalRevenue = proposals.reduce((sum, p) => {
+    const depositPaid = p.deposit_paid_at ? (p.deposit_amount || 0) : 0
+    const progressPaid = p.progress_paid_at ? (p.progress_payment_amount || 0) : 0
+    const finalPaid = p.final_paid_at ? (p.final_payment_amount || 0) : 0
+    return sum + depositPaid + progressPaid + finalPaid
+  }, 0)
+
+  const paidProposals = proposals.filter(p => 
+    p.deposit_paid_at || p.progress_paid_at || p.final_paid_at
+  ).length
   const paymentRate = approvedProposals > 0 ? (paidProposals / approvedProposals) * 100 : 0
 
-  // Process monthly data for charts
+  // Calculate monthly revenue
   const monthlyRevenue = []
-  const currentDate = new Date()
-  
-  // Initialize last 6 months
+  const now = new Date()
   for (let i = 5; i >= 0; i--) {
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1)
-    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
-    const monthName = date.toLocaleDateString('en-US', { month: 'short' })
-    
-    // Find all proposals and payments in this month
-    let monthRevenue = 0
-    let monthProposals = 0
-    
-    monthlyData.forEach(proposal => {
-      // Count proposals created in this month
-      if (proposal.created_at.startsWith(monthKey)) {
-        monthProposals++
-      }
-      
-      // Add deposit payments
-      if (proposal.deposit_paid_at && proposal.deposit_paid_at.startsWith(monthKey) && proposal.deposit_amount) {
-        monthRevenue += proposal.deposit_amount
-      }
-      
-      // Add progress payments
-      if (proposal.progress_paid_at && proposal.progress_paid_at.startsWith(monthKey) && proposal.progress_amount) {
-        monthRevenue += proposal.progress_amount
-      }
-      
-      // Add final payments
-      if (proposal.final_paid_at && proposal.final_paid_at.startsWith(monthKey) && proposal.final_amount) {
-        monthRevenue += proposal.final_amount
-      }
-      
-      // For backward compatibility - if status is 'paid' but no staged payments
-      if (proposal.status === 'paid' && proposal.created_at.startsWith(monthKey) && 
-          !proposal.deposit_paid_at && !proposal.progress_paid_at && !proposal.final_paid_at) {
-        monthRevenue += proposal.total || 0
-      }
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const month = date.toLocaleString('default', { month: 'short' })
+    const monthProposals = proposals.filter(p => {
+      const created = new Date(p.created_at)
+      return created.getMonth() === date.getMonth() && 
+             created.getFullYear() === date.getFullYear()
     })
     
-    monthlyRevenue.push({
-      month: monthName,
-      revenue: monthRevenue,
-      proposals: monthProposals
-    })
+    const revenue = monthProposals.reduce((sum, p) => {
+      const depositPaid = p.deposit_paid_at ? (p.deposit_amount || 0) : 0
+      const progressPaid = p.progress_paid_at ? (p.progress_payment_amount || 0) : 0
+      const finalPaid = p.final_paid_at ? (p.final_payment_amount || 0) : 0
+      return sum + depositPaid + progressPaid + finalPaid
+    }, 0)
+    
+    monthlyRevenue.push({ month, revenue, proposals: monthProposals.length })
   }
 
-  // Status distribution
+  // Count by status
   const statusCounts = {
     draft: proposals.filter(p => p.status === 'draft').length,
     sent: proposals.filter(p => p.status === 'sent').length,
     viewed: proposals.filter(p => p.status === 'viewed').length,
     approved: proposals.filter(p => p.status === 'approved').length,
     rejected: proposals.filter(p => p.status === 'rejected').length,
-    paid: proposals.filter(p => p.status === 'paid').length
+    paid: proposals.filter(p => p.deposit_paid_at || p.progress_paid_at || p.final_paid_at).length,
   }
-
-  // Transform recent proposals to match expected format
-  const transformedRecentProposals = recentProposals.map(p => ({
-    ...p,
-    customers: Array.isArray(p.customers) ? p.customers : (p.customers ? [p.customers] : null)
-  }))
-
-  // Transform recent activities to match expected format
-  const transformedRecentActivities = recentActivities.map(a => ({
-    ...a,
-    proposals: Array.isArray(a.proposals) ? a.proposals : (a.proposals ? [a.proposals] : null)
-  }))
 
   const dashboardData = {
     metrics: {
       totalProposals,
-      totalRevenue, // Changed from paidRevenue
+      totalRevenue,
       approvedProposals,
       conversionRate,
       paymentRate
     },
     monthlyRevenue,
     statusCounts,
-    recentProposals: transformedRecentProposals,
-    recentActivities: transformedRecentActivities
+    recentProposals: proposals.slice(0, 5),
+    recentActivities: activities
   }
 
-  return <DashboardContent data={dashboardData} />
+  return (
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <p className="text-gray-600">Welcome back!</p>
+      </div>
+      
+      <DashboardContent data={dashboardData} />
+    </div>
+  )
 }

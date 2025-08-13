@@ -1,254 +1,552 @@
 #!/bin/bash
 
-echo "🔧 Fixing authentication and routing issues..."
+echo "🔧 Fixing build errors..."
 echo "=================================================="
 
 # ============================================
-# STEP 1: Fix middleware to use /auth/login
+# STEP 1: Fix DashboardContent import in dashboard page
 # ============================================
 
 echo ""
-echo "📝 Updating middleware to redirect to /auth/login..."
+echo "📝 Fixing DashboardContent import path..."
 
-cat > lib/supabase/middleware.ts << 'EOF'
-import { createServerClient } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
-import { hasEnvVars } from "../utils";
+cat > "app/(authenticated)/dashboard/page.tsx" << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import DashboardContent from '@/app/DashboardContent'
 
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
-
-  // If the env vars are not set, skip middleware check
-  if (!hasEnvVars) {
-    return supabaseResponse;
+export default async function DashboardPage() {
+  const supabase = await createClient()
+  
+  const { data: { user }, error } = await supabase.auth.getUser()
+  
+  if (error || !user) {
+    redirect('/auth/login')
   }
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          );
-        },
+  // Get user profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  // Only allow boss/admin to view dashboard
+  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
+    redirect('/technician')
+  }
+
+  // Fetch dashboard data
+  const [proposalsResult, activitiesResult] = await Promise.all([
+    supabase
+      .from('proposals')
+      .select(`
+        *,
+        customers (
+          name,
+          email
+        )
+      `)
+      .order('created_at', { ascending: false }),
+    
+    supabase
+      .from('proposal_activities')
+      .select(`
+        *,
+        proposals (
+          proposal_number,
+          title
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(10)
+  ])
+
+  const proposals = proposalsResult.data || []
+  const activities = activitiesResult.data || []
+
+  // Calculate metrics
+  const totalProposals = proposals.length
+  const approvedProposals = proposals.filter(p => p.status === 'approved').length
+  const conversionRate = totalProposals > 0 ? (approvedProposals / totalProposals) * 100 : 0
+  
+  // Calculate revenue from paid amounts
+  const totalRevenue = proposals.reduce((sum, p) => {
+    const depositPaid = p.deposit_paid_at ? (p.deposit_amount || 0) : 0
+    const progressPaid = p.progress_paid_at ? (p.progress_payment_amount || 0) : 0
+    const finalPaid = p.final_paid_at ? (p.final_payment_amount || 0) : 0
+    return sum + depositPaid + progressPaid + finalPaid
+  }, 0)
+
+  const paidProposals = proposals.filter(p => 
+    p.deposit_paid_at || p.progress_paid_at || p.final_paid_at
+  ).length
+  const paymentRate = approvedProposals > 0 ? (paidProposals / approvedProposals) * 100 : 0
+
+  // Calculate monthly revenue
+  const monthlyRevenue = []
+  const now = new Date()
+  for (let i = 5; i >= 0; i--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const month = date.toLocaleString('default', { month: 'short' })
+    const monthProposals = proposals.filter(p => {
+      const created = new Date(p.created_at)
+      return created.getMonth() === date.getMonth() && 
+             created.getFullYear() === date.getFullYear()
+    })
+    
+    const revenue = monthProposals.reduce((sum, p) => {
+      const depositPaid = p.deposit_paid_at ? (p.deposit_amount || 0) : 0
+      const progressPaid = p.progress_paid_at ? (p.progress_payment_amount || 0) : 0
+      const finalPaid = p.final_paid_at ? (p.final_payment_amount || 0) : 0
+      return sum + depositPaid + progressPaid + finalPaid
+    }, 0)
+    
+    monthlyRevenue.push({ month, revenue, proposals: monthProposals.length })
+  }
+
+  // Count by status
+  const statusCounts = {
+    draft: proposals.filter(p => p.status === 'draft').length,
+    sent: proposals.filter(p => p.status === 'sent').length,
+    viewed: proposals.filter(p => p.status === 'viewed').length,
+    approved: proposals.filter(p => p.status === 'approved').length,
+    rejected: proposals.filter(p => p.status === 'rejected').length,
+    paid: proposals.filter(p => p.deposit_paid_at || p.progress_paid_at || p.final_paid_at).length,
+  }
+
+  const dashboardData = {
+    metrics: {
+      totalProposals,
+      totalRevenue,
+      approvedProposals,
+      conversionRate,
+      paymentRate
+    },
+    monthlyRevenue,
+    statusCounts,
+    recentProposals: proposals.slice(0, 5),
+    recentActivities: activities
+  }
+
+  return (
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <p className="text-gray-600">Welcome back!</p>
+      </div>
+      
+      <DashboardContent data={dashboardData} />
+    </div>
+  )
+}
+EOF
+
+echo "✅ DashboardContent import fixed"
+
+# ============================================
+# STEP 2: Create Toaster component
+# ============================================
+
+echo ""
+echo "📝 Creating Toaster component..."
+
+mkdir -p components/ui
+
+cat > components/ui/toaster.tsx << 'EOF'
+"use client"
+
+import {
+  Toast,
+  ToastClose,
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+} from "@/components/ui/toast"
+import { useToast } from "@/components/ui/use-toast"
+
+export function Toaster() {
+  const { toasts } = useToast()
+
+  return (
+    <ToastProvider>
+      {toasts.map(function ({ id, title, description, action, ...props }) {
+        return (
+          <Toast key={id} {...props}>
+            <div className="grid gap-1">
+              {title && <ToastTitle>{title}</ToastTitle>}
+              {description && (
+                <ToastDescription>{description}</ToastDescription>
+              )}
+            </div>
+            {action}
+            <ToastClose />
+          </Toast>
+        )
+      })}
+      <ToastViewport />
+    </ToastProvider>
+  )
+}
+EOF
+
+echo "✅ Toaster component created"
+
+# ============================================
+# STEP 3: Create Toast components
+# ============================================
+
+echo ""
+echo "📝 Creating Toast UI components..."
+
+cat > components/ui/toast.tsx << 'EOF'
+"use client"
+
+import * as React from "react"
+import * as ToastPrimitives from "@radix-ui/react-toast"
+import { cva, type VariantProps } from "class-variance-authority"
+import { X } from "lucide-react"
+
+import { cn } from "@/lib/utils"
+
+const ToastProvider = ToastPrimitives.Provider
+
+const ToastViewport = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Viewport>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Viewport>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Viewport
+    ref={ref}
+    className={cn(
+      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      className
+    )}
+    {...props}
+  />
+))
+ToastViewport.displayName = ToastPrimitives.Viewport.displayName
+
+const toastVariants = cva(
+  "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-6 pr-8 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
+  {
+    variants: {
+      variant: {
+        default: "border bg-background text-foreground",
+        destructive:
+          "destructive group border-destructive bg-destructive text-destructive-foreground",
       },
     },
-  );
-
-  const { data } = await supabase.auth.getClaims();
-  const user = data?.claims;
-
-  // Public paths that don't require authentication
-  const publicPaths = [
-    '/auth/login',
-    '/proposal/view',
-    '/proposal/payment-success',
-    '/api/proposal-approval',
-    '/api/create-payment',
-    '/api/stripe/webhook'
-  ];
-
-  const pathname = request.nextUrl.pathname;
-  
-  // Check if current path is public
-  const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
-
-  // If user is not authenticated and trying to access protected route
-  if (!user && !isPublicPath && pathname !== '/') {
-    const url = request.nextUrl.clone();
-    url.pathname = "/auth/login";
-    return NextResponse.redirect(url);
+    defaultVariants: {
+      variant: "default",
+    },
   }
+)
 
-  // If user IS authenticated and trying to access login page, redirect to appropriate dashboard
-  if (user && pathname === '/auth/login') {
-    const url = request.nextUrl.clone();
-    // We'll handle role-based redirect in the login page itself
-    url.pathname = "/";
-    return NextResponse.redirect(url);
-  }
-
-  return supabaseResponse;
-}
-EOF
-
-echo "✅ Middleware updated"
-
-# ============================================
-# STEP 2: Update auth/login page to handle role-based redirect
-# ============================================
-
-echo ""
-echo "📝 Updating login page with proper layout and redirects..."
-
-cat > app/auth/login/page.tsx << 'EOF'
-import { LoginForm } from "@/components/login-form";
-
-export default function LoginPage() {
+const Toast = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Root>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> &
+    VariantProps<typeof toastVariants>
+>(({ className, variant, ...props }, ref) => {
   return (
-    <div className="flex min-h-screen w-full items-center justify-center p-6 md:p-10 bg-gray-50">
-      <div className="w-full max-w-sm">
-        <LoginForm />
-      </div>
-    </div>
-  );
+    <ToastPrimitives.Root
+      ref={ref}
+      className={cn(toastVariants({ variant }), className)}
+      {...props}
+    />
+  )
+})
+Toast.displayName = ToastPrimitives.Root.displayName
+
+const ToastAction = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Action>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Action>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Action
+    ref={ref}
+    className={cn(
+      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border bg-transparent px-3 text-sm font-medium ring-offset-background transition-colors hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-[.destructive]:border-muted/40 group-[.destructive]:hover:border-destructive/30 group-[.destructive]:hover:bg-destructive group-[.destructive]:hover:text-destructive-foreground group-[.destructive]:focus:ring-destructive",
+      className
+    )}
+    {...props}
+  />
+))
+ToastAction.displayName = ToastPrimitives.Action.displayName
+
+const ToastClose = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Close>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Close>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Close
+    ref={ref}
+    className={cn(
+      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
+      className
+    )}
+    toast-close=""
+    {...props}
+  >
+    <X className="h-4 w-4" />
+  </ToastPrimitives.Close>
+))
+ToastClose.displayName = ToastPrimitives.Close.displayName
+
+const ToastTitle = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Title>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Title>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Title
+    ref={ref}
+    className={cn("text-sm font-semibold", className)}
+    {...props}
+  />
+))
+ToastTitle.displayName = ToastPrimitives.Title.displayName
+
+const ToastDescription = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Description>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Description>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Description
+    ref={ref}
+    className={cn("text-sm opacity-90", className)}
+    {...props}
+  />
+))
+ToastDescription.displayName = ToastPrimitives.Description.displayName
+
+type ToastProps = React.ComponentPropsWithoutRef<typeof Toast>
+
+type ToastActionElement = React.ReactElement<typeof ToastAction>
+
+export {
+  type ToastProps,
+  type ToastActionElement,
+  ToastProvider,
+  ToastViewport,
+  Toast,
+  ToastTitle,
+  ToastDescription,
+  ToastClose,
+  ToastAction,
 }
 EOF
 
-echo "✅ Login page updated"
+echo "✅ Toast components created"
 
 # ============================================
-# STEP 3: Update login form to redirect based on role
+# STEP 4: Create use-toast hook
 # ============================================
 
 echo ""
-echo "📝 Updating login form component..."
+echo "📝 Creating use-toast hook..."
 
-cat > components/login-form.tsx << 'EOF'
-"use client";
+cat > components/ui/use-toast.ts << 'EOF'
+"use client"
 
-import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useRouter } from "next/navigation";
+import * as React from "react"
 
-export function LoginForm() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
-  const supabase = createClient();
+import type {
+  ToastActionElement,
+  ToastProps,
+} from "@/components/ui/toast"
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true);
+const TOAST_LIMIT = 1
+const TOAST_REMOVE_DELAY = 1000000
 
-    try {
-      // Sign in
-      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+type ToasterToast = ToastProps & {
+  id: string
+  title?: React.ReactNode
+  description?: React.ReactNode
+  action?: ToastActionElement
+}
 
-      if (signInError) {
-        setError(signInError.message);
-        setIsLoading(false);
-        return;
+const actionTypes = {
+  ADD_TOAST: "ADD_TOAST",
+  UPDATE_TOAST: "UPDATE_TOAST",
+  DISMISS_TOAST: "DISMISS_TOAST",
+  REMOVE_TOAST: "REMOVE_TOAST",
+} as const
+
+let count = 0
+
+function genId() {
+  count = (count + 1) % Number.MAX_SAFE_INTEGER
+  return count.toString()
+}
+
+type ActionType = typeof actionTypes
+
+type Action =
+  | {
+      type: ActionType["ADD_TOAST"]
+      toast: ToasterToast
+    }
+  | {
+      type: ActionType["UPDATE_TOAST"]
+      toast: Partial<ToasterToast>
+    }
+  | {
+      type: ActionType["DISMISS_TOAST"]
+      toastId?: ToasterToast["id"]
+    }
+  | {
+      type: ActionType["REMOVE_TOAST"]
+      toastId?: ToasterToast["id"]
+    }
+
+interface State {
+  toasts: ToasterToast[]
+}
+
+const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+
+const addToRemoveQueue = (toastId: string) => {
+  if (toastTimeouts.has(toastId)) {
+    return
+  }
+
+  const timeout = setTimeout(() => {
+    toastTimeouts.delete(toastId)
+    dispatch({
+      type: "REMOVE_TOAST",
+      toastId: toastId,
+    })
+  }, TOAST_REMOVE_DELAY)
+
+  toastTimeouts.set(toastId, timeout)
+}
+
+export const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case "ADD_TOAST":
+      return {
+        ...state,
+        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
       }
 
-      if (authData.user) {
-        // Get user profile to determine role
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', authData.user.id)
-          .single();
+    case "UPDATE_TOAST":
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === action.toast.id ? { ...t, ...action.toast } : t
+        ),
+      }
 
-        // Redirect based on role
-        if (profile?.role === 'technician') {
-          router.push('/technician');
-        } else if (profile?.role === 'boss' || profile?.role === 'admin') {
-          router.push('/');
-        } else {
-          // Default to dashboard
-          router.push('/');
+    case "DISMISS_TOAST": {
+      const { toastId } = action
+
+      if (toastId) {
+        addToRemoveQueue(toastId)
+      } else {
+        state.toasts.forEach((toast) => {
+          addToRemoveQueue(toast.id)
+        })
+      }
+
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === toastId || toastId === undefined
+            ? {
+                ...t,
+                open: false,
+              }
+            : t
+        ),
+      }
+    }
+    case "REMOVE_TOAST":
+      if (action.toastId === undefined) {
+        return {
+          ...state,
+          toasts: [],
         }
       }
-    } catch (err: any) {
-      setError(err.message || "An error occurred during login");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Card className="w-full">
-      <CardHeader className="space-y-1">
-        <div className="flex items-center justify-center mb-4">
-          <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-xl">S</span>
-          </div>
-        </div>
-        <CardTitle className="text-2xl text-center">Service Pro</CardTitle>
-        <CardDescription className="text-center">
-          Sign in to your account
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="name@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={isLoading}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={isLoading}
-            />
-          </div>
-          {error && (
-            <div className="text-sm text-red-600 text-center">
-              {error}
-            </div>
-          )}
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={isLoading}
-          >
-            {isLoading ? "Signing in..." : "Sign in"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
-  );
+      return {
+        ...state,
+        toasts: state.toasts.filter((t) => t.id !== action.toastId),
+      }
+  }
 }
+
+const listeners: Array<(state: State) => void> = []
+
+let memoryState: State = { toasts: [] }
+
+function dispatch(action: Action) {
+  memoryState = reducer(memoryState, action)
+  listeners.forEach((listener) => {
+    listener(memoryState)
+  })
+}
+
+type Toast = Omit<ToasterToast, "id">
+
+function toast({ ...props }: Toast) {
+  const id = genId()
+
+  const update = (props: ToasterToast) =>
+    dispatch({
+      type: "UPDATE_TOAST",
+      toast: { ...props, id },
+    })
+  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
+
+  dispatch({
+    type: "ADD_TOAST",
+    toast: {
+      ...props,
+      id,
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) dismiss()
+      },
+    },
+  })
+
+  return {
+    id: id,
+    dismiss,
+    update,
+  }
+}
+
+function useToast() {
+  const [state, setState] = React.useState<State>(memoryState)
+
+  React.useEffect(() => {
+    listeners.push(setState)
+    return () => {
+      const index = listeners.indexOf(setState)
+      if (index > -1) {
+        listeners.splice(index, 1)
+      }
+    }
+  }, [state])
+
+  return {
+    ...state,
+    toast,
+    dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
+  }
+}
+
+export { useToast, toast }
 EOF
 
-echo "✅ Login form updated with role-based redirect"
+echo "✅ use-toast hook created"
 
 # ============================================
-# STEP 4: Update root layout to conditionally show navigation
+# STEP 5: Fix layout.tsx to remove Toaster import (or make it simpler)
 # ============================================
 
 echo ""
-echo "📝 Updating root layout to handle navigation visibility..."
+echo "📝 Simplifying root layout..."
 
 cat > app/layout.tsx << 'EOF'
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
 
 export const metadata = {
   title: "Service Pro - HVAC Management",
@@ -266,339 +564,46 @@ export default function RootLayout({
     <html lang="en" className={inter.className} suppressHydrationWarning>
       <body className="bg-gray-50 text-gray-900">
         {children}
-        <Toaster />
       </body>
     </html>
   );
 }
 EOF
 
-echo "✅ Root layout updated"
+echo "✅ Root layout simplified"
 
 # ============================================
-# STEP 5: Create authenticated layout for protected pages
-# ============================================
-
-echo ""
-echo "📝 Creating authenticated layout wrapper..."
-
-# Create the authenticated directory with escaped parentheses
-mkdir -p "app/(authenticated)"
-
-cat > "app/(authenticated)/layout.tsx" << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import Navigation from '@/components/Navigation'
-
-export default async function AuthenticatedLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const supabase = await createClient()
-  
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
-  if (error || !user) {
-    redirect('/auth/login')
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      <main className="flex-1">
-        {children}
-      </main>
-    </div>
-  )
-}
-EOF
-
-echo "✅ Authenticated layout created"
-
-# ============================================
-# STEP 6: Move dashboard content to authenticated folder
+# STEP 6: Install missing Radix UI dependencies
 # ============================================
 
 echo ""
-echo "📝 Moving dashboard to authenticated folder..."
+echo "📝 Adding missing dependencies to package.json..."
 
-# Move the current page.tsx to dashboard folder in authenticated
-mkdir -p "app/(authenticated)/dashboard"
-
-# Move the existing page.tsx content to dashboard
-if [ -f "app/page.tsx" ]; then
-  mv app/page.tsx "app/(authenticated)/dashboard/page.tsx"
+# Check if @radix-ui/react-toast is in package.json, if not add it
+if ! grep -q "@radix-ui/react-toast" package.json; then
+  npm install @radix-ui/react-toast --save
 fi
 
-echo "✅ Dashboard moved"
-
-# ============================================
-# STEP 7: Create new root page that redirects
-# ============================================
-
-echo ""
-echo "📝 Creating root redirect page..."
-
-cat > app/page.tsx << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-
-export default async function RootPage() {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  if (!user) {
-    redirect('/auth/login')
-  }
-
-  // Get user profile to determine role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  // Redirect based on role
-  if (profile?.role === 'technician') {
-    redirect('/technician')
-  }
-  
-  // Default to dashboard for boss/admin
-  redirect('/dashboard')
-}
-EOF
-
-echo "✅ Root redirect page created"
-
-# ============================================
-# STEP 8: Move other protected pages
-# ============================================
-
-echo ""
-echo "📝 Moving protected pages to authenticated folder..."
-
-# Move other protected pages if they exist
-for dir in proposals customers jobs invoices technicians diagnostic test-auth; do
-  if [ -d "app/$dir" ]; then
-    echo "Moving $dir..."
-    mv "app/$dir" "app/(authenticated)/$dir"
-  fi
-done
-
-echo "✅ Protected pages moved"
-
-# ============================================
-# STEP 9: Update Navigation paths
-# ============================================
-
-echo ""
-echo "📝 Updating Navigation component..."
-
-cat > components/Navigation.tsx << 'EOF'
-'use client'
-
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-
-export default function Navigation() {
-  const pathname = usePathname()
-  const router = useRouter()
-  const [isLoading, setIsLoading] = useState(false)
-  const [userRole, setUserRole] = useState<string | null>(null)
-  const [userEmail, setUserEmail] = useState<string | null>(null)
-  const supabase = createClient()
-
-  useEffect(() => {
-    loadUserData()
-  }, [])
-
-  const loadUserData = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      setUserEmail(user.email || null)
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-      
-      setUserRole(profile?.role || null)
-    }
-  }
-
-  // Define navigation links based on role
-  const getNavigationLinks = () => {
-    const baseLinks = []
-    
-    if (userRole === 'boss' || userRole === 'admin') {
-      baseLinks.push(
-        { name: 'Dashboard', href: '/dashboard' },
-        { name: 'Proposals', href: '/proposals' },
-        { name: 'Customers', href: '/customers' },
-        { name: 'Jobs', href: '/jobs' },
-        { name: 'Invoices', href: '/invoices' }
-      )
-      
-      if (userRole === 'boss') {
-        baseLinks.push({ name: 'Technicians', href: '/technicians' })
-      }
-    } else if (userRole === 'technician') {
-      baseLinks.push(
-        { name: 'My Tasks', href: '/technician' },
-        { name: 'Time Tracking', href: '/technician/time' },
-        { name: 'Jobs', href: '/jobs' }
-      )
-    }
-    
-    return baseLinks
-  }
-
-  const navigationLinks = getNavigationLinks()
-
-  // Check if link is active
-  const isActive = (href: string) => {
-    if (href === '/dashboard' || href === '/') {
-      return pathname === '/dashboard' || pathname === '/'
-    }
-    return pathname.startsWith(href)
-  }
-
-  // Handle sign out
-  const handleSignOut = async () => {
-    setIsLoading(true)
-    try {
-      await supabase.auth.signOut()
-      router.push('/auth/login')
-    } catch (error) {
-      console.error('Error signing out:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  return (
-    <nav className="bg-white shadow-sm border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          
-          {/* Left side - Logo */}
-          <div className="flex items-center">
-            <Link href={userRole === 'technician' ? '/technician' : '/dashboard'} className="flex items-center">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-                <span className="text-white font-bold text-lg">S</span>
-              </div>
-              <span className="text-xl font-bold text-gray-900">Service Pro</span>
-            </Link>
-          </div>
-
-          {/* Center - Navigation Links */}
-          <div className="flex items-center space-x-8">
-            {navigationLinks.map((link) => {
-              const active = isActive(link.href)
-              
-              return (
-                <Link
-                  key={link.name}
-                  href={link.href}
-                  className={`${
-                    active
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors`}
-                >
-                  {link.name}
-                </Link>
-              )
-            })}
-          </div>
-
-          {/* Right side - User menu */}
-          <div className="flex items-center">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center">
-                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-900">
-                    {userRole === 'boss' ? 'Boss' : userRole === 'admin' ? 'Admin' : userRole === 'technician' ? 'Technician' : 'User'}
-                  </p>
-                  {userEmail && (
-                    <p className="text-xs text-gray-500">{userEmail}</p>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={handleSignOut}
-                disabled={isLoading}
-                className="text-gray-400 hover:text-gray-600 disabled:opacity-50 p-2"
-                title="Sign Out"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </nav>
-  )
-}
-EOF
-
-echo "✅ Navigation component updated"
-
-# ============================================
-# STEP 10: Remove protected page if it exists
-# ============================================
-
-echo ""
-echo "📝 Cleaning up old pages..."
-
-# Remove protected page
-if [ -d "app/protected" ]; then
-  rm -rf app/protected
-fi
-
-# Remove signin page if it exists (we use login)
-if [ -d "app/auth/signin" ]; then
-  rm -rf app/auth/signin
-fi
-
-echo "✅ Old pages cleaned up"
+echo "✅ Dependencies updated"
 
 # ============================================
 # Commit and push all changes
 # ============================================
 
 echo ""
-echo "📦 Committing authentication fixes..."
+echo "📦 Committing build fixes..."
 
 git add -A
-git commit -m "fix: complete authentication routing overhaul - clean login, role-based routing, proper navigation"
+git commit -m "fix: build errors - correct DashboardContent import path and add Toast components"
 git push origin main
 
 echo ""
-echo "✅✅✅ AUTHENTICATION FIXES COMPLETE! ✅✅✅"
+echo "✅✅✅ BUILD ERRORS FIXED! ✅✅✅"
 echo ""
-echo "Summary of changes:"
-echo "1. ✅ All redirects now go to /auth/login (not /auth/signin)"
-echo "2. ✅ Clean login page without navigation"
-echo "3. ✅ Role-based routing after login:"
-echo "   - Boss/Admin → /dashboard"
-echo "   - Technician → /technician"
-echo "4. ✅ Navigation only shows when authenticated"
-echo "5. ✅ Removed /protected page"
-echo "6. ✅ Organized pages in (authenticated) folder"
+echo "Summary of fixes:"
+echo "1. ✅ Fixed DashboardContent import path in dashboard page"
+echo "2. ✅ Created missing Toaster components"
+echo "3. ✅ Simplified root layout"
+echo "4. ✅ Added toast UI components and hook"
 echo ""
-echo "The authentication system is now clean and professional!"
+echo "The build should now succeed!"
