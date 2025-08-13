@@ -1,8 +1,359 @@
 #!/bin/bash
 
-echo "🔧 Fixing build error - Creating AddTechnicianModal component..."
+echo "🔐 Setting up full auth user creation with Supabase Admin API..."
 
-# Create the AddTechnicianModal component
+# Step 1: Create admin client utility
+mkdir -p lib/supabase
+cat > lib/supabase/admin.ts << 'EOF'
+import { createClient } from '@supabase/supabase-js'
+
+/**
+ * Creates a Supabase Admin client with service role privileges
+ * WARNING: This should ONLY be used in server-side code (API routes, server components)
+ * NEVER expose this to the client side
+ */
+export function createAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error('Missing Supabase environment variables')
+  }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
+}
+EOF
+
+# Step 2: Update the create technician API with full auth
+cat > app/api/technicians/create/route.ts << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { NextResponse } from 'next/server'
+
+export async function POST(request: Request) {
+  try {
+    // Regular client for checking current user
+    const supabase = await createClient()
+    
+    // Check if user is boss/admin
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role !== 'boss' && profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
+
+    const { email, password, full_name, phone } = await request.json()
+
+    // Validate input
+    if (!email || !password || !full_name) {
+      return NextResponse.json({ 
+        error: 'Email, password, and full name are required' 
+      }, { status: 400 })
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json({ 
+        error: 'Password must be at least 6 characters' 
+      }, { status: 400 })
+    }
+
+    // Create admin client for user creation
+    const adminClient = createAdminClient()
+
+    // Create the auth user
+    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+      email: email,
+      password: password,
+      email_confirm: true, // Auto-confirm email
+      user_metadata: {
+        full_name: full_name,
+        role: 'technician'
+      }
+    })
+
+    if (authError) {
+      console.error('Error creating auth user:', authError)
+      
+      // Check if user already exists
+      if (authError.message?.includes('already registered')) {
+        return NextResponse.json({ 
+          error: 'A user with this email already exists' 
+        }, { status: 400 })
+      }
+      
+      return NextResponse.json({ 
+        error: authError.message || 'Failed to create user account' 
+      }, { status: 500 })
+    }
+
+    if (!authData.user) {
+      return NextResponse.json({ 
+        error: 'Failed to create user account' 
+      }, { status: 500 })
+    }
+
+    // Create or update profile for the new user
+    const { data: newProfile, error: profileError } = await adminClient
+      .from('profiles')
+      .upsert({
+        id: authData.user.id,
+        email: email,
+        full_name: full_name,
+        phone: phone || null,
+        role: 'technician',
+        is_active: true
+      })
+      .select()
+      .single()
+
+    if (profileError) {
+      console.error('Error creating technician profile:', profileError)
+      // Note: Auth user was created, but profile failed
+      // In production, you might want to delete the auth user here
+      return NextResponse.json({ 
+        error: 'User created but profile setup failed. Please contact support.' 
+      }, { status: 500 })
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      technician: newProfile,
+      credentials: {
+        email: email,
+        temporaryPassword: password
+      },
+      message: 'Technician created successfully!'
+    })
+
+  } catch (error) {
+    console.error('Error creating technician:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 })
+  }
+}
+EOF
+
+# Step 3: Create an API to update/deactivate technicians
+mkdir -p app/api/technicians/update
+cat > app/api/technicians/update/route.ts << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { NextResponse } from 'next/server'
+
+export async function PUT(request: Request) {
+  try {
+    const supabase = await createClient()
+    
+    // Check if user is boss/admin
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role !== 'boss' && profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
+
+    const { technicianId, updates, resetPassword } = await request.json()
+
+    if (!technicianId) {
+      return NextResponse.json({ error: 'Technician ID required' }, { status: 400 })
+    }
+
+    const adminClient = createAdminClient()
+
+    // Update profile
+    const { data: updatedProfile, error: profileError } = await adminClient
+      .from('profiles')
+      .update({
+        full_name: updates.full_name,
+        phone: updates.phone,
+        is_active: updates.is_active,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', technicianId)
+      .select()
+      .single()
+
+    if (profileError) {
+      return NextResponse.json({ 
+        error: 'Failed to update technician profile' 
+      }, { status: 500 })
+    }
+
+    // Handle password reset if requested
+    let newPassword = null
+    if (resetPassword) {
+      // Generate a random password
+      newPassword = Math.random().toString(36).slice(-8) + 'A1!'
+      
+      const { error: passwordError } = await adminClient.auth.admin.updateUserById(
+        technicianId,
+        { password: newPassword }
+      )
+
+      if (passwordError) {
+        console.error('Error resetting password:', passwordError)
+        // Continue even if password reset fails
+      }
+    }
+
+    // Handle deactivation - disable auth access
+    if (updates.is_active === false) {
+      // Ban the user from logging in
+      const { error: banError } = await adminClient.auth.admin.updateUserById(
+        technicianId,
+        { ban_duration: '876000h' } // 100 years effectively permanent
+      )
+
+      if (banError) {
+        console.error('Error deactivating user auth:', banError)
+      }
+    } else if (updates.is_active === true) {
+      // Unban the user to allow login
+      const { error: unbanError } = await adminClient.auth.admin.updateUserById(
+        technicianId,
+        { ban_duration: 'none' }
+      )
+
+      if (unbanError) {
+        console.error('Error reactivating user auth:', unbanError)
+      }
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      technician: updatedProfile,
+      ...(newPassword && { newPassword })
+    })
+
+  } catch (error) {
+    console.error('Error updating technician:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 })
+  }
+}
+EOF
+
+# Step 4: Create API to list all auth users (for sync)
+cat > app/api/technicians/sync/route.ts << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { NextResponse } from 'next/server'
+
+/**
+ * Sync auth users with profiles table
+ * Useful for ensuring all auth users have profiles
+ */
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient()
+    
+    // Check if user is boss/admin
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role !== 'boss' && profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
+
+    const adminClient = createAdminClient()
+
+    // List all users
+    const { data: { users }, error: listError } = await adminClient.auth.admin.listUsers()
+
+    if (listError) {
+      return NextResponse.json({ 
+        error: 'Failed to list users' 
+      }, { status: 500 })
+    }
+
+    // Sync each user with profiles
+    const syncResults = []
+    for (const authUser of users) {
+      // Check if profile exists
+      const { data: existingProfile } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('id', authUser.id)
+        .single()
+
+      if (!existingProfile) {
+        // Create profile for auth user
+        const { data: newProfile, error: createError } = await adminClient
+          .from('profiles')
+          .insert({
+            id: authUser.id,
+            email: authUser.email!,
+            full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Unknown',
+            role: authUser.user_metadata?.role || 'technician',
+            is_active: !authUser.banned_until
+          })
+          .select()
+          .single()
+
+        syncResults.push({
+          userId: authUser.id,
+          email: authUser.email,
+          action: 'created',
+          success: !createError
+        })
+      } else {
+        syncResults.push({
+          userId: authUser.id,
+          email: authUser.email,
+          action: 'exists',
+          success: true
+        })
+      }
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      totalUsers: users.length,
+      syncResults
+    })
+
+  } catch (error) {
+    console.error('Error syncing users:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 })
+  }
+}
+EOF
+
+# Step 5: Update the AddTechnicianModal to show credentials
 cat > app/\(authenticated\)/technicians/AddTechnicianModal.tsx << 'EOF'
 'use client'
 
@@ -10,7 +361,8 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { X, Loader2 } from 'lucide-react'
+import { Card } from '@/components/ui/card'
+import { X, Loader2, Check, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface AddTechnicianModalProps {
@@ -20,6 +372,8 @@ interface AddTechnicianModalProps {
 
 export default function AddTechnicianModal({ onClose, onSuccess }: AddTechnicianModalProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [showCredentials, setShowCredentials] = useState(false)
+  const [credentials, setCredentials] = useState<{email: string, password: string} | null>(null)
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -60,12 +414,94 @@ export default function AddTechnicianModal({ onClose, onSuccess }: AddTechnician
         throw new Error(data.error || 'Failed to create technician')
       }
 
+      // Show credentials
+      setCredentials({
+        email: formData.email,
+        password: formData.temporaryPassword
+      })
+      setShowCredentials(true)
+      
       toast.success('Technician created successfully!')
-      onSuccess()
+      
+      // Wait a bit then close
+      setTimeout(() => {
+        onSuccess()
+      }, 3000)
+      
     } catch (error: any) {
       toast.error(error.message || 'Failed to create technician')
       setIsLoading(false)
     }
+  }
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text)
+    toast.success(`${label} copied to clipboard`)
+  }
+
+  if (showCredentials && credentials) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Technician Created!</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-green-600 mb-4">
+              <Check className="h-5 w-5" />
+              <span className="font-medium">Account created successfully</span>
+            </div>
+
+            <Card className="p-4 bg-blue-50 border-blue-200">
+              <p className="text-sm font-medium mb-3">Share these credentials with the technician:</p>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Email:</span>
+                  <div className="flex items-center gap-2">
+                    <code className="bg-white px-2 py-1 rounded text-sm">{credentials.email}</code>
+                    <button
+                      onClick={() => copyToClipboard(credentials.email, 'Email')}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Password:</span>
+                  <div className="flex items-center gap-2">
+                    <code className="bg-white px-2 py-1 rounded text-sm">{credentials.password}</code>
+                    <button
+                      onClick={() => copyToClipboard(credentials.password, 'Password')}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-600 mt-3">
+                The technician should change their password after first login.
+              </p>
+            </Card>
+
+            <Button onClick={onClose} className="w-full">
+              Done
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -132,7 +568,7 @@ export default function AddTechnicianModal({ onClose, onSuccess }: AddTechnician
               minLength={6}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Share this password with the technician for first login
+              You'll be able to copy this after creation
             </p>
           </div>
 
@@ -168,128 +604,28 @@ export default function AddTechnicianModal({ onClose, onSuccess }: AddTechnician
 }
 EOF
 
-# Create the API endpoint for creating technicians
-mkdir -p app/api/technicians/create
-cat > app/api/technicians/create/route.ts << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
-
-export async function POST(request: Request) {
-  try {
-    const supabase = await createClient()
-    
-    // Check if user is boss/admin
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'boss' && profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-    }
-
-    const { email, password, full_name, phone } = await request.json()
-
-    // Validate input
-    if (!email || !password || !full_name) {
-      return NextResponse.json({ 
-        error: 'Email, password, and full name are required' 
-      }, { status: 400 })
-    }
-
-    if (password.length < 6) {
-      return NextResponse.json({ 
-        error: 'Password must be at least 6 characters' 
-      }, { status: 400 })
-    }
-
-    // Create auth user with Supabase Admin API
-    // Note: This requires service_role key for production
-    // For now, we'll create just the profile
-    
-    // First check if user already exists
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', email)
-      .single()
-
-    if (existingProfile) {
-      return NextResponse.json({ 
-        error: 'A user with this email already exists' 
-      }, { status: 400 })
-    }
-
-    // Create a temporary user ID (in production, this would come from Auth)
-    const tempUserId = crypto.randomUUID()
-
-    // Create profile for technician
-    const { data: newProfile, error: profileError } = await supabase
-      .from('profiles')
-      .insert({
-        id: tempUserId,
-        email: email,
-        full_name: full_name,
-        phone: phone,
-        role: 'technician',
-        is_active: true
-      })
-      .select()
-      .single()
-
-    if (profileError) {
-      console.error('Error creating technician profile:', profileError)
-      return NextResponse.json({ 
-        error: 'Failed to create technician profile' 
-      }, { status: 500 })
-    }
-
-    // Note: In production, you would also:
-    // 1. Create the user in Supabase Auth using Admin API
-    // 2. Send welcome email with login instructions
-    // 3. Force password reset on first login
-
-    return NextResponse.json({ 
-      success: true,
-      technician: newProfile,
-      message: 'Technician created successfully. Note: Auth user creation requires additional setup.'
-    })
-
-  } catch (error) {
-    console.error('Error creating technician:', error)
-    return NextResponse.json({ 
-      error: 'Internal server error' 
-    }, { status: 500 })
-  }
-}
-EOF
-
-# Also ensure Input and Label components exist
-if [ ! -f "components/ui/input.tsx" ]; then
-  echo "Installing input component..."
-  npx shadcn@latest add input --yes
-fi
-
-if [ ! -f "components/ui/label.tsx" ]; then
-  echo "Installing label component..."
-  npx shadcn@latest add label --yes
-fi
-
-# Commit and push the fix
+# Commit everything
 git add .
-git commit -m "fix: add missing AddTechnicianModal component to resolve build error"
+git commit -m "feat: implement full auth user creation with Supabase Admin API"
 git push origin main
 
-echo "✅ Build error fixed! AddTechnicianModal component created."
+echo "✅ Full auth user creation setup complete!"
 echo ""
-echo "The build should now succeed. The deployment will automatically retry."
+echo "🔐 IMPORTANT NEXT STEPS:"
 echo ""
-echo "Note: The technician creation currently creates a profile only."
-echo "For full auth user creation, you'll need to set up Supabase Admin API"
-echo "with service_role key in production."
+echo "1. Add SUPABASE_SERVICE_ROLE_KEY to Vercel environment variables"
+echo "   - Go to Vercel Dashboard → Settings → Environment Variables"
+echo "   - Add the key from Supabase Dashboard → Settings → API → Service Role Key"
+echo ""
+echo "2. Redeploy your application for changes to take effect"
+echo ""
+echo "3. Test creating a technician:"
+echo "   - Go to /technicians"
+echo "   - Click 'Add Technician'"
+echo "   - The new technician can immediately log in with their credentials"
+echo ""
+echo "⚠️ SECURITY NOTES:"
+echo "- Service role key has FULL database access"
+echo "- NEVER expose it in client-side code"
+echo "- NEVER commit it to git"
+echo "- Only use in server-side API routes"
