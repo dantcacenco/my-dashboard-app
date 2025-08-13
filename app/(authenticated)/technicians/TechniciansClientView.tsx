@@ -1,49 +1,3 @@
-#!/bin/bash
-
-echo "🔧 Fixing technicians page build error..."
-
-# Create properly structured technicians page
-cat > app/\(authenticated\)/technicians/page.tsx << 'EOF'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import TechniciansClientView from './TechniciansClientView'
-
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
-export default async function TechniciansPage() {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  // Only boss/admin can manage technicians
-  if (profile?.role !== 'boss' && profile?.role !== 'admin') {
-    redirect('/dashboard')
-  }
-
-  // Get ALL technicians - simplified query
-  const { data: technicians, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('role', 'technician')
-    .order('created_at', { ascending: false })
-
-  console.log('Technicians found:', technicians?.length || 0)
-  if (error) console.error('Error fetching technicians:', error)
-
-  return <TechniciansClientView technicians={technicians || []} />
-}
-EOF
-
-# Create the client component separately
-cat > app/\(authenticated\)/technicians/TechniciansClientView.tsx << 'EOF'
 'use client'
 
 import React, { useState } from 'react'
@@ -225,19 +179,3 @@ export default function TechniciansClientView({ technicians }: { technicians: Te
     </div>
   )
 }
-EOF
-
-# Commit and push the fix
-git add .
-git commit -m "fix: resolve React declaration error in technicians page"
-git push origin main
-
-echo "✅ Build error fixed!"
-echo ""
-echo "The page is now properly structured with:"
-echo "1. Server component fetching data"
-echo "2. Client component for interactivity"
-echo "3. Proper React imports"
-echo "4. Force dynamic rendering to ensure fresh data"
-echo ""
-echo "Your 2 technicians will show up after deployment!"
