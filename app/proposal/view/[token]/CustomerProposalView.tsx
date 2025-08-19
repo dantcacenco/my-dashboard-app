@@ -82,7 +82,8 @@ export default function CustomerProposalView({ proposal, token }: CustomerPropos
       window.location.reload()
     } catch (error: any) {
       console.error('Approval error:', error)
-      alert(error.message || 'Failed to approve proposal. Please try again.')
+      console.error("🔍 Approval Error:", error);
+alert(`Failed to approve proposal: ${error.message || "Unknown error"}\nCheck console for details`)
     } finally {
       setIsApproving(false)
     }
