@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import ProposalView from './ProposalView'
-
+import CreateJobButton from "./CreateJobButton"
 interface PageProps {
   params: Promise<{ id: string }>
 }
