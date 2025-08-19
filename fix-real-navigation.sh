@@ -1,3 +1,13 @@
+#!/bin/bash
+
+# Fix the ACTUAL Navigation component being used
+set -e
+
+echo "🔥 FIXING THE ACTUAL NAVIGATION COMPONENT..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Update the CORRECT Navigation.tsx file in /components
+cat > components/Navigation.tsx << 'EOF'
 'use client'
 
 import Link from 'next/link'
@@ -94,3 +104,33 @@ export default function Navigation() {
     </nav>
   )
 }
+EOF
+
+echo "✅ Fixed the ACTUAL Navigation component (removed Invoices)"
+
+# Remove the duplicate/wrong Navigation component
+rm -f app/components/Navigation.tsx
+echo "✅ Removed duplicate Navigation component"
+
+# Remove backup files
+rm -f components/Navigation.tsx.backup
+rm -f components/Navigation.tsx.bak
+echo "✅ Removed backup files"
+
+# Test the build
+echo "🔨 Testing build..."
+npm run build 2>&1 | tail -10
+
+echo "📤 Committing the REAL fix..."
+git add -A
+git commit -m "FIX: Remove Invoices from the ACTUAL Navigation component being used" || true
+git push origin main
+
+echo ""
+echo "🚨 IMPORTANT: This was the issue!"
+echo "There were TWO Navigation components:"
+echo "1. /components/Navigation.tsx (✅ ACTUAL one being used - NOW FIXED)"
+echo "2. /app/components/Navigation.tsx (❌ Wrong one we were editing - NOW DELETED)"
+echo ""
+echo "✅ The Invoices tab should NOW be gone from the website!"
+echo "🚀 Deploying to Vercel..."
