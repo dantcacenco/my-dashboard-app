@@ -545,7 +545,7 @@ export default function JobDetailView({ job: initialJob, userRole }: JobDetailVi
         <EditJobModal 
           job={job}
           onClose={() => setShowEditModal(false)}
-          onSave={(updatedJob) => {
+          onSave={(updatedJob: any) => {
             setJob(updatedJob)
             setShowEditModal(false)
             router.refresh()
