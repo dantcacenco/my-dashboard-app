@@ -1,3 +1,13 @@
+#!/bin/bash
+
+# Fix the JobDetailView props issue
+set -e
+
+echo "🔧 Fixing JobDetailView props..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Update page.tsx to get userRole and pass it
+cat > 'app/(authenticated)/jobs/[id]/page.tsx' << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import JobDetailView from './JobDetailView'
@@ -87,3 +97,40 @@ export default async function JobDetailPage({
 
   return <JobDetailView job={job} userRole={userRole} />
 }
+EOF
+
+echo "✅ Fixed JobDetailView props"
+
+# Remove the diagnostic script
+rm -f create-diagnostics.sh
+
+# Test build
+echo "🔨 Testing build..."
+npm run build 2>&1 | tail -10
+
+# Commit
+git add -A
+git commit -m "Fix JobDetailView props - pass userRole correctly" || true
+git push origin main
+
+echo ""
+echo "✅ FIXES APPLIED!"
+echo ""
+echo "🔍 HOW TO TEST:"
+echo "=============="
+echo ""
+echo "1. FOR JOB 404 DEBUGGING:"
+echo "   - Go to: /jobs/99535b2f-7a10-4764-b404-cffbe055e2ea?debug=true"
+echo "   - This will show diagnostic info about:"
+echo "     • Authentication status"
+echo "     • Database connection"
+echo "     • Job query results"
+echo "     • Available jobs in database"
+echo ""
+echo "2. FOR PROPOSAL APPROVAL:"
+echo "   - Try to approve a proposal"
+echo "   - Open browser console (F12)"
+echo "   - Look for messages with 🔍"
+echo "   - Errors will show more detail"
+echo ""
+echo "🚀 Deploying now..."
