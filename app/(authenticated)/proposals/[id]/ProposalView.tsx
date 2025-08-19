@@ -106,7 +106,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
               customerName={proposal.customers?.name}
               proposalNumber={proposal.proposal_number}
               onSent={() => router.refresh()}
-            />
           )}
           
           <button
@@ -118,13 +117,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
           </button>
 
             <CreateJobButton proposal={proposal} />
-            <CreateJobButton proposal={proposal} />
-            <CreateJobButton proposal={proposal} />
-            <CreateJobButton proposal={proposal} />
-            <CreateJobButton proposal={proposal} />
-            <CreateJobButton proposal={proposal} />
-            <CreateJobButton proposal={proposal} />
-            />
           )}
         </div>
       </div>
