@@ -16,53 +16,71 @@ export default async function JobsPage() {
     .single()
 
   const userRole = profile?.role || 'technician'
+  
+  console.log('JobsPage - User role:', userRole, 'User ID:', user.id)
 
-  // Fetch jobs based on role
-  let query = supabase
-    .from('jobs')
-    .select(`
-      *,
-      customers!customer_id (
-        name,
-        email,
-        phone,
-        address
-      )
-    `)
-    .order('created_at', { ascending: false })
+  let jobs = []
 
-  // If technician, only show their assigned jobs
   if (userRole === 'technician') {
-    const { data: assignedJobs } = await supabase
+    // First, get job IDs assigned to this technician
+    const { data: assignments, error: assignmentError } = await supabase
       .from('job_technicians')
       .select('job_id')
       .eq('technician_id', user.id)
-
-    const jobIds = assignedJobs?.map(j => j.job_id) || []
-    if (jobIds.length > 0) {
-      query = query.in('id', jobIds)
-    } else {
-      // No assigned jobs, return empty
-      return (
-        <div className="container mx-auto py-6 px-4">
-          <JobsListHeader />
-          <p className="text-gray-500">No jobs assigned to you.</p>
-        </div>
-      )
+    
+    console.log('Technician assignments:', assignments, 'Error:', assignmentError)
+    
+    if (assignments && assignments.length > 0) {
+      const jobIds = assignments.map(a => a.job_id)
+      
+      // Then fetch those jobs with customer info
+      const { data: techJobs, error: jobsError } = await supabase
+        .from('jobs')
+        .select(`
+          *,
+          customers!customer_id (
+            name,
+            email,
+            phone,
+            address
+          )
+        `)
+        .in('id', jobIds)
+        .order('created_at', { ascending: false })
+      
+      console.log('Technician jobs:', techJobs?.length, 'Error:', jobsError)
+      jobs = techJobs || []
     }
-  }
-
-  const { data: jobs, error } = await query
-
-  if (error) {
-    console.error('Error fetching jobs:', error)
-    return <div>Error loading jobs</div>
+  } else {
+    // Boss/admin sees all jobs
+    const { data: allJobs, error } = await supabase
+      .from('jobs')
+      .select(`
+        *,
+        customers!customer_id (
+          name,
+          email,
+          phone,
+          address
+        )
+      `)
+      .order('created_at', { ascending: false })
+    
+    console.log('All jobs for boss/admin:', allJobs?.length, 'Error:', error)
+    jobs = allJobs || []
   }
 
   return (
     <div className="container mx-auto py-6 px-4">
-      <JobsListHeader />
-      <JobsList jobs={jobs || []} userRole={userRole} />
+      <JobsListHeader userRole={userRole} />
+      {userRole === 'technician' && jobs.length === 0 ? (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-yellow-800">No jobs assigned to you yet.</p>
+          <p className="text-sm text-yellow-600 mt-1">Jobs will appear here once your supervisor assigns them to you.</p>
+        </div>
+      ) : (
+        <JobsList jobs={jobs} userRole={userRole} />
+      )}
     </div>
   )
 }

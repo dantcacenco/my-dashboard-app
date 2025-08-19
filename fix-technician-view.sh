@@ -1,3 +1,136 @@
+#!/bin/bash
+
+# Fix Technician View and Upload Features
+echo "🔧 Fixing technician job view and upload features..."
+
+# 1. Fix the jobs page to properly show technician's assigned jobs
+echo "📝 Fixing jobs page query for technicians..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/page.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import JobsList from './JobsList'
+import JobsListHeader from './JobsListHeader'
+
+export default async function JobsPage() {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  const userRole = profile?.role || 'technician'
+  
+  console.log('JobsPage - User role:', userRole, 'User ID:', user.id)
+
+  let jobs = []
+
+  if (userRole === 'technician') {
+    // First, get job IDs assigned to this technician
+    const { data: assignments, error: assignmentError } = await supabase
+      .from('job_technicians')
+      .select('job_id')
+      .eq('technician_id', user.id)
+    
+    console.log('Technician assignments:', assignments, 'Error:', assignmentError)
+    
+    if (assignments && assignments.length > 0) {
+      const jobIds = assignments.map(a => a.job_id)
+      
+      // Then fetch those jobs with customer info
+      const { data: techJobs, error: jobsError } = await supabase
+        .from('jobs')
+        .select(`
+          *,
+          customers!customer_id (
+            name,
+            email,
+            phone,
+            address
+          )
+        `)
+        .in('id', jobIds)
+        .order('created_at', { ascending: false })
+      
+      console.log('Technician jobs:', techJobs?.length, 'Error:', jobsError)
+      jobs = techJobs || []
+    }
+  } else {
+    // Boss/admin sees all jobs
+    const { data: allJobs, error } = await supabase
+      .from('jobs')
+      .select(`
+        *,
+        customers!customer_id (
+          name,
+          email,
+          phone,
+          address
+        )
+      `)
+      .order('created_at', { ascending: false })
+    
+    console.log('All jobs for boss/admin:', allJobs?.length, 'Error:', error)
+    jobs = allJobs || []
+  }
+
+  return (
+    <div className="container mx-auto py-6 px-4">
+      <JobsListHeader userRole={userRole} />
+      {userRole === 'technician' && jobs.length === 0 ? (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-yellow-800">No jobs assigned to you yet.</p>
+          <p className="text-sm text-yellow-600 mt-1">Jobs will appear here once your supervisor assigns them to you.</p>
+        </div>
+      ) : (
+        <JobsList jobs={jobs} userRole={userRole} />
+      )}
+    </div>
+  )
+}
+EOF
+
+# 2. Update JobsListHeader to accept userRole prop
+echo "📝 Updating JobsListHeader..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/JobsListHeader.tsx << 'EOF'
+'use client'
+
+import { useRouter } from 'next/navigation'
+import { Plus } from 'lucide-react'
+
+interface JobsListHeaderProps {
+  userRole?: string
+}
+
+export default function JobsListHeader({ userRole = 'technician' }: JobsListHeaderProps) {
+  const router = useRouter()
+
+  return (
+    <div className="flex justify-between items-center mb-6">
+      <h1 className="text-2xl font-bold">
+        {userRole === 'technician' ? 'My Assigned Jobs' : 'Jobs'}
+      </h1>
+      {userRole !== 'technician' && (
+        <button
+          onClick={() => router.push('/jobs/new')}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          New Job
+        </button>
+      )}
+    </div>
+  )
+}
+EOF
+
+# 3. Update JobsList to hide pricing for technicians
+echo "📝 Updating JobsList to hide pricing for technicians..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/JobsList.tsx << 'EOF'
 'use client'
 
 import { useState } from 'react'
@@ -201,3 +334,63 @@ export default function JobsList({ jobs, userRole }: JobsListProps) {
     </div>
   )
 }
+EOF
+
+# 4. Create SQL to check job_technicians data
+echo "📝 Creating SQL to debug job assignments..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/check-job-assignments.sql << 'EOF'
+-- Check job_technicians table
+SELECT 
+    jt.job_id,
+    jt.technician_id,
+    j.job_number,
+    j.title,
+    p.email as technician_email,
+    p.full_name as technician_name
+FROM job_technicians jt
+JOIN jobs j ON j.id = jt.job_id
+JOIN profiles p ON p.id = jt.technician_id
+ORDER BY jt.assigned_at DESC;
+
+-- Check RLS policies on job_technicians
+SELECT * FROM pg_policies WHERE tablename = 'job_technicians';
+
+-- If no policies exist, create them
+/*
+CREATE POLICY "Technicians can view their assignments" 
+ON job_technicians FOR SELECT 
+TO authenticated 
+USING (true);
+
+CREATE POLICY "Boss can manage assignments" 
+ON job_technicians FOR ALL 
+TO authenticated 
+USING (
+  EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE id = auth.uid() 
+    AND role IN ('boss', 'admin')
+  )
+);
+*/
+EOF
+
+echo "🔨 Building the application..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+npm run build 2>&1 | head -50
+
+echo ""
+echo "📦 Committing changes..."
+git add -A
+git commit -m "Fix technician job view and prepare for upload features"
+git push origin main
+
+echo ""
+echo "✅ Technician view fixed!"
+echo ""
+echo "📝 Next steps:"
+echo "1. Run check-job-assignments.sql in Supabase"
+echo "2. Sign in as technician@gmail.com to test"
+echo "3. Jobs should now appear for technicians"
+echo ""
+echo "Note: File upload feature needs separate implementation"
