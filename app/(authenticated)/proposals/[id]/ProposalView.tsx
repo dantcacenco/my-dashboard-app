@@ -116,6 +116,7 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
             Print
           </button>
 
+          {canCreateJob && (
             <CreateJobButton proposal={proposal} />
           )}
         </div>
