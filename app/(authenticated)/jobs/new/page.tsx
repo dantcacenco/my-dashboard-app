@@ -23,9 +23,36 @@ export default async function NewJobPage() {
   // Fetch data needed for the form
   const [customersRes, proposalsRes, techniciansRes] = await Promise.all([
     supabase.from('customers').select('id, name, email, phone, address').order('name'),
-    supabase.from('proposals').select('id, proposal_number, title, status, customer_id').eq('status', 'approved').order('created_at', { ascending: false }),
-    supabase.from('profiles').select('id, email, full_name').eq('role', 'technician').eq('is_active', true).order('full_name')
+    supabase.from('proposals')
+      .select(`
+        id, 
+        proposal_number, 
+        title, 
+        status, 
+        customer_id,
+        total,
+        customers (
+          name,
+          address
+        ),
+        proposal_items (
+          name,
+          description,
+          quantity,
+          is_addon,
+          is_selected
+        )
+      `)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false }),
+    supabase.from('profiles')
+      .select('id, email, full_name')
+      .eq('role', 'technician')
+      .eq('is_active', true)
+      .order('full_name')
   ])
+
+  console.log('Technicians fetched:', techniciansRes.data?.length)
 
   return (
     <div className="container mx-auto py-6 px-4">

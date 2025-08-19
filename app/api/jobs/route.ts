@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       .eq('id', body.customer_id)
       .single()
 
-    // Prepare job data
+    // Prepare job data - using simplified address
     const jobData = {
       job_number: jobNumber,
       customer_id: body.customer_id,
@@ -45,12 +45,12 @@ export async function POST(request: Request) {
       job_type: body.job_type || 'repair',
       status: body.status || 'not_scheduled',
       service_address: body.service_address || '',
-      service_city: body.service_city || '',
-      service_state: body.service_state || '',
-      service_zip: body.service_zip || '',
+      service_city: '',  // Keep empty for now
+      service_state: '', // Keep empty for now
+      service_zip: '',   // Keep empty for now
       scheduled_date: body.scheduled_date || null,
       scheduled_time: body.scheduled_time || null,
-      total_value: parseFloat(body.total_value) || 0,
+      total_value: body.total_value || 0,
       notes: body.notes || '',
       created_by: user.id,
       // Denormalized fields
@@ -58,6 +58,8 @@ export async function POST(request: Request) {
       customer_email: customer?.email || '',
       customer_phone: customer?.phone || ''
     }
+
+    console.log('Creating job with data:', jobData)
 
     // Create the job
     const { data: newJob, error: jobError } = await supabase
@@ -82,9 +84,13 @@ export async function POST(request: Request) {
         assigned_by: user.id
       }))
 
-      await supabase
+      const { error: techError } = await supabase
         .from('job_technicians')
         .insert(assignments)
+      
+      if (techError) {
+        console.error('Error assigning technicians:', techError)
+      }
     }
 
     return NextResponse.json({ 
@@ -101,17 +107,15 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const supabase = await createClient()
     
-    // Check auth
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user role
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
@@ -120,7 +124,6 @@ export async function GET(request: Request) {
 
     const userRole = profile?.role || 'technician'
 
-    // Fetch jobs based on role
     let query = supabase
       .from('jobs')
       .select(`
@@ -134,7 +137,6 @@ export async function GET(request: Request) {
       `)
       .order('created_at', { ascending: false })
 
-    // If technician, only show their assigned jobs
     if (userRole === 'technician') {
       const { data: assignedJobs } = await supabase
         .from('job_technicians')

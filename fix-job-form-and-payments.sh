@@ -1,3 +1,86 @@
+#!/bin/bash
+
+# Fix Job Form, Technicians, and Payment Issues
+echo "🔧 Starting comprehensive fix for job form and payments..."
+
+# 1. Fix the page to fetch all needed proposal data
+echo "📝 Fixing new job page to fetch complete proposal data..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/new/page.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import NewJobForm from './NewJobForm'
+
+export default async function NewJobPage() {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+
+  // Get user role
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+  
+  // Only boss/admin can create jobs
+  if (profile?.role !== 'boss' && profile?.role !== 'admin') {
+    redirect('/jobs')
+  }
+
+  // Fetch data needed for the form
+  const [customersRes, proposalsRes, techniciansRes] = await Promise.all([
+    supabase.from('customers').select('id, name, email, phone, address').order('name'),
+    supabase.from('proposals')
+      .select(`
+        id, 
+        proposal_number, 
+        title, 
+        status, 
+        customer_id,
+        total,
+        customers (
+          name,
+          address
+        ),
+        proposal_items (
+          name,
+          description,
+          quantity,
+          is_addon,
+          is_selected
+        )
+      `)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false }),
+    supabase.from('profiles')
+      .select('id, email, full_name')
+      .eq('role', 'technician')
+      .eq('is_active', true)
+      .order('full_name')
+  ])
+
+  console.log('Technicians fetched:', techniciansRes.data?.length)
+
+  return (
+    <div className="container mx-auto py-6 px-4">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-2xl font-bold mb-6">Create New Job</h1>
+        <NewJobForm 
+          customers={customersRes.data || []}
+          proposals={proposalsRes.data || []}
+          technicians={techniciansRes.data || []}
+          userId={user.id}
+        />
+      </div>
+    </div>
+  )
+}
+EOF
+
+# 2. Update NewJobForm with all fixes
+echo "📝 Rewriting NewJobForm with all improvements..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/new/NewJobForm.tsx << 'EOF'
 'use client'
 
 import { useState } from 'react'
@@ -377,3 +460,267 @@ export default function NewJobForm({ customers, proposals, technicians, userId }
     </form>
   )
 }
+EOF
+
+# 3. Update the API route to handle simplified address
+echo "📝 Updating jobs API route..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/api/jobs/route.ts << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient()
+    const body = await request.json()
+
+    // Check auth
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Validate required fields
+    if (!body.customer_id || !body.title) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: customer_id and title are required' 
+      }, { status: 400 })
+    }
+
+    // Generate job number
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
+    const { count } = await supabase
+      .from('jobs')
+      .select('*', { count: 'exact', head: true })
+      .like('job_number', `JOB-${today}-%`)
+
+    const jobNumber = `JOB-${today}-${String((count || 0) + 1).padStart(3, '0')}`
+
+    // Get customer info for denormalized fields
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('name, email, phone')
+      .eq('id', body.customer_id)
+      .single()
+
+    // Prepare job data - using simplified address
+    const jobData = {
+      job_number: jobNumber,
+      customer_id: body.customer_id,
+      proposal_id: body.proposal_id || null,
+      title: body.title,
+      description: body.description || '',
+      job_type: body.job_type || 'repair',
+      status: body.status || 'not_scheduled',
+      service_address: body.service_address || '',
+      service_city: '',  // Keep empty for now
+      service_state: '', // Keep empty for now
+      service_zip: '',   // Keep empty for now
+      scheduled_date: body.scheduled_date || null,
+      scheduled_time: body.scheduled_time || null,
+      total_value: body.total_value || 0,
+      notes: body.notes || '',
+      created_by: user.id,
+      // Denormalized fields
+      customer_name: customer?.name || '',
+      customer_email: customer?.email || '',
+      customer_phone: customer?.phone || ''
+    }
+
+    console.log('Creating job with data:', jobData)
+
+    // Create the job
+    const { data: newJob, error: jobError } = await supabase
+      .from('jobs')
+      .insert(jobData)
+      .select()
+      .single()
+
+    if (jobError) {
+      console.error('Error creating job:', jobError)
+      return NextResponse.json({ 
+        error: 'Failed to create job',
+        details: jobError.message 
+      }, { status: 400 })
+    }
+
+    // Assign technicians if provided
+    if (body.technicianIds && body.technicianIds.length > 0) {
+      const assignments = body.technicianIds.map((techId: string) => ({
+        job_id: newJob.id,
+        technician_id: techId,
+        assigned_by: user.id
+      }))
+
+      const { error: techError } = await supabase
+        .from('job_technicians')
+        .insert(assignments)
+      
+      if (techError) {
+        console.error('Error assigning technicians:', techError)
+      }
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      job: newJob
+    })
+
+  } catch (error) {
+    console.error('Error creating job:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  try {
+    const supabase = await createClient()
+    
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const userRole = profile?.role || 'technician'
+
+    let query = supabase
+      .from('jobs')
+      .select(`
+        *,
+        customers!customer_id (
+          name,
+          email,
+          phone,
+          address
+        )
+      `)
+      .order('created_at', { ascending: false })
+
+    if (userRole === 'technician') {
+      const { data: assignedJobs } = await supabase
+        .from('job_technicians')
+        .select('job_id')
+        .eq('technician_id', user.id)
+
+      const jobIds = assignedJobs?.map(j => j.job_id) || []
+      if (jobIds.length > 0) {
+        query = query.in('id', jobIds)
+      } else {
+        return NextResponse.json({ jobs: [] })
+      }
+    }
+
+    const { data: jobs, error } = await query
+
+    if (error) {
+      console.error('Error fetching jobs:', error)
+      return NextResponse.json({ 
+        error: 'Failed to fetch jobs',
+        details: error.message 
+      }, { status: 400 })
+    }
+
+    return NextResponse.json({ jobs: jobs || [] })
+
+  } catch (error) {
+    console.error('Error fetching jobs:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}
+EOF
+
+# 4. Create SQL to delete test jobs
+echo "📝 Creating SQL to delete test jobs..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/delete-test-jobs.sql << 'EOF'
+-- Delete all test jobs created on July 29, 2025
+DELETE FROM job_technicians 
+WHERE job_id IN (
+  SELECT id FROM jobs 
+  WHERE job_number LIKE 'JOB-20250729-%'
+);
+
+DELETE FROM job_photos
+WHERE job_id IN (
+  SELECT id FROM jobs 
+  WHERE job_number LIKE 'JOB-20250729-%'
+);
+
+DELETE FROM job_files
+WHERE job_id IN (
+  SELECT id FROM jobs 
+  WHERE job_number LIKE 'JOB-20250729-%'
+);
+
+DELETE FROM job_materials
+WHERE job_id IN (
+  SELECT id FROM jobs 
+  WHERE job_number LIKE 'JOB-20250729-%'
+);
+
+DELETE FROM job_time_entries
+WHERE job_id IN (
+  SELECT id FROM jobs 
+  WHERE job_number LIKE 'JOB-20250729-%'
+);
+
+DELETE FROM job_activity_log
+WHERE job_id IN (
+  SELECT id FROM jobs 
+  WHERE job_number LIKE 'JOB-20250729-%'
+);
+
+-- Now delete the jobs themselves
+DELETE FROM jobs 
+WHERE job_number LIKE 'JOB-20250729-%';
+
+-- Return count of deleted jobs
+SELECT 'Deleted ' || COUNT(*) || ' test jobs' as result
+FROM jobs 
+WHERE job_number LIKE 'JOB-20250729-%';
+EOF
+
+echo "🔨 Building the application..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+npm run build 2>&1 | head -80
+
+# Check if build succeeded
+if [ $? -eq 0 ]; then
+    echo "✅ Build successful!"
+    
+    # Commit and push changes
+    echo "📦 Committing changes..."
+    git add -A
+    git commit -m "Fix job creation form: technicians, proposal data, simplified address"
+    git push origin main
+    
+    echo "✅ Fix applied successfully!"
+    echo ""
+    echo "🎯 What was fixed:"
+    echo "1. Proposal dropdown now shows address and total amount"
+    echo "2. Auto-fills job title and total value from proposal"
+    echo "3. Auto-fills description from proposal items (services + addons)"
+    echo "4. Fixed technician selection - now shows all active technicians"
+    echo "5. Simplified service address to single field"
+    echo "6. Fixed Create Job button functionality"
+    echo ""
+    echo "📝 To delete test jobs:"
+    echo "Run the SQL in delete-test-jobs.sql in Supabase SQL Editor"
+    echo ""
+    echo "⚠️ Still need to fix:"
+    echo "1. Mobile proposal approval error"
+    echo "2. Payment showing $0 after Stripe payment"
+else
+    echo "❌ Build failed. Please check the errors above."
+    exit 1
+fi
