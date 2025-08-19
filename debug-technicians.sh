@@ -1,3 +1,66 @@
+#!/bin/bash
+
+# Debug and Fix Technicians Issue
+echo "🔧 Debugging technicians issue..."
+
+# 1. Create a debug API route to check profiles table
+echo "📝 Creating technician debug API route..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/api/debug-technicians/route.ts << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+
+export async function GET() {
+  try {
+    const supabase = await createClient()
+    
+    // Check auth
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get ALL profiles to see what's in there
+    const { data: allProfiles, error: allError } = await supabase
+      .from('profiles')
+      .select('*')
+
+    // Get profiles with role = technician
+    const { data: techProfiles, error: techError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'technician')
+
+    // Get active technicians
+    const { data: activeTechs, error: activeError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'technician')
+      .eq('is_active', true)
+
+    return NextResponse.json({
+      debug: {
+        totalProfiles: allProfiles?.length || 0,
+        allProfiles: allProfiles,
+        techniciansWithRole: techProfiles?.length || 0,
+        techProfiles: techProfiles,
+        activeTechnicians: activeTechs?.length || 0,
+        activeTechs: activeTechs,
+        errors: {
+          all: allError?.message,
+          tech: techError?.message,
+          active: activeError?.message
+        }
+      }
+    })
+  } catch (error) {
+    return NextResponse.json({ error: 'Server error', details: error }, { status: 500 })
+  }
+}
+EOF
+
+# 2. Update the page to also try different queries
+echo "📝 Updating jobs/new page with better technician fetching..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/new/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import NewJobForm from './NewJobForm'
@@ -144,3 +207,51 @@ export default async function NewJobPage() {
     </div>
   )
 }
+EOF
+
+# 3. Create SQL to check and fix technician roles
+echo "📝 Creating SQL to check technician data..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/check-technicians.sql << 'EOF'
+-- Check what roles exist in profiles
+SELECT role, COUNT(*) as count 
+FROM profiles 
+GROUP BY role;
+
+-- Check all profiles
+SELECT id, email, full_name, role, is_active 
+FROM profiles
+ORDER BY role, full_name;
+
+-- Check specifically for technicians
+SELECT id, email, full_name, role, is_active 
+FROM profiles 
+WHERE role = 'technician';
+
+-- If you need to update users to be technicians (replace emails with actual technician emails)
+-- UPDATE profiles 
+-- SET role = 'technician', is_active = true 
+-- WHERE email IN ('asdf@asdf.com', 'asdf@gmail.com', 'john@example.com', 'hgfh@gmail.com', 'technician@gmail.com');
+EOF
+
+echo "🔨 Building the application..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+npm run build 2>&1 | head -50
+
+echo ""
+echo "📦 Committing changes..."
+git add -A
+git commit -m "Debug and fix technician fetching issue"
+git push origin main
+
+echo ""
+echo "✅ Debug tools created!"
+echo ""
+echo "📝 Next steps:"
+echo "1. Visit /api/debug-technicians to see what's in profiles table"
+echo "2. Check Supabase and run the SQL in check-technicians.sql"
+echo "3. The page now tries multiple approaches to find technicians"
+echo ""
+echo "🔍 The issue is likely one of:"
+echo "- Technicians don't have role='technician' in profiles table"
+echo "- They have is_active=false or null"
+echo "- RLS policy is blocking the query"
