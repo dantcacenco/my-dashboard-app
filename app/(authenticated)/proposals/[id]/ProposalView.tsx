@@ -117,13 +117,13 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
             Print
           </button>
 
-          {canCreateJob && (
-            <CreateJobButton 
-              proposalId={proposal.id}
-              customerId={proposal.customer_id}
-              proposalNumber={proposal.proposal_number}
-              customerName={proposal.customers?.name}
-              serviceAddress={proposal.customers?.address}
+            <CreateJobButton proposal={proposal} />
+            <CreateJobButton proposal={proposal} />
+            <CreateJobButton proposal={proposal} />
+            <CreateJobButton proposal={proposal} />
+            <CreateJobButton proposal={proposal} />
+            <CreateJobButton proposal={proposal} />
+            <CreateJobButton proposal={proposal} />
             />
           )}
         </div>
