@@ -32,11 +32,7 @@ export default async function JobDetailPage({
   
   const userRole = profile?.role || 'technician'
 
-  console.log('🔍 Server: Fetching job with ID:', id)
-  console.log('🔍 Server: User role:', userRole)
-  
-  // FIXED QUERY - removed the problematic proposals relationship
-  // We'll fetch proposal separately if needed
+  // Fetch job with customer info
   const { data: job, error } = await supabase
     .from('jobs')
     .select(`
@@ -50,13 +46,6 @@ export default async function JobDetailPage({
     `)
     .eq('id', id)
     .single()
-
-  console.log('🔍 Server: Job query result:', { 
-    found: !!job, 
-    error: error?.message,
-    jobId: job?.id,
-    jobNumber: job?.job_number 
-  })
 
   // If job has a proposal_id, fetch it separately
   if (job && job.proposal_id) {
@@ -72,9 +61,6 @@ export default async function JobDetailPage({
   }
 
   if (error || !job) {
-    console.error('🔍 Server: Job not found or error:', error)
-    
-    // Return diagnostic info instead of 404
     return (
       <div className="p-8 max-w-2xl mx-auto">
         <h1 className="text-2xl font-bold mb-4 text-red-600">Job Not Found</h1>
@@ -95,5 +81,5 @@ export default async function JobDetailPage({
     )
   }
 
-  return <JobDetailView job={job} userRole={userRole} />
+  return <JobDetailView job={job} userRole={userRole} userId={user.id} />
 }

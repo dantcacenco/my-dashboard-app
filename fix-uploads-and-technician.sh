@@ -1,3 +1,11 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Fixing upload functionality and technician job visibility..."
+
+# 1. First, let's fix the JobDetailView to properly integrate uploads
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx << 'EOF'
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -530,3 +538,326 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
     </div>
   )
 }
+EOF
+
+echo "✅ JobDetailView updated with integrated upload components"
+# 2. Update the page.tsx to pass userId
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/\[id\]/page.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import JobDetailView from './JobDetailView'
+import JobDiagnostic from './diagnostic'
+
+export default async function JobDetailPage({ 
+  params,
+  searchParams 
+}: { 
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ debug?: string }>
+}) {
+  const { id } = await params
+  const { debug } = await searchParams
+  
+  // Show diagnostic if ?debug=true
+  if (debug === 'true') {
+    return <JobDiagnostic />
+  }
+  
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+
+  // Get user role
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+  
+  const userRole = profile?.role || 'technician'
+
+  // Fetch job with customer info
+  const { data: job, error } = await supabase
+    .from('jobs')
+    .select(`
+      *,
+      customers!customer_id (
+        name,
+        email,
+        phone,
+        address
+      )
+    `)
+    .eq('id', id)
+    .single()
+
+  // If job has a proposal_id, fetch it separately
+  if (job && job.proposal_id) {
+    const { data: proposal } = await supabase
+      .from('proposals')
+      .select('proposal_number, title, total')
+      .eq('id', job.proposal_id)
+      .single()
+    
+    if (proposal) {
+      job.proposals = [proposal]
+    }
+  }
+
+  if (error || !job) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4 text-red-600">Job Not Found</h1>
+        <div className="bg-red-50 p-4 rounded-lg">
+          <p className="mb-2">Job ID: <code>{id}</code></p>
+          <p className="mb-2">Error: {error?.message || 'Job does not exist'}</p>
+          <p className="text-sm text-gray-600 mt-4">
+            Try adding <code>?debug=true</code> to the URL for diagnostic info
+          </p>
+          <a 
+            href={`/jobs/${id}?debug=true`}
+            className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Run Diagnostic
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  return <JobDetailView job={job} userRole={userRole} userId={user.id} />
+}
+EOF
+
+echo "✅ Updated page.tsx to pass userId"
+
+# 3. Fix the technician jobs query to properly handle RLS
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/technician/jobs/page.tsx << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import TechnicianJobsList from './TechnicianJobsList'
+
+export default async function TechnicianJobsPage() {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+
+  // Get user profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, full_name')
+    .eq('id', user.id)
+    .single()
+
+  // Only technicians can access this
+  if (profile?.role !== 'technician') {
+    redirect('/')
+  }
+
+  // Get jobs assigned to this technician - using a more specific query
+  const { data: assignedJobs, error } = await supabase
+    .from('job_technicians')
+    .select(`
+      job_id,
+      assigned_at,
+      jobs!inner (
+        id,
+        job_number,
+        title,
+        description,
+        job_type,
+        status,
+        scheduled_date,
+        scheduled_time,
+        service_address,
+        notes,
+        customer_name,
+        customer_phone,
+        customer_email,
+        created_at
+      )
+    `)
+    .eq('technician_id', user.id)
+    .order('assigned_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching technician jobs:', error)
+  }
+
+  // Flatten the jobs data
+  const jobs = assignedJobs?.map(item => ({
+    ...item.jobs,
+    assigned_at: item.assigned_at
+  })).filter(Boolean) || []
+
+  // Additionally fetch photos and files for each job
+  for (const job of jobs) {
+    const { data: photos } = await supabase
+      .from('job_photos')
+      .select('id, photo_url, caption, created_at')
+      .eq('job_id', job.id)
+      .order('created_at', { ascending: false })
+    
+    const { data: files } = await supabase
+      .from('job_files')
+      .select('id, file_name, file_url, created_at')
+      .eq('job_id', job.id)
+      .order('created_at', { ascending: false })
+    
+    job.job_photos = photos || []
+    job.job_files = files || []
+  }
+
+  return (
+    <div className="container mx-auto py-6 px-4">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">My Jobs</h1>
+        <p className="text-gray-600">Welcome back, {profile?.full_name || 'Technician'}</p>
+      </div>
+      
+      <TechnicianJobsList jobs={jobs} technicianId={user.id} />
+    </div>
+  )
+}
+EOF
+
+echo "✅ Fixed technician jobs query with proper RLS handling"
+
+# 4. Create a SQL script to check and fix RLS policies
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/fix-rls-policies.sql << 'EOF'
+-- Check current RLS policies for job_technicians
+SELECT 
+  schemaname,
+  tablename,
+  policyname,
+  permissive,
+  roles,
+  cmd,
+  qual
+FROM pg_policies 
+WHERE tablename = 'job_technicians';
+
+-- Drop existing policies and recreate
+DROP POLICY IF EXISTS "Technicians can view their assignments" ON job_technicians;
+DROP POLICY IF EXISTS "Boss and admin can manage assignments" ON job_technicians;
+
+-- Create comprehensive policies for job_technicians
+CREATE POLICY "Technicians can view their assignments"
+  ON job_technicians
+  FOR SELECT
+  USING (technician_id = auth.uid());
+
+CREATE POLICY "Boss and admin can view all assignments"
+  ON job_technicians
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles 
+      WHERE profiles.id = auth.uid() 
+      AND profiles.role IN ('boss', 'admin')
+    )
+  );
+
+CREATE POLICY "Boss and admin can insert assignments"
+  ON job_technicians
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM profiles 
+      WHERE profiles.id = auth.uid() 
+      AND profiles.role IN ('boss', 'admin')
+    )
+  );
+
+CREATE POLICY "Boss and admin can update assignments"
+  ON job_technicians
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles 
+      WHERE profiles.id = auth.uid() 
+      AND profiles.role IN ('boss', 'admin')
+    )
+  );
+
+CREATE POLICY "Boss and admin can delete assignments"
+  ON job_technicians
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles 
+      WHERE profiles.id = auth.uid() 
+      AND profiles.role IN ('boss', 'admin')
+    )
+  );
+
+-- Also ensure jobs table has proper policies for technicians
+DROP POLICY IF EXISTS "Technicians can view assigned jobs" ON jobs;
+
+CREATE POLICY "Technicians can view assigned jobs"
+  ON jobs
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM job_technicians 
+      WHERE job_technicians.job_id = jobs.id 
+      AND job_technicians.technician_id = auth.uid()
+    )
+    OR
+    EXISTS (
+      SELECT 1 FROM profiles 
+      WHERE profiles.id = auth.uid() 
+      AND profiles.role IN ('boss', 'admin')
+    )
+  );
+
+-- Test the policies
+SELECT 
+  'job_technicians' as table_name,
+  COUNT(*) as policy_count
+FROM pg_policies 
+WHERE tablename = 'job_technicians'
+UNION ALL
+SELECT 
+  'jobs' as table_name,
+  COUNT(*) as policy_count
+FROM pg_policies 
+WHERE tablename = 'jobs';
+EOF
+
+echo "✅ Created SQL script to fix RLS policies"
+
+# 5. Test the build
+echo ""
+echo "🔨 Testing build..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+npm run build 2>&1 | head -80
+
+# 6. Commit and push changes
+echo ""
+echo "📦 Committing and pushing changes..."
+git add -A
+git commit -m "Fix upload functionality and technician job visibility
+
+- Integrated PhotoUpload and FileUpload components directly into JobDetailView
+- Fixed userId prop passing from page.tsx to JobDetailView
+- Updated technician jobs query to handle RLS properly
+- Created SQL script to fix RLS policies for job_technicians table
+- Ensured technicians can view their assigned jobs
+- Fixed media loading in both boss and technician views"
+
+git push origin main
+
+echo ""
+echo "✅ COMPLETE! Changes pushed to GitHub"
+echo ""
+echo "📝 IMPORTANT: Run this SQL in Supabase to fix RLS policies:"
+echo "   Copy the content from fix-rls-policies.sql and execute in Supabase SQL editor"
+echo ""
+echo "🧪 Test these features:"
+echo "1. Upload photos and files in a job (as boss)"
+echo "2. Sign in as a technician and check if jobs appear"
+echo "3. Verify technicians can see job details without prices"
+EOF

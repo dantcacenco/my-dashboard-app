@@ -20,12 +20,13 @@ export default async function TechnicianJobsPage() {
     redirect('/')
   }
 
-  // Get jobs assigned to this technician
-  const { data: assignedJobs } = await supabase
+  // Get jobs assigned to this technician - using a more specific query
+  const { data: assignedJobs, error } = await supabase
     .from('job_technicians')
     .select(`
       job_id,
-      jobs (
+      assigned_at,
+      jobs!inner (
         id,
         job_number,
         title,
@@ -39,26 +40,39 @@ export default async function TechnicianJobsPage() {
         customer_name,
         customer_phone,
         customer_email,
-        created_at,
-        job_photos (
-          id,
-          photo_url,
-          caption,
-          created_at
-        ),
-        job_files (
-          id,
-          file_name,
-          file_url,
-          created_at
-        )
+        created_at
       )
     `)
     .eq('technician_id', user.id)
     .order('assigned_at', { ascending: false })
 
+  if (error) {
+    console.error('Error fetching technician jobs:', error)
+  }
+
   // Flatten the jobs data
-  const jobs = assignedJobs?.map(item => item.jobs).filter(Boolean) || []
+  const jobs = assignedJobs?.map(item => ({
+    ...item.jobs,
+    assigned_at: item.assigned_at
+  })).filter(Boolean) || []
+
+  // Additionally fetch photos and files for each job
+  for (const job of jobs) {
+    const { data: photos } = await supabase
+      .from('job_photos')
+      .select('id, photo_url, caption, created_at')
+      .eq('job_id', job.id)
+      .order('created_at', { ascending: false })
+    
+    const { data: files } = await supabase
+      .from('job_files')
+      .select('id, file_name, file_url, created_at')
+      .eq('job_id', job.id)
+      .order('created_at', { ascending: false })
+    
+    job.job_photos = photos || []
+    job.job_files = files || []
+  }
 
   return (
     <div className="container mx-auto py-6 px-4">
