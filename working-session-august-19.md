@@ -3,6 +3,7 @@
 
 **Status**: All critical features restored and working  
 **Tech Stack**: Next.js 15.4.3, Supabase, Stripe, Vercel  
+**Email Backend**: Resend (using RESEND_API_KEY)  
 **Current Branch**: main  
 **User**: dantcacenco@gmail.com (role: `boss`)
 **Last Commit**: 44ba47b
@@ -18,8 +19,9 @@
   - Updated ProposalView.tsx to show SendProposal component for draft/sent status
   - Fixed props passing (proposalId, customerEmail, customerName, proposalNumber)
   - Modal with editable email subject/body working
-  - Customer receives email with token-based proposal link
+  - Customer receives email with token-based proposal link via Resend API
   - Token link allows viewing without login
+  - Email sent through `/api/send-proposal` endpoint using Resend
 
 ### ✅ **2. Technician Management Fixed**
 - **Issue**: Refresh button didn't update list, required manual page refresh
@@ -118,6 +120,13 @@
 
 ## 🔧 **Technical Implementation Details**
 
+### **Email System - Resend**
+- Using Resend API for transactional emails
+- Configured with `RESEND_API_KEY` environment variable
+- Emails sent through `/api/send-proposal` endpoint
+- Supports HTML email templates
+- Handles proposal sending and approval notifications
+
 ### **File Upload Pattern**
 ```typescript
 // Standard pattern for file uploads to Supabase
@@ -132,7 +141,7 @@ const { data: { publicUrl } } = supabase.storage
 
 ### **Component Structure**
 - `ProposalView.tsx` - Main proposal display with Send button
-- `SendProposal.tsx` - Reusable email sending component
+- `SendProposal.tsx` - Reusable email sending component (uses Resend)
 - `CreateJobButton.tsx` - Job creation from proposal
 - `JobDetailView.tsx` - Comprehensive job management interface
 - `TechniciansClientView.tsx` - Technician list with refresh
@@ -155,7 +164,7 @@ const { data: { publicUrl } } = supabase.storage
 - ✅ Deployed to GitHub main branch
 
 ### **Testing Needed**
-1. Test Send to Customer email delivery
+1. Test Send to Customer email delivery via Resend
 2. Verify customer can view proposal with token link
 3. Test payment flow (50% deposit, 30% rough-in, 20% final)
 4. Verify file upload size limits
@@ -166,7 +175,7 @@ const { data: { publicUrl } } = supabase.storage
 - Image compression before upload
 - Bulk technician assignment
 - Job templates from previous jobs
-- Email template management
+- Email template management in Resend
 - SMS notifications for technicians
 
 ---
@@ -198,7 +207,8 @@ const { data: { publicUrl } } = supabase.storage
 - SUPABASE_SERVICE_ROLE_KEY
 - STRIPE_SECRET_KEY
 - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-- RESEND_API_KEY (for email sending)
+- RESEND_API_KEY (for Resend email service)
+- NEXT_PUBLIC_BASE_URL (for absolute URLs in emails)
 
 ---
 
@@ -225,7 +235,7 @@ npm run dev
 ## 📝 **Session Summary**
 
 **What We Accomplished**:
-- ✅ Restored missing Send to Customer functionality
+- ✅ Restored missing Send to Customer functionality with Resend
 - ✅ Fixed technician refresh mechanism
 - ✅ Implemented complete job management system
 - ✅ Added file/photo upload capabilities
@@ -237,6 +247,7 @@ npm run dev
 - All technicians treated equally (no lead designation)
 - Customer details editable inline in job edit modal
 - File storage using Supabase buckets
+- Email delivery using Resend API
 
 **Chat Capacity**: Used ~80% - Good stopping point
 
@@ -245,3 +256,4 @@ npm run dev
 *Last updated: August 19, 2025*  
 *Next session: Continue with testing results and any bug fixes*
 *GitHub repo: https://github.com/dantcacenco/my-dashboard-app*
+*Email Service: Resend (https://resend.com)*
