@@ -513,17 +513,15 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
             </CardContent>
           </Card>
         </div>
-      </div>
-
       {/* Edit Job Modal */}
       {showEditModal && (
         <EditJobModal 
           job={job}
+          isOpen={showEditModal}
           onClose={() => setShowEditModal(false)}
-          onSave={(updatedJob: any) => {
-            setJob(updatedJob)
+          onJobUpdated={() => {
             setShowEditModal(false)
-            toast.success('Job updated')
+            router.refresh()
           }}
         />
       )}

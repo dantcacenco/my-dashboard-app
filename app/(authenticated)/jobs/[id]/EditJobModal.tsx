@@ -368,4 +368,3 @@ export function EditJobModal({ job, isOpen, onClose, onJobUpdated }: EditJobModa
   )
 }
 
-export { EditJobModal }
