@@ -49,17 +49,7 @@ export default function TechniciansClientView({ technicians: initialTechnicians 
     }
   }
 
-  const handleTechnicianAdded = (newTechnician: Technician) => {
-    setTechnicians([newTechnician, ...technicians])
-    setShowAddModal(false)
-  }
 
-  const handleTechnicianUpdated = (updatedTechnician: Technician) => {
-    setTechnicians(technicians.map(t => 
-      t.id === updatedTechnician.id ? updatedTechnician : t
-    ))
-    setEditingTechnician(null)
-  }
 
   const handleDelete = async (techId: string, email: string) => {
     if (!confirm(`Are you sure you want to permanently delete ${email}? This cannot be undone.`)) {
@@ -226,7 +216,7 @@ export default function TechniciansClientView({ technicians: initialTechnicians 
       {showAddModal && (
         <AddTechnicianModal 
           onClose={() => setShowAddModal(false)}
-          onSuccess={handleTechnicianAdded}
+          onSuccess={() => handleRefresh()}
         />
       )}
 
@@ -234,7 +224,7 @@ export default function TechniciansClientView({ technicians: initialTechnicians 
         <EditTechnicianModal
           technician={editingTechnician}
           onClose={() => setEditingTechnician(null)}
-          onSuccess={handleTechnicianUpdated}
+          onSuccess={() => handleRefresh()}
         />
       )}
     </div>
