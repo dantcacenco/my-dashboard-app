@@ -60,7 +60,7 @@ EOF
 
 # 2. Update CustomerProposalView to handle add-ons with checkboxes
 echo "📝 Updating CustomerProposalView for add-ons..."
-cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/customer-proposal/\[token\]/CustomerProposalView.tsx << 'EOF'
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/proposal/view/\[token\]/CustomerProposalView.tsx << 'EOF'
 'use client'
 
 import { useState, useEffect } from 'react'

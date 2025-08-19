@@ -2,172 +2,91 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { CheckCircle, XCircle, Clock, DollarSign } from 'lucide-react'
+import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import MobileDebug from '@/components/MobileDebug'
 
 interface CustomerProposalViewProps {
   proposal: any
   token: string
 }
 
-export default function CustomerProposalView({ proposal, token }: CustomerProposalViewProps) {
+export default function CustomerProposalView({ proposal: initialProposal, token }: CustomerProposalViewProps) {
+  const router = useRouter()
+  const supabase = createClient()
+  const [proposal, setProposal] = useState(initialProposal)
   const [isApproving, setIsApproving] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
+  const [showRejectDialog, setShowRejectDialog] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
-  const [showRejectionForm, setShowRejectionForm] = useState(false)
-  const [paymentStages, setPaymentStages] = useState<any[]>([])
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
-  const supabase = createClient()
-  const router = useRouter()
+  const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set())
+  const [proposalTotal, setProposalTotal] = useState(proposal.total)
 
+  // Initialize selected addons
   useEffect(() => {
-    if (proposal.status === 'approved') {
-      calculatePaymentStages()
-    }
-  }, [proposal])
-
-  const calculatePaymentStages = () => {
-    const stages = [
-      {
-        name: 'Deposit',
-        percentage: 50,
-        amount: proposal.total * 0.5,
-        status: proposal.deposit_paid_at ? 'paid' : 'pending',
-        paid_at: proposal.deposit_paid_at
-      },
-      {
-        name: 'Rough In',
-        percentage: 30,
-        amount: proposal.total * 0.3,
-        status: proposal.progress_paid_at ? 'paid' : (proposal.deposit_paid_at ? 'pending' : 'locked'),
-        paid_at: proposal.progress_paid_at
-      },
-      {
-        name: 'Final',
-        percentage: 20,
-        amount: proposal.total * 0.2,
-        status: proposal.final_paid_at ? 'paid' : (proposal.progress_paid_at ? 'pending' : 'locked'),
-        paid_at: proposal.final_paid_at
+    const initialAddons = new Set<string>()
+    proposal.proposal_items?.forEach((item: any) => {
+      if (item.is_addon && item.is_selected) {
+        initialAddons.add(item.id)
       }
-    ]
-    setPaymentStages(stages)
+    })
+    setSelectedAddons(initialAddons)
+    calculateTotal(initialAddons)
+  }, [])
+
+  const calculateTotal = (addons: Set<string>) => {
+    let subtotal = 0
+    
+    // Add base items (non-addons)
+    proposal.proposal_items?.forEach((item: any) => {
+      if (!item.is_addon) {
+        subtotal += item.total_price || 0
+      } else if (addons.has(item.id)) {
+        // Add selected addons
+        subtotal += item.total_price || 0
+      }
+    })
+
+    const taxAmount = subtotal * (proposal.tax_rate || 0)
+    const total = subtotal + taxAmount
+    
+    setProposalTotal(total)
+    return total
   }
 
-  const handleApprove = async () => {
-    try {
-      setIsApproving(true)
-      
-      // Use fetch API for better Android compatibility
-      const response = await fetch('/api/proposal-approval', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          proposalId: proposal.id,
-          action: 'approve',
-          token: token
-        })
-      })
-
-      const data = await response.json()
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to approve proposal')
-      }
-
-      // Force reload to show updated status
-      window.location.reload()
-    } catch (error: any) {
-      console.error('Approval error:', error)
-      console.error("🔍 Approval Error:", error);
-alert(`Failed to approve proposal: ${error.message || "Unknown error"}\nCheck console for details`)
-    } finally {
-      setIsApproving(false)
+  const toggleAddon = async (itemId: string) => {
+    const newAddons = new Set(selectedAddons)
+    if (newAddons.has(itemId)) {
+      newAddons.delete(itemId)
+    } else {
+      newAddons.add(itemId)
     }
-  }
-
-  const handleReject = async () => {
-    if (!rejectionReason.trim()) {
-      alert('Please provide a reason for rejection')
+    setSelectedAddons(newAddons)
+    
+    // Update the proposal item selection
+    const { error } = await supabase
+      .from('proposal_items')
+      .update({ is_selected: newAddons.has(itemId) })
+      .eq('id', itemId)
+    
+    if (error) {
+      console.error('Error updating addon:', error)
+      toast.error('Failed to update selection')
       return
     }
-
-    try {
-      setIsRejecting(true)
-      
-      const response = await fetch('/api/proposal-approval', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          proposalId: proposal.id,
-          action: 'reject',
-          reason: rejectionReason,
-          token: token
-        })
+    
+    // Recalculate total
+    const newTotal = calculateTotal(newAddons)
+    
+    // Update proposal total
+    await supabase
+      .from('proposals')
+      .update({ 
+        total: newTotal,
+        subtotal: newTotal / (1 + (proposal.tax_rate || 0))
       })
-
-      const data = await response.json()
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to reject proposal')
-      }
-
-      window.location.reload()
-    } catch (error: any) {
-      console.error('Rejection error:', error)
-      alert(error.message || 'Failed to reject proposal. Please try again.')
-    } finally {
-      setIsRejecting(false)
-    }
-  }
-
-  const handlePayment = async (stage: string) => {
-    try {
-      setIsProcessingPayment(true)
-      
-      // Determine payment amount based on stage
-      let amount = 0
-      if (stage === 'deposit') amount = proposal.total * 0.5
-      else if (stage === 'roughin') amount = proposal.total * 0.3
-      else if (stage === 'final') amount = proposal.total * 0.2
-
-      const response = await fetch('/api/create-payment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          proposalId: proposal.id,
-          amount: amount,
-          paymentStage: stage,
-          customerEmail: proposal.customers?.email,
-          useStripe: true // Use Bill.com by default
-        })
-      })
-
-      const data = await response.json()
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Payment initialization failed')
-      }
-
-      // Redirect to payment URL
-      if (data.paymentUrl) {
-        window.location.href = data.paymentUrl
-      } else {
-        throw new Error('No payment URL received')
-      }
-    } catch (error: any) {
-      console.error('Payment error:', error)
-      alert(error.message || 'Failed to process payment. Please try again.')
-    } finally {
-      setIsProcessingPayment(false)
-    }
+      .eq('id', proposal.id)
   }
 
   const formatCurrency = (amount: number) => {
@@ -177,316 +96,267 @@ alert(`Failed to approve proposal: ${error.message || "Unknown error"}\nCheck co
     }).format(amount)
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
+  const handleApprove = async () => {
+    setIsApproving(true)
+    try {
+      const response = await fetch('/api/proposal-approval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposalId: proposal.id,
+          action: 'approve'
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || data.mobileMessage || 'Failed to approve proposal')
+      }
+
+      toast.success('Proposal approved successfully!')
+      
+      // Redirect to payment page
+      if (data.redirectUrl) {
+        router.push(data.redirectUrl)
+      } else {
+        router.push(`/customer-proposal/${token}/payment`)
+      }
+    } catch (error: any) {
+      console.error('Approval error:', error)
+      toast.error(error.message || 'Failed to approve proposal')
+      setIsApproving(false)
+    }
+  }
+
+  const handleReject = async () => {
+    setIsRejecting(true)
+    try {
+      const response = await fetch('/api/proposal-approval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposalId: proposal.id,
+          action: 'reject',
+          rejectionReason
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || data.mobileMessage || 'Failed to reject proposal')
+      }
+
+      toast.success('Proposal rejected')
+      setShowRejectDialog(false)
+      
+      // Refresh the proposal
+      window.location.reload()
+    } catch (error: any) {
+      console.error('Rejection error:', error)
+      toast.error(error.message || 'Failed to reject proposal')
+    } finally {
+      setIsRejecting(false)
+    }
+  }
+
+  const debugData = {
+    proposalId: proposal.id,
+    status: proposal.status,
+    total: proposalTotal,
+    selectedAddons: Array.from(selectedAddons),
+    items: proposal.proposal_items?.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      is_addon: item.is_addon,
+      is_selected: item.is_selected,
+      price: item.total_price
+    }))
   }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      <MobileDebug data={debugData} title="Proposal Debug" />
+      
       <div className="max-w-4xl mx-auto px-4">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Proposal #{proposal.proposal_number}
-          </h1>
-          <p className="mt-2 text-gray-600">
-            From {proposal.customers?.name || 'Your HVAC Company'}
-          </p>
-        </div>
-
-        {/* Status Banner */}
-        {proposal.status === 'approved' && (
-          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-              <span className="text-green-800 font-medium">
-                This proposal has been approved
-              </span>
-            </div>
+        <div className="bg-white shadow-lg rounded-lg overflow-hidden">
+          {/* Header */}
+          <div className="bg-blue-600 text-white p-6">
+            <h1 className="text-2xl font-bold">{proposal.title}</h1>
+            <p className="mt-2">Proposal #{proposal.proposal_number}</p>
           </div>
-        )}
 
-        {proposal.status === 'rejected' && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <XCircle className="h-5 w-5 text-red-600 mr-2" />
-              <span className="text-red-800 font-medium">
-                This proposal has been rejected
-              </span>
-            </div>
-            {proposal.customer_notes && (
-              <p className="mt-2 text-red-700 text-sm">
-                Reason: {proposal.customer_notes}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Proposal Details */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>{proposal.title}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {proposal.description && (
-              <p className="text-gray-600 mb-4">{proposal.description}</p>
-            )}
-            
-            <div className="grid grid-cols-2 gap-4 text-sm">
+          {/* Customer Info */}
+          <div className="p-6 border-b">
+            <h2 className="text-lg font-semibold mb-3">Customer Information</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <span className="text-gray-500">Valid Until:</span>
-                <span className="ml-2 font-medium">
-                  {proposal.valid_until ? formatDate(proposal.valid_until) : 'No expiration'}
-                </span>
+                <p className="text-sm text-gray-600">Name</p>
+                <p className="font-medium">{proposal.customers?.name}</p>
               </div>
               <div>
-                <span className="text-gray-500">Total Amount:</span>
-                <span className="ml-2 font-medium text-lg text-green-600">
-                  {formatCurrency(proposal.total)}
-                </span>
+                <p className="text-sm text-gray-600">Email</p>
+                <p className="font-medium">{proposal.customers?.email}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Phone</p>
+                <p className="font-medium">{proposal.customers?.phone}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Address</p>
+                <p className="font-medium">{proposal.customers?.address}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Line Items */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Services & Materials</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2">Item</th>
-                    <th className="text-center py-2">Qty</th>
-                    <th className="text-right py-2">Price</th>
-                    <th className="text-right py-2">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {proposal.proposal_items?.map((item: any) => (
-                    <tr key={item.id} className="border-b">
-                      <td className="py-2">
-                        <div>
-                          <p className="font-medium">{item.name}</p>
-                          {item.description && (
-                            <p className="text-sm text-gray-500">{item.description}</p>
+          {/* Proposal Items */}
+          <div className="p-6 border-b">
+            <h2 className="text-lg font-semibold mb-3">Services & Add-ons</h2>
+            <div className="space-y-3">
+              {proposal.proposal_items?.map((item: any) => (
+                <div 
+                  key={item.id} 
+                  className={`p-3 rounded-lg border ${
+                    item.is_addon 
+                      ? 'bg-orange-50 border-orange-200' 
+                      : 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      {item.is_addon && (
+                        <input
+                          type="checkbox"
+                          checked={selectedAddons.has(item.id)}
+                          onChange={() => toggleAddon(item.id)}
+                          className="mt-1 h-5 w-5 text-blue-600 rounded"
+                          disabled={proposal.status !== 'sent'}
+                        />
+                      )}
+                      <div className="flex-1">
+                        <div className="font-medium">
+                          {item.name}
+                          {item.is_addon && (
+                            <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded">
+                              ADD-ON
+                            </span>
                           )}
                         </div>
-                      </td>
-                      <td className="text-center py-2">{item.quantity}</td>
-                      <td className="text-right py-2">
-                        {formatCurrency(item.unit_price)}
-                      </td>
-                      <td className="text-right py-2 font-medium">
-                        {formatCurrency(item.total_price)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={3} className="text-right py-3 font-medium">
-                      Subtotal:
-                    </td>
-                    <td className="text-right py-3 font-medium">
-                      {formatCurrency(proposal.subtotal)}
-                    </td>
-                  </tr>
-                  {proposal.tax_amount > 0 && (
-                    <tr>
-                      <td colSpan={3} className="text-right py-2">
-                        Tax ({proposal.tax_rate}%):
-                      </td>
-                      <td className="text-right py-2">
-                        {formatCurrency(proposal.tax_amount)}
-                      </td>
-                    </tr>
-                  )}
-                  <tr className="border-t">
-                    <td colSpan={3} className="text-right py-3 text-lg font-bold">
-                      Total:
-                    </td>
-                    <td className="text-right py-3 text-lg font-bold text-green-600">
-                      {formatCurrency(proposal.total)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Approval/Rejection Actions */}
-        {proposal.status === 'sent' && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Your Decision</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {!showRejectionForm ? (
-                <div className="flex gap-4">
-                  <Button
-                    onClick={handleApprove}
-                    disabled={isApproving}
-                    className="flex-1 bg-green-600 hover:bg-green-700"
-                    size="lg"
-                  >
-                    {isApproving ? (
-                      <>
-                        <Clock className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        Approve Proposal
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={() => setShowRejectionForm(true)}
-                    variant="outline"
-                    className="flex-1 border-red-600 text-red-600 hover:bg-red-50"
-                    size="lg"
-                  >
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Reject Proposal
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Reason for rejection (optional)
-                    </label>
-                    <textarea
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      className="w-full p-3 border rounded-lg"
-                      rows={3}
-                      placeholder="Please let us know why you're rejecting this proposal..."
-                    />
-                  </div>
-                  <div className="flex gap-4">
-                    <Button
-                      onClick={handleReject}
-                      disabled={isRejecting}
-                      className="flex-1 bg-red-600 hover:bg-red-700"
-                    >
-                      {isRejecting ? 'Processing...' : 'Confirm Rejection'}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setShowRejectionForm(false)
-                        setRejectionReason('')
-                      }}
-                      variant="outline"
-                      className="flex-1"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Payment Stages */}
-        {proposal.status === 'approved' && paymentStages.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Payment Schedule</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {paymentStages.map((stage, index) => (
-                  <div
-                    key={index}
-                    className={`border rounded-lg p-4 ${
-                      stage.status === 'paid'
-                        ? 'bg-green-50 border-green-200'
-                        : stage.status === 'locked'
-                        ? 'bg-gray-50 border-gray-200'
-                        : 'bg-blue-50 border-blue-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-semibold">
-                          {stage.name} ({stage.percentage}%)
-                        </h4>
-                        <p className="text-2xl font-bold mt-1">
-                          {formatCurrency(stage.amount)}
-                        </p>
-                        {stage.paid_at && (
-                          <p className="text-sm text-gray-600 mt-1">
-                            Paid on {formatDate(stage.paid_at)}
-                          </p>
+                        {item.description && (
+                          <p className="text-sm text-gray-600 mt-1">{item.description}</p>
                         )}
+                        <div className="text-sm text-gray-500 mt-1">
+                          Qty: {item.is_addon ? (selectedAddons.has(item.id) ? item.quantity : 0) : item.quantity} × {formatCurrency(item.unit_price)}
+                        </div>
                       </div>
-                      <div>
-                        {stage.status === 'paid' ? (
-                          <div className="flex items-center text-green-600">
-                            <CheckCircle className="h-5 w-5 mr-2" />
-                            <span className="font-medium">Paid</span>
-                          </div>
-                        ) : stage.status === 'locked' ? (
-                          <div className="flex items-center text-gray-400">
-                            <Clock className="h-5 w-5 mr-2" />
-                            <span>Locked</span>
-                          </div>
-                        ) : (
-                          <Button
-                            onClick={() => handlePayment(stage.name.toLowerCase().replace(' ', ''))}
-                            disabled={isProcessingPayment}
-                            className="bg-blue-600 hover:bg-blue-700"
-                          >
-                            {isProcessingPayment ? (
-                              <>
-                                <Clock className="mr-2 h-4 w-4 animate-spin" />
-                                Processing...
-                              </>
-                            ) : (
-                              <>
-                                <DollarSign className="mr-2 h-4 w-4" />
-                                Pay Now
-                              </>
-                            )}
-                          </Button>
-                        )}
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold">
+                        {item.is_addon && !selectedAddons.has(item.id) 
+                          ? formatCurrency(0)
+                          : formatCurrency(item.total_price)
+                        }
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-              
-              {/* Progress Bar */}
-              <div className="mt-6">
-                <div className="flex justify-between text-sm text-gray-600 mb-2">
-                  <span>Payment Progress</span>
-                  <span>{proposal.total_paid ? Math.round((proposal.total_paid / proposal.total) * 100) : 0}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-green-600 h-3 rounded-full transition-all"
-                    style={{
-                      width: `${proposal.total_paid ? (proposal.total_paid / proposal.total) * 100 : 0}%`
-                    }}
-                  />
-                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Totals */}
+          <div className="p-6 bg-gray-50">
+            <div className="space-y-2">
+              <div className="flex justify-between text-lg">
+                <span>Subtotal</span>
+                <span>{formatCurrency(proposalTotal / (1 + (proposal.tax_rate || 0)))}</span>
               </div>
-            </CardContent>
-          </Card>
-        )}
+              <div className="flex justify-between text-lg">
+                <span>Tax ({((proposal.tax_rate || 0) * 100).toFixed(2)}%)</span>
+                <span>{formatCurrency(proposalTotal - (proposalTotal / (1 + (proposal.tax_rate || 0))))}</span>
+              </div>
+              <div className="flex justify-between text-xl font-bold pt-2 border-t">
+                <span>Total</span>
+                <span>{formatCurrency(proposalTotal)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          {proposal.status === 'sent' && (
+            <div className="p-6 bg-white border-t">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={handleApprove}
+                  disabled={isApproving}
+                  className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isApproving ? (
+                    <>Processing...</>
+                  ) : (
+                    <>
+                      <CheckCircleIcon className="h-5 w-5" />
+                      Approve Proposal
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowRejectDialog(true)}
+                  className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 flex items-center justify-center gap-2"
+                >
+                  <XCircleIcon className="h-5 w-5" />
+                  Reject Proposal
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Status Display */}
+          {proposal.status !== 'sent' && (
+            <div className="p-6 bg-white border-t">
+              <div className={`text-center py-3 px-6 rounded-lg ${
+                proposal.status === 'approved' ? 'bg-green-100 text-green-800' :
+                proposal.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                Proposal Status: {proposal.status.toUpperCase()}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Reject Dialog */}
+      {showRejectDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-3">Reject Proposal</h3>
+            <textarea
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="Please provide a reason for rejection (optional)"
+              className="w-full p-3 border rounded-lg mb-4"
+              rows={4}
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowRejectDialog(false)}
+                className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={isRejecting}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {isRejecting ? 'Rejecting...' : 'Confirm Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
