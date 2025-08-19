@@ -1,3 +1,11 @@
+#!/bin/bash
+
+# Debug Job Creation Issue
+echo "🔧 Debugging job creation issue..."
+
+# 1. Add better error handling and logging to NewJobForm
+echo "📝 Updating NewJobForm with detailed debugging..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/new/NewJobForm.tsx << 'EOF'
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -454,3 +462,65 @@ export default function NewJobForm({ customers, proposals, technicians, userId }
     </form>
   )
 }
+EOF
+
+# 2. Create SQL to check jobs table and RLS
+echo "📝 Creating SQL to check jobs table..."
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/check-jobs-table.sql << 'EOF'
+-- Check if jobs table has RLS issues
+SELECT * FROM pg_policies WHERE tablename = 'jobs';
+
+-- Check if any jobs exist
+SELECT COUNT(*) as total_jobs FROM jobs;
+
+-- Try to insert a test job directly (replace with your actual IDs)
+-- This will help determine if it's an RLS issue or data issue
+/*
+INSERT INTO jobs (
+  job_number,
+  customer_id,
+  title,
+  job_type,
+  status,
+  created_by
+) VALUES (
+  'TEST-' || NOW()::text,
+  (SELECT id FROM customers LIMIT 1),
+  'Test Job Creation',
+  'repair',
+  'not_scheduled',
+  (SELECT id FROM profiles WHERE role = 'boss' LIMIT 1)
+) RETURNING *;
+*/
+
+-- Check if job_technicians table has issues
+SELECT * FROM pg_policies WHERE tablename = 'job_technicians';
+
+-- See recently created jobs
+SELECT id, job_number, title, created_at 
+FROM jobs 
+ORDER BY created_at DESC 
+LIMIT 10;
+EOF
+
+echo "🔨 Building the application..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+npm run build 2>&1 | head -50
+
+echo ""
+echo "📦 Committing changes..."
+git add -A
+git commit -m "Add comprehensive debugging for job creation"
+git push origin main
+
+echo ""
+echo "✅ Debug tools added!"
+echo ""
+echo "📝 Please do these steps:"
+echo "1. Open browser console (F12)"
+echo "2. Try to create a job again"
+echo "3. Watch for red error messages in console"
+echo "4. Click 'Log Form State to Console' button"
+echo "5. Tell me what errors you see"
+echo ""
+echo "Also run check-jobs-table.sql in Supabase to check RLS"
