@@ -2,11 +2,129 @@
 ## Service Pro Field Service Management - Major Functionality Restoration
 
 **Status**: All critical features restored and working  
-**Tech Stack**: Next.js 15.4.3, Supabase, Stripe, Vercel  
-**Email Backend**: Resend (using RESEND_API_KEY)  
 **Current Branch**: main  
 **User**: dantcacenco@gmail.com (role: `boss`)
-**Last Commit**: 44ba47b
+**Last Commit**: 4cca74a
+
+---
+
+## 📦 **Complete Tech Stack & Dependencies**
+
+### **Core Framework**
+- **Next.js 15.4.3** - React framework with App Router
+- **React 19.0.0** - UI library
+- **TypeScript 5** - Type safety
+- **Turbopack** - Build tool (via --turbopack flag)
+
+### **Database & Backend**
+- **Supabase** - Backend-as-a-Service
+  - `@supabase/supabase-js` (^2.54.0) - Main client
+  - `@supabase/ssr` (latest) - SSR support
+  - `@supabase/auth-helpers-nextjs` (^0.10.0) - Auth helpers
+  - PostgreSQL database with RLS enabled
+  - Storage buckets: `job-photos`, `job-files`, `task-photos`
+
+### **Payment Processing**
+- **Stripe** - Payment gateway
+  - `stripe` (^18.4.0) - Server SDK
+  - `@stripe/stripe-js` (^7.8.0) - Client SDK
+  - Multi-stage payments (50% deposit, 30% rough-in, 20% final)
+
+### **Email Service**
+- **Resend** (^4.8.0) - Transactional email service
+  - API endpoint: `/api/send-proposal`
+  - Handles proposal sending and approval notifications
+
+### **UI Components & Styling**
+- **Tailwind CSS** (^3.4.1) - Utility-first CSS
+  - `tailwindcss-animate` (^1.0.7) - Animation utilities
+  - `tailwind-merge` (^3.3.1) - Merge utility classes
+- **shadcn/ui** - Component library built on:
+  - `@radix-ui/react-*` - Headless UI components
+    - checkbox, dialog, dropdown-menu, label, slot, switch, tabs, toast
+  - `class-variance-authority` (^0.7.1) - Component variants
+  - `clsx` (^2.1.1) - Class name utility
+- **Heroicons** (^2.2.0) - Icon library
+- **Lucide React** (^0.511.0) - Icon library
+
+### **Data Visualization**
+- **Recharts** (^3.1.0) - Charts and graphs for dashboard
+  - LineChart, BarChart, PieChart implementations
+  - Revenue tracking visualizations
+
+### **Date & Time**
+- **date-fns** (^4.1.0) - Date utility library
+
+### **Notifications**
+- **Sonner** (^2.0.7) - Toast notifications
+
+### **Theming**
+- **next-themes** (^0.4.6) - Theme management (dark/light mode)
+
+### **Development Tools**
+- **ESLint** (^9) - Linting
+- **PostCSS** (^8) - CSS processing
+- **Autoprefixer** (^10.4.20) - CSS vendor prefixes
+
+---
+
+## 🏗️ **Project Architecture**
+
+### **Directory Structure**
+```
+app/
+├── (authenticated)/      # Protected routes
+│   ├── customers/       # Customer management
+│   ├── dashboard/       # Main dashboard
+│   ├── diagnostic/      # System diagnostics
+│   ├── jobs/           # Job management
+│   ├── proposals/      # Proposal system
+│   ├── technician/     # Technician portal
+│   └── technicians/    # Technician management
+├── api/                # API routes
+│   ├── create-payment/
+│   ├── send-proposal/
+│   ├── technicians/
+│   └── payment-notification/
+├── auth/              # Authentication pages
+├── proposal/          # Public proposal views
+│   └── view/[token]/  # Token-based access
+├── components/        # Shared components
+├── types/            # TypeScript definitions
+└── lib/              # Utilities and configs
+    ├── supabase/     # Database clients
+    ├── billcom/      # Bill.com integration (if used)
+    └── utils.ts      # Helper functions
+```
+
+### **Component Libraries Used**
+- Custom components in `/components`
+- UI primitives in `/components/ui`
+- Feature-specific components in respective folders
+
+### **Middleware**
+- Simple logging middleware for proposal routes
+- No complex auth middleware (handled at page level)
+
+### **State Management**
+- React useState for local state
+- Supabase real-time subscriptions (potential)
+- No global state management library
+
+---
+
+## 🔐 **Authentication & Authorization**
+
+### **Auth Flow**
+1. Supabase Auth for user management
+2. Role-based access control (boss, admin, technician)
+3. Token-based customer proposal access (no login required)
+4. Session stored in cookies
+
+### **Protected Routes**
+- All routes under `/(authenticated)` require login
+- Role checks at component level
+- Public routes: `/auth/*`, `/proposal/view/[token]`
 
 ---
 
@@ -109,6 +227,7 @@
 -- Proposals table:
 - job_created (boolean flag to prevent duplicate jobs)
 - customer_view_token (UUID for customer portal access)
+- payment_stages fields for multi-stage payments
 ```
 
 ### **Supabase Storage Buckets**
@@ -118,14 +237,7 @@
 
 ---
 
-## 🔧 **Technical Implementation Details**
-
-### **Email System - Resend**
-- Using Resend API for transactional emails
-- Configured with `RESEND_API_KEY` environment variable
-- Emails sent through `/api/send-proposal` endpoint
-- Supports HTML email templates
-- Handles proposal sending and approval notifications
+## 🔧 **Key Implementation Patterns**
 
 ### **File Upload Pattern**
 ```typescript
@@ -139,44 +251,22 @@ const { data: { publicUrl } } = supabase.storage
   .getPublicUrl(fileName)
 ```
 
-### **Component Structure**
-- `ProposalView.tsx` - Main proposal display with Send button
-- `SendProposal.tsx` - Reusable email sending component (uses Resend)
-- `CreateJobButton.tsx` - Job creation from proposal
-- `JobDetailView.tsx` - Comprehensive job management interface
-- `TechniciansClientView.tsx` - Technician list with refresh
+### **Toast Notifications Pattern**
+```typescript
+import { toast } from 'sonner'
+toast.success('Operation successful')
+toast.error('Operation failed')
+```
 
-### **Key Patterns**
-- All modals use fixed positioning with z-50
-- Consistent use of toast notifications for user feedback
-- Client-side state management with useState
-- Real-time data refresh using Supabase client
-- Role-based visibility (boss/admin can edit, technicians view only)
+### **Client vs Server Components**
+- Server Components: Data fetching, auth checks
+- Client Components: Interactivity, state management
+- Use 'use client' directive for client components
 
----
-
-## 🚨 **Known Issues & Next Steps**
-
-### **Current Status**
-- ✅ All requested features working
-- ✅ Build passing (warnings are just missing local env vars)
-- ✅ TypeScript errors resolved
-- ✅ Deployed to GitHub main branch
-
-### **Testing Needed**
-1. Test Send to Customer email delivery via Resend
-2. Verify customer can view proposal with token link
-3. Test payment flow (50% deposit, 30% rough-in, 20% final)
-4. Verify file upload size limits
-5. Test technician portal job visibility
-
-### **Potential Enhancements**
-- Add drag-and-drop for file uploads
-- Image compression before upload
-- Bulk technician assignment
-- Job templates from previous jobs
-- Email template management in Resend
-- SMS notifications for technicians
+### **Styling Patterns**
+- Tailwind utility classes
+- shadcn/ui component variants
+- Consistent color scheme via CSS variables
 
 ---
 
@@ -193,6 +283,7 @@ const { data: { publicUrl } } = supabase.storage
 - Forms: proper labels, error handling
 - Tables: hover states, action buttons
 - Status badges: color-coded with icons
+- Toast notifications for user feedback
 
 ### **Development Workflow**
 - Always use `update-script.sh` for deployments
@@ -202,13 +293,22 @@ const { data: { publicUrl } } = supabase.storage
 - Commit messages should be descriptive
 
 ### **Environment Variables (Set in Vercel)**
-- NEXT_PUBLIC_SUPABASE_URL
-- NEXT_PUBLIC_SUPABASE_ANON_KEY
-- SUPABASE_SERVICE_ROLE_KEY
-- STRIPE_SECRET_KEY
-- NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-- RESEND_API_KEY (for Resend email service)
-- NEXT_PUBLIC_BASE_URL (for absolute URLs in emails)
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# Stripe
+STRIPE_SECRET_KEY=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+
+# Resend Email
+RESEND_API_KEY=
+
+# App Config
+NEXT_PUBLIC_BASE_URL= (for absolute URLs in emails)
+```
 
 ---
 
@@ -223,8 +323,11 @@ git pull origin main
 # Test build locally
 npm run build
 
-# Run development server
+# Run development server with Turbopack
 npm run dev
+
+# Type checking
+npx tsc --noEmit
 
 # Create and run update script
 ./update-script.sh
@@ -238,22 +341,23 @@ npm run dev
 - ✅ Restored missing Send to Customer functionality with Resend
 - ✅ Fixed technician refresh mechanism
 - ✅ Implemented complete job management system
-- ✅ Added file/photo upload capabilities
+- ✅ Added file/photo upload capabilities to Supabase storage
 - ✅ Created job creation workflow from proposals
 - ✅ Built comprehensive job editing interface
 
-**Key Decisions Made**:
-- Jobs created with "not_scheduled" status by default
-- All technicians treated equally (no lead designation)
-- Customer details editable inline in job edit modal
-- File storage using Supabase buckets
-- Email delivery using Resend API
+**Key Technologies Confirmed**:
+- Next.js 15 with App Router and Turbopack
+- Supabase for backend (auth, database, storage)
+- Stripe for payments
+- Resend for emails
+- shadcn/ui + Radix UI for components
+- Tailwind CSS for styling
+- Recharts for data visualization
 
-**Chat Capacity**: Used ~80% - Good stopping point
+**Chat Capacity**: Used ~85% - Good stopping point
 
 ---
 
 *Last updated: August 19, 2025*  
 *Next session: Continue with testing results and any bug fixes*
 *GitHub repo: https://github.com/dantcacenco/my-dashboard-app*
-*Email Service: Resend (https://resend.com)*
