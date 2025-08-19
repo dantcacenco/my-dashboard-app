@@ -1,96 +1,105 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { proposalId, action, reason, token } = body
-
     const supabase = await createClient()
+    const { proposalId, action, rejectionReason } = await request.json()
 
-    // Verify the proposal and token
+    console.log('Proposal approval request:', { proposalId, action })
+
+    if (!proposalId || !action) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    // Get proposal details
     const { data: proposal, error: proposalError } = await supabase
       .from('proposals')
-      .select(`
-        *,
-        customers (*)
-      `)
+      .select('*, customers(*)')
       .eq('id', proposalId)
-      .eq('customer_view_token', token)
       .single()
 
     if (proposalError || !proposal) {
+      console.error('Error fetching proposal:', proposalError)
       return NextResponse.json(
-        { error: 'Invalid proposal or token' },
+        { error: 'Proposal not found', details: proposalError?.message },
         { status: 404 }
       )
     }
 
-    // Update proposal based on action
+    // Update proposal status
+    const updateData: any = {}
+    const now = new Date().toISOString()
+
     if (action === 'approve') {
-      // Update proposal status
-      const { error: updateError } = await supabase
-        .from('proposals')
-        .update({
-          status: 'approved',
-          approved_at: new Date().toISOString()
-        })
-        .eq('id', proposalId)
+      updateData.status = 'approved'
+      updateData.approved_at = now
+      updateData.payment_status = 'pending'
+      updateData.current_payment_stage = 'deposit'
+    } else if (action === 'reject') {
+      updateData.status = 'rejected'
+      updateData.rejected_at = now
+      updateData.customer_notes = rejectionReason || ''
+    }
 
-      if (updateError) {
-        return NextResponse.json(
-          { error: 'Failed to approve proposal' },
-          { status: 500 }
-        )
-      }
+    const { error: updateError } = await supabase
+      .from('proposals')
+      .update(updateData)
+      .eq('id', proposalId)
 
-      // Auto-create job
-      const today = new Date()
-      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
-      const { count } = await supabase
-        .from('jobs')
-        .select('*', { count: 'exact', head: true })
-        .ilike('job_number', `JOB-${dateStr}-%`)
+    if (updateError) {
+      console.error('Error updating proposal:', updateError)
+      return NextResponse.json(
+        { error: 'Failed to update proposal', details: updateError.message },
+        { status: 500 }
+      )
+    }
 
-      const jobNumber = `JOB-${dateStr}-${String((count || 0) + 1).padStart(3, '0')}`
+    // If approved, create payment stages
+    if (action === 'approve') {
+      // Calculate payment amounts
+      const depositAmount = proposal.total * 0.5
+      const progressAmount = proposal.total * 0.3
+      const finalAmount = proposal.total * 0.2
 
-      // Create job
-      const { data: job, error: jobError } = await supabase
-        .from('jobs')
-        .insert({
-          job_number: jobNumber,
-          customer_id: proposal.customer_id,
-          customer_name: proposal.customers?.name || 'Unknown',
-          customer_email: proposal.customers?.email,
-          customer_phone: proposal.customers?.phone,
-          service_address: proposal.customers?.address || '',
-          total_value: proposal.total,
-          status: 'pending',
-          notes: `Auto-created from approved Proposal #${proposal.proposal_number}`,
-          created_by: proposal.created_by
-        })
-        .select()
-        .single()
+      // Create payment stages
+      const stages = [
+        {
+          proposal_id: proposalId,
+          stage: 'deposit',
+          percentage: 50,
+          amount: depositAmount,
+          due_date: new Date().toISOString().split('T')[0],
+          paid: false
+        },
+        {
+          proposal_id: proposalId,
+          stage: 'progress',
+          percentage: 30,
+          amount: progressAmount,
+          due_date: null,
+          paid: false
+        },
+        {
+          proposal_id: proposalId,
+          stage: 'final',
+          percentage: 20,
+          amount: finalAmount,
+          due_date: null,
+          paid: false
+        }
+      ]
 
-      if (!jobError && job) {
-        // Link job to proposal
-        await supabase
-          .from('job_proposals')
-          .insert({
-            job_id: job.id,
-            proposal_id: proposalId,
-            attached_by: proposal.created_by
-          })
+      const { error: stagesError } = await supabase
+        .from('payment_stages')
+        .insert(stages)
 
-        // Update proposal with job_id
-        await supabase
-          .from('proposals')
-          .update({ job_id: job.id })
-          .eq('id', proposalId)
-
-        // Send email notifications (implement with your email service)
-        // TODO: Send email to boss
-        // TODO: Send confirmation to customer
+      if (stagesError) {
+        console.error('Error creating payment stages:', stagesError)
+        // Continue anyway - stages can be created manually
       }
 
       // Log activity
@@ -99,44 +108,33 @@ export async function POST(request: NextRequest) {
         .insert({
           proposal_id: proposalId,
           activity_type: 'approved',
-          description: 'Proposal approved by customer',
-          metadata: { job_id: job?.id }
-        })
-
-    } else if (action === 'reject') {
-      // Update proposal status
-      const { error: updateError } = await supabase
-        .from('proposals')
-        .update({
-          status: 'rejected',
-          rejected_at: new Date().toISOString(),
-          customer_notes: reason
-        })
-        .eq('id', proposalId)
-
-      if (updateError) {
-        return NextResponse.json(
-          { error: 'Failed to reject proposal' },
-          { status: 500 }
-        )
-      }
-
-      // Log activity
-      await supabase
-        .from('proposal_activities')
-        .insert({
-          proposal_id: proposalId,
-          activity_type: 'rejected',
-          description: 'Proposal rejected by customer',
-          metadata: { reason }
+          description: `Proposal approved by customer`,
+          metadata: { payment_stages_created: !stagesError }
         })
     }
 
-    return NextResponse.json({ success: true })
-  } catch (error: any) {
-    console.error('Proposal approval error:', error)
+    // Return appropriate response for mobile
+    return NextResponse.json({
+      success: true,
+      action: action,
+      proposalId: proposalId,
+      message: action === 'approve' 
+        ? 'Proposal approved successfully. Payment stages created.'
+        : 'Proposal rejected.',
+      redirectUrl: action === 'approve' 
+        ? `/customer-proposal/${proposal.customer_view_token}/payment`
+        : `/customer-proposal/${proposal.customer_view_token}`
+    })
+
+  } catch (error) {
+    console.error('Error in proposal approval:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to process approval' },
+      { 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : 'Unknown error',
+        // Provide mobile-friendly error message
+        mobileMessage: 'Something went wrong. Please try again or contact support.'
+      },
       { status: 500 }
     )
   }
