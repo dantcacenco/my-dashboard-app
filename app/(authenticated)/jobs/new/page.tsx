@@ -20,10 +20,15 @@ export default async function NewJobPage() {
     redirect('/jobs')
   }
 
-  // Fetch data needed for the form
+  // Fetch ALL data with proper joins
   const [customersRes, proposalsRes, techniciansRes] = await Promise.all([
-    supabase.from('customers').select('id, name, email, phone, address').order('name'),
-    supabase.from('proposals')
+    supabase
+      .from('customers')
+      .select('id, name, email, phone, address')
+      .order('name'),
+    
+    supabase
+      .from('proposals')
       .select(`
         id, 
         proposal_number, 
@@ -45,14 +50,26 @@ export default async function NewJobPage() {
       `)
       .eq('status', 'approved')
       .order('created_at', { ascending: false }),
-    supabase.from('profiles')
-      .select('id, email, full_name')
+    
+    supabase
+      .from('profiles')
+      .select('id, email, full_name, role, is_active')
       .eq('role', 'technician')
       .eq('is_active', true)
       .order('full_name')
   ])
 
-  console.log('Technicians fetched:', techniciansRes.data?.length)
+  console.log('Server: Fetched data:', {
+    customers: customersRes.data?.length,
+    proposals: proposalsRes.data?.length,
+    technicians: techniciansRes.data?.length,
+    technicianDetails: techniciansRes.data
+  })
+
+  // Debug log if no technicians
+  if (!techniciansRes.data || techniciansRes.data.length === 0) {
+    console.error('No technicians found. Check profiles table for role=technician and is_active=true')
+  }
 
   return (
     <div className="container mx-auto py-6 px-4">
