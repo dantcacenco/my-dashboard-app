@@ -106,7 +106,8 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
               customerName={proposal.customers?.name}
               proposalNumber={proposal.proposal_number}
               onSent={() => router.refresh()}
-            />)
+            />
+          )}
           
           <button
             onClick={handlePrint}
@@ -120,6 +121,7 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
             <CreateJobButton proposal={proposal} />
           )}
         </div>
+      </div>
       </div>
 
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
