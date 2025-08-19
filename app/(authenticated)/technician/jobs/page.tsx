@@ -1,0 +1,73 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import TechnicianJobsList from './TechnicianJobsList'
+
+export default async function TechnicianJobsPage() {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+
+  // Get user profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, full_name')
+    .eq('id', user.id)
+    .single()
+
+  // Only technicians can access this
+  if (profile?.role !== 'technician') {
+    redirect('/')
+  }
+
+  // Get jobs assigned to this technician
+  const { data: assignedJobs } = await supabase
+    .from('job_technicians')
+    .select(`
+      job_id,
+      jobs (
+        id,
+        job_number,
+        title,
+        description,
+        job_type,
+        status,
+        scheduled_date,
+        scheduled_time,
+        service_address,
+        notes,
+        customer_name,
+        customer_phone,
+        customer_email,
+        created_at,
+        job_photos (
+          id,
+          photo_url,
+          caption,
+          created_at
+        ),
+        job_files (
+          id,
+          file_name,
+          file_url,
+          created_at
+        )
+      )
+    `)
+    .eq('technician_id', user.id)
+    .order('assigned_at', { ascending: false })
+
+  // Flatten the jobs data
+  const jobs = assignedJobs?.map(item => item.jobs).filter(Boolean) || []
+
+  return (
+    <div className="container mx-auto py-6 px-4">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">My Jobs</h1>
+        <p className="text-gray-600">Welcome back, {profile?.full_name || 'Technician'}</p>
+      </div>
+      
+      <TechnicianJobsList jobs={jobs} technicianId={user.id} />
+    </div>
+  )
+}
