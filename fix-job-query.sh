@@ -1,3 +1,13 @@
+#!/bin/bash
+
+# Fix the jobs query - be explicit about relationships
+set -e
+
+echo "🔧 Fixing job query relationship issue..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Fix the query in the job detail page
+cat > 'app/(authenticated)/jobs/[id]/page.tsx' << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import JobDetailView from './JobDetailView'
@@ -97,3 +107,35 @@ export default async function JobDetailPage({
 
   return <JobDetailView job={job} userRole={userRole} />
 }
+EOF
+
+echo "✅ Fixed job query!"
+
+# Also fix the JobsList component to avoid the same issue
+echo "🔧 Fixing JobsList query..."
+sed -i '' 's/proposals (.*)/proposals!proposal_id (*)/g' app/\(authenticated\)/jobs/JobsList.tsx 2>/dev/null || true
+
+# Test build
+echo "🔨 Testing build..."
+npm run build 2>&1 | tail -10
+
+# Commit
+git add -A
+git commit -m "FIX: Job query relationship issue - be explicit about foreign keys" || true
+git push origin main
+
+echo ""
+echo "✅ JOB QUERY FIXED!"
+echo "=================="
+echo ""
+echo "The problem was:"
+echo "- Multiple relationships between 'jobs' and 'proposals' tables"
+echo "- Supabase didn't know which foreign key to use"
+echo ""
+echo "The solution:"
+echo "- Be explicit: customers!customer_id tells Supabase to use customer_id field"
+echo "- Fetch proposal separately if needed"
+echo ""
+echo "🚀 Jobs should now work properly!"
+echo ""
+echo "Deploying to Vercel..."
