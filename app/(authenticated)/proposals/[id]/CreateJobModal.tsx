@@ -18,13 +18,17 @@ export default function CreateJobModal({ proposal, onClose }: CreateJobModalProp
   const router = useRouter()
   const [isCreating, setIsCreating] = useState(false)
   const [selectedTechnicians, setSelectedTechnicians] = useState<any[]>([])
+  
+  // Fix: Access customers as an object, not array
+  const customer = proposal.customers || {}
+  
   const [formData, setFormData] = useState({
     title: proposal.title || 'HVAC System Installation',
     job_type: 'installation',
-    service_address: proposal.customers?.[0]?.address || '',
-    service_city: proposal.customers?.[0]?.city || '',
-    service_state: proposal.customers?.[0]?.state || '',
-    service_zip: proposal.customers?.[0]?.zip || '',
+    service_address: customer.address || '',
+    service_city: '',
+    service_state: '',
+    service_zip: '',
     scheduled_date: '',
     scheduled_time: '',
     notes: ''
@@ -73,8 +77,9 @@ export default function CreateJobModal({ proposal, onClose }: CreateJobModalProp
           <div>
             <Label>Customer</Label>
             <div className="p-3 bg-gray-50 rounded-md">
-              <div className="font-medium">{proposal.customers?.[0]?.name || 'No customer'}</div>
-              <div className="text-sm text-gray-600">{proposal.customers?.[0]?.email}</div>
+              <div className="font-medium">{customer.name || 'No customer'}</div>
+              <div className="text-sm text-gray-600">{customer.email}</div>
+              <div className="text-sm text-gray-600">{customer.phone}</div>
             </div>
           </div>
 
