@@ -122,7 +122,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
           )}
         </div>
       </div>
-      </div>
 
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
         <div className="px-4 py-5 sm:px-6">
