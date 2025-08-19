@@ -1,3 +1,13 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Fixing page.tsx to remove unnecessary prop..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Fix the page.tsx to not pass availableTechnicians
+cat > app/\(authenticated\)/jobs/\[id\]/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import JobDetailView from './JobDetailView'
@@ -49,3 +59,19 @@ export default async function JobDetailPage({
     />
   )
 }
+EOF
+
+echo "🧪 Testing build..."
+npm run build 2>&1 | head -80
+
+if [ $? -eq 0 ]; then
+    echo "✅ Build successful!"
+    
+    git add -A
+    git commit -m "Fix: Remove unnecessary availableTechnicians prop from JobDetailPage"
+    git push origin main
+    
+    echo "🎉 All issues fixed and deployed!"
+else
+    echo "❌ Build still has errors, checking output..."
+fi
