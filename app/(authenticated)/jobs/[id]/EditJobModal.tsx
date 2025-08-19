@@ -367,3 +367,5 @@ export function EditJobModal({ job, isOpen, onClose, onJobUpdated }: EditJobModa
     </div>
   )
 }
+
+export { EditJobModal }

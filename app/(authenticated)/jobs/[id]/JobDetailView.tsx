@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import EditJobModal from './EditJobModal'
+import { EditJobModal } from './EditJobModal'
 import PhotoUpload from '@/components/uploads/PhotoUpload'
 import FileUpload from '@/components/uploads/FileUpload'
 
