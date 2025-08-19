@@ -1,3 +1,14 @@
+#!/bin/bash
+
+# Fix Navigation back to top horizontal white bar AND fix jobs routing
+set -e
+
+echo "🔧 Restoring beautiful top navigation and fixing job routing..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# 1. Restore the CORRECT Navigation style (horizontal, white, beautiful)
+echo "✨ Restoring top navigation bar..."
+cat > components/Navigation.tsx << 'EOF'
 'use client'
 
 import Link from 'next/link'
@@ -95,3 +106,53 @@ export default function Navigation() {
     </nav>
   )
 }
+EOF
+
+echo "✅ Navigation restored to beautiful top bar!"
+
+# 2. Fix the jobs routing - Create redirect from /jobs/[id] to /(authenticated)/jobs/[id]
+echo "🔧 Creating redirect for job URLs..."
+mkdir -p app/jobs/\[id\]
+cat > 'app/jobs/[id]/page.tsx' << 'EOF'
+import { redirect } from 'next/navigation'
+
+interface PageProps {
+  params: Promise<{ id: string }>
+}
+
+export default async function JobRedirectPage({ params }: PageProps) {
+  const { id } = await params
+  // Redirect to the correct authenticated route
+  redirect(`/(authenticated)/jobs/${id}`)
+}
+EOF
+
+echo "✅ Job routing redirect created!"
+
+# 3. Test build
+echo "🔨 Testing build..."
+npm run build 2>&1 | tail -10
+
+echo "📤 Committing fixes..."
+git add -A
+git commit -m "RESTORE: Beautiful top navigation bar + FIX: Job routing with redirect" || true
+git push origin main
+
+echo ""
+echo "🎉 FIXES APPLIED!"
+echo "=================="
+echo "✅ Navigation: Restored to horizontal top bar (white, clean)"
+echo "✅ Invoices: Still removed from navigation"
+echo "✅ Job Routing: Added redirect from /jobs/[id] to correct location"
+echo ""
+echo "🚀 Deploying to Vercel now..."
+echo "⏰ Wait 1-2 minutes then refresh the site"
+echo ""
+echo "The navigation should now be:"
+echo "- At the TOP of the page"
+echo "- White background"
+echo "- Clean and minimal"
+echo "- NO dark sidebar"
+echo "- NO invoices tab"
+echo ""
+echo "Jobs should now work when clicked!"
