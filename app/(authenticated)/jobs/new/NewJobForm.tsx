@@ -26,7 +26,7 @@ export default function NewJobForm({ customers, proposals, technicians, userId }
     title: '',
     description: '',
     job_type: 'repair',
-    status: 'not_scheduled',
+    status: 'scheduled',
     service_address: '',
     scheduled_date: '',
     scheduled_time: '',
