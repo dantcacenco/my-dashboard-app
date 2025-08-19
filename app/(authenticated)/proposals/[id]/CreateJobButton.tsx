@@ -1,38 +1,87 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Briefcase } from 'lucide-react'
-import CreateJobModal from './CreateJobModal'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { BriefcaseIcon } from '@heroicons/react/24/outline'
 
 interface CreateJobButtonProps {
-  proposal: any
-  userRole: string
+  proposalId: string
+  customerId: string
+  proposalNumber: string
+  customerName?: string
+  serviceAddress?: string
 }
 
-export default function CreateJobButton({ proposal, userRole }: CreateJobButtonProps) {
-  const [showModal, setShowModal] = useState(false)
+export default function CreateJobButton({ 
+  proposalId, 
+  customerId, 
+  proposalNumber, 
+  customerName,
+  serviceAddress 
+}: CreateJobButtonProps) {
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
+  const supabase = createClient()
 
-  // Only show for boss/admin on approved proposals
-  if (userRole !== 'boss' && userRole !== 'admin') return null
-  if (proposal.status !== 'approved') return null
+  const handleCreateJob = async () => {
+    if (!confirm('Create a job from this proposal?')) return
+    
+    setIsLoading(true)
+    try {
+      // Get user info
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      // Generate job number
+      const today = new Date()
+      const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+      const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+      const jobNumber = `JOB-${dateStr}-${randomNum}`
+
+      // Create the job
+      const { data: newJob, error: jobError } = await supabase
+        .from('jobs')
+        .insert({
+          job_number: jobNumber,
+          customer_id: customerId,
+          proposal_id: proposalId,
+          title: `Service from Proposal ${proposalNumber}`,
+          description: `Job created from proposal ${proposalNumber}`,
+          job_type: 'installation',
+          status: 'not_scheduled',
+          service_address: serviceAddress || '',
+          created_by: user.id
+        })
+        .select()
+        .single()
+
+      if (jobError) throw jobError
+
+      // Mark proposal as job created
+      await supabase
+        .from('proposals')
+        .update({ job_created: true })
+        .eq('id', proposalId)
+
+      // Redirect to the new job
+      router.push(`/jobs/${newJob.id}`)
+    } catch (error) {
+      console.error('Error creating job:', error)
+      alert('Failed to create job. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   return (
-    <>
-      <Button
-        onClick={() => setShowModal(true)}
-        className="bg-green-600 hover:bg-green-700"
-      >
-        <Briefcase className="h-4 w-4 mr-2" />
-        Create Job
-      </Button>
-
-      {showModal && (
-        <CreateJobModal
-          proposal={proposal}
-          onClose={() => setShowModal(false)}
-        />
-      )}
-    </>
+    <button
+      onClick={handleCreateJob}
+      disabled={isLoading}
+      className="inline-flex items-center px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50"
+    >
+      <BriefcaseIcon className="w-4 h-4 mr-2" />
+      {isLoading ? 'Creating...' : 'Create Job'}
+    </button>
   )
 }

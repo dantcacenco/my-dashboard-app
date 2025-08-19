@@ -9,6 +9,7 @@ import { Plus, Mail, Phone, UserCheck, UserX, RefreshCw, Edit2, Trash2 } from 'l
 import AddTechnicianModal from './AddTechnicianModal'
 import EditTechnicianModal from './EditTechnicianModal'
 import { toast } from 'sonner'
+import { createClient } from '@/lib/supabase/client'
 
 interface Technician {
   id: string
@@ -26,11 +27,38 @@ export default function TechniciansClientView({ technicians: initialTechnicians 
   const [editingTechnician, setEditingTechnician] = useState<Technician | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const router = useRouter()
+  const supabase = createClient()
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true)
-    router.refresh()
-    setTimeout(() => setIsRefreshing(false), 1000)
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'technician')
+        .order('created_at', { ascending: false })
+      
+      if (data) {
+        setTechnicians(data)
+        toast.success('Technicians list refreshed')
+      }
+    } catch (error) {
+      toast.error('Failed to refresh technicians')
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const handleTechnicianAdded = (newTechnician: Technician) => {
+    setTechnicians([newTechnician, ...technicians])
+    setShowAddModal(false)
+  }
+
+  const handleTechnicianUpdated = (updatedTechnician: Technician) => {
+    setTechnicians(technicians.map(t => 
+      t.id === updatedTechnician.id ? updatedTechnician : t
+    ))
+    setEditingTechnician(null)
   }
 
   const handleDelete = async (techId: string, email: string) => {
@@ -98,49 +126,37 @@ export default function TechniciansClientView({ technicians: initialTechnicians 
               {activeTechnicians.map((tech) => (
                 <Card key={tech.id} className="border">
                   <CardContent className="p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                          <span className="text-blue-600 font-semibold">
-                            {(tech.full_name || tech.email || 'T').charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {tech.full_name || 'No name set'}
-                          </div>
-                          <Badge variant="outline" className="mt-1">
-                            <UserCheck className="h-3 w-3 mr-1" />
-                            Active
-                          </Badge>
-                        </div>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center">
+                        <UserCheck className="h-4 w-4 text-green-500 mr-2" />
+                        <Badge variant="outline" className="text-xs">Active</Badge>
                       </div>
                       <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
+                        <button
                           onClick={() => setEditingTechnician(tech)}
+                          className="text-gray-500 hover:text-gray-700"
                         >
                           <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-600 hover:text-red-700"
+                        </button>
+                        <button
                           onClick={() => handleDelete(tech.id, tech.email)}
+                          className="text-red-500 hover:text-red-700"
                         >
                           <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </button>
                       </div>
                     </div>
-                    <div className="space-y-1 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
+                    <h3 className="font-medium text-gray-900">
+                      {tech.full_name || 'No name set'}
+                    </h3>
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Mail className="h-3 w-3 mr-2" />
                         {tech.email}
                       </div>
                       {tech.phone && (
-                        <div className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
+                        <div className="flex items-center text-sm text-gray-600">
+                          <Phone className="h-3 w-3 mr-2" />
                           {tech.phone}
                         </div>
                       )}
@@ -162,42 +178,42 @@ export default function TechniciansClientView({ technicians: initialTechnicians 
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {inactiveTechnicians.map((tech) => (
-                <Card key={tech.id} className="border opacity-60">
+                <Card key={tech.id} className="border opacity-75">
                   <CardContent className="p-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-2">
-                        <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
-                          <span className="text-gray-600 font-semibold">
-                            {(tech.full_name || tech.email || 'T').charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {tech.full_name || 'No name set'}
-                          </div>
-                          <Badge variant="destructive" className="mt-1">
-                            <UserX className="h-3 w-3 mr-1" />
-                            Inactive
-                          </Badge>
-                        </div>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center">
+                        <UserX className="h-4 w-4 text-gray-400 mr-2" />
+                        <Badge variant="secondary" className="text-xs">Inactive</Badge>
                       </div>
                       <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
+                        <button
                           onClick={() => setEditingTechnician(tech)}
+                          className="text-gray-500 hover:text-gray-700"
                         >
                           <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-600 hover:text-red-700"
+                        </button>
+                        <button
                           onClick={() => handleDelete(tech.id, tech.email)}
+                          className="text-red-500 hover:text-red-700"
                         >
                           <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </button>
                       </div>
+                    </div>
+                    <h3 className="font-medium text-gray-700">
+                      {tech.full_name || 'No name set'}
+                    </h3>
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center text-sm text-gray-500">
+                        <Mail className="h-3 w-3 mr-2" />
+                        {tech.email}
+                      </div>
+                      {tech.phone && (
+                        <div className="flex items-center text-sm text-gray-500">
+                          <Phone className="h-3 w-3 mr-2" />
+                          {tech.phone}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -208,12 +224,9 @@ export default function TechniciansClientView({ technicians: initialTechnicians 
       )}
 
       {showAddModal && (
-        <AddTechnicianModal
+        <AddTechnicianModal 
           onClose={() => setShowAddModal(false)}
-          onSuccess={() => {
-            setShowAddModal(false)
-            handleRefresh()
-          }}
+          onSuccess={handleTechnicianAdded}
         />
       )}
 
@@ -221,10 +234,7 @@ export default function TechniciansClientView({ technicians: initialTechnicians 
         <EditTechnicianModal
           technician={editingTechnician}
           onClose={() => setEditingTechnician(null)}
-          onSuccess={() => {
-            setEditingTechnician(null)
-            handleRefresh()
-          }}
+          onSuccess={handleTechnicianUpdated}
         />
       )}
     </div>

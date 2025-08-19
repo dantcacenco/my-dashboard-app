@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import SendProposal from '@/components/SendProposal'
+import CreateJobButton from './CreateJobButton'
 import { createClient } from '@/lib/supabase/client'
 import { PrinterIcon, ArrowLeftIcon, PencilIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
@@ -10,7 +11,7 @@ import Link from 'next/link'
 interface ProposalViewProps {
   proposal: any
   userRole: string
-  userId?: string  // Made optional since we don't always need it
+  userId?: string
 }
 
 export default function ProposalView({ proposal, userRole, userId }: ProposalViewProps) {
@@ -65,6 +66,12 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
     (proposal.status === 'draft' || proposal.status === 'sent' || 
      (proposal.status === 'approved' && !proposal.deposit_paid_at))
 
+  const canSendEmail = (userRole === 'admin' || userRole === 'boss') && 
+    (proposal.status === 'draft' || proposal.status === 'sent')
+
+  const canCreateJob = (userRole === 'admin' || userRole === 'boss') && 
+    proposal.status === 'approved' && !proposal.job_created
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8 flex justify-between items-center">
@@ -92,10 +99,11 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
             </Link>
           )}
           
-          {proposal.status === 'draft' && (userRole === 'admin' || userRole === 'boss') && (
+          {canSendEmail && (
             <SendProposal 
               proposalId={proposal.id}
               customerEmail={proposal.customers?.email}
+              customerName={proposal.customers?.name}
               proposalNumber={proposal.proposal_number}
               onSent={() => router.refresh()}
             />
@@ -108,6 +116,16 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
             <PrinterIcon className="w-4 h-4 mr-2" />
             Print
           </button>
+
+          {canCreateJob && (
+            <CreateJobButton 
+              proposalId={proposal.id}
+              customerId={proposal.customer_id}
+              proposalNumber={proposal.proposal_number}
+              customerName={proposal.customers?.name}
+              serviceAddress={proposal.customers?.address}
+            />
+          )}
         </div>
       </div>
 
@@ -152,29 +170,46 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                 {getStatusBadge(proposal.status)}
               </dd>
             </div>
+
+            {proposal.valid_until && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Valid Until</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {formatDate(proposal.valid_until)}
+                </dd>
+              </div>
+            )}
+
+            {proposal.sent_at && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Sent At</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {formatDate(proposal.sent_at)}
+                </dd>
+              </div>
+            )}
           </dl>
         </div>
 
-        {/* Line Items */}
         {proposal.proposal_items && proposal.proposal_items.length > 0 && (
-          <div className="border-t border-gray-200">
-            <div className="px-4 py-5 sm:px-6">
-              <h4 className="text-base font-medium text-gray-900">Line Items</h4>
-            </div>
-            <div className="overflow-hidden">
+          <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+              Items
+            </h3>
+            <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Item
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Quantity
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Unit Price
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total
                     </th>
                   </tr>
@@ -187,16 +222,16 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {item.name}
                           {item.description && (
-                            <p className="text-gray-500">{item.description}</p>
+                            <p className="text-gray-500 text-xs">{item.description}</p>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                           {item.quantity}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                           {formatCurrency(item.unit_price)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                           {formatCurrency(item.total_price)}
                         </td>
                       </tr>
@@ -204,26 +239,28 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                 </tbody>
                 <tfoot className="bg-gray-50">
                   <tr>
-                    <td colSpan={3} className="px-6 py-4 text-right text-sm font-medium text-gray-900">
+                    <td colSpan={3} className="px-6 py-3 text-right text-sm font-medium text-gray-900">
                       Subtotal
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className="px-6 py-3 text-right text-sm font-medium text-gray-900">
                       {formatCurrency(proposal.subtotal || 0)}
                     </td>
                   </tr>
+                  {proposal.tax_amount > 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-3 text-right text-sm font-medium text-gray-900">
+                        Tax ({proposal.tax_rate}%)
+                      </td>
+                      <td className="px-6 py-3 text-right text-sm font-medium text-gray-900">
+                        {formatCurrency(proposal.tax_amount)}
+                      </td>
+                    </tr>
+                  )}
                   <tr>
-                    <td colSpan={3} className="px-6 py-4 text-right text-sm font-medium text-gray-900">
-                      Tax ({(proposal.tax_rate * 100).toFixed(0)}%)
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {formatCurrency(proposal.tax_amount || 0)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colSpan={3} className="px-6 py-4 text-right text-sm font-bold text-gray-900">
+                    <td colSpan={3} className="px-6 py-3 text-right text-sm font-bold text-gray-900">
                       Total
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                    <td className="px-6 py-3 text-right text-sm font-bold text-gray-900">
                       {formatCurrency(proposal.total || 0)}
                     </td>
                   </tr>

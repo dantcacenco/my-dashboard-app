@@ -1,103 +1,33 @@
 #!/bin/bash
 
-echo "🔧 Complete automated fixes for all remaining features..."
+# Exit on error
+set -e
 
-# 1. Create SQL setup file and instructions for running via Supabase CLI
-cat > setup_storage.sql << 'EOF'
--- Create storage buckets for files and photos
-INSERT INTO storage.buckets (id, name, public)
-VALUES 
-  ('job-files', 'job-files', false),
-  ('job-photos', 'job-photos', true)
-ON CONFLICT (id) DO NOTHING;
+echo "🚀 Starting comprehensive fixes for Service Pro..."
 
--- Policies for job-files (private)
-CREATE POLICY "Authenticated users can upload job files" ON storage.objects
-FOR INSERT TO authenticated
-WITH CHECK (bucket_id = 'job-files');
-
-CREATE POLICY "Authenticated users can view job files" ON storage.objects
-FOR SELECT TO authenticated
-USING (bucket_id = 'job-files');
-
-CREATE POLICY "Users can delete their own job files" ON storage.objects
-FOR DELETE TO authenticated
-USING (bucket_id = 'job-files');
-
--- Policies for job-photos (public)
-CREATE POLICY "Authenticated users can upload job photos" ON storage.objects
-FOR INSERT TO authenticated
-WITH CHECK (bucket_id = 'job-photos');
-
-CREATE POLICY "Anyone can view job photos" ON storage.objects
-FOR SELECT TO public
-USING (bucket_id = 'job-photos');
-
-CREATE POLICY "Users can delete job photos" ON storage.objects
-FOR DELETE TO authenticated
-USING (bucket_id = 'job-photos');
-
--- Add job_created column to proposals if it doesn't exist
-ALTER TABLE proposals ADD COLUMN IF NOT EXISTS job_created BOOLEAN DEFAULT FALSE;
-
--- Add notes columns to jobs if they don't exist  
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS boss_notes TEXT;
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completion_notes TEXT;
-EOF
-
-# 2. Update ProposalView with Create Job button - COMPLETE FILE REPLACEMENT
-cat > app/proposals/[id]/ProposalView.tsx << 'EOF'
+# 1. Fix ProposalView - Show Send button for draft and sent status
+cat > app/\(authenticated\)/proposals/\[id\]/ProposalView.tsx << 'EOF'
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import SendProposal from '@/components/SendProposal'
+import CreateJobButton from './CreateJobButton'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Edit, Send, Printer, Eye, DollarSign, Calendar, User, Briefcase } from 'lucide-react'
-import SendProposal from './SendProposal'
-import MultiStagePayment from '@/components/MultiStagePayment'
+import { PrinterIcon, ArrowLeftIcon, PencilIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
+import Link from 'next/link'
 
 interface ProposalViewProps {
   proposal: any
+  userRole: string
+  userId?: string
 }
 
-export default function ProposalView({ proposal: initialProposal }: ProposalViewProps) {
-  const [proposal, setProposal] = useState(initialProposal)
-  const [showSendModal, setShowSendModal] = useState(false)
-  const [userRole, setUserRole] = useState<string | null>(null)
+export default function ProposalView({ proposal, userRole, userId }: ProposalViewProps) {
   const router = useRouter()
+  const [showPrintView, setShowPrintView] = useState(false)
+  const printRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
-
-  useEffect(() => {
-    fetchUserRole()
-  }, [])
-
-  const fetchUserRole = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-      
-      setUserRole(profile?.role || null)
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'draft': return 'bg-gray-500'
-      case 'sent': return 'bg-blue-500'
-      case 'viewed': return 'bg-purple-500'
-      case 'approved': return 'bg-green-500'
-      case 'rejected': return 'bg-red-500'
-      case 'paid': return 'bg-emerald-600'
-      default: return 'bg-gray-400'
-    }
-  }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -106,122 +36,586 @@ export default function ProposalView({ proposal: initialProposal }: ProposalView
     }).format(amount)
   }
 
+  const formatDate = (dateString: string) => {
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }).format(new Date(dateString))
+  }
+
+  const handlePrint = () => {
+    setShowPrintView(true)
+    setTimeout(() => {
+      window.print()
+      setShowPrintView(false)
+    }, 100)
+  }
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { color: string; icon?: any }> = {
+      draft: { color: 'bg-gray-100 text-gray-800' },
+      sent: { color: 'bg-blue-100 text-blue-800', icon: CheckCircleIcon },
+      approved: { color: 'bg-green-100 text-green-800', icon: CheckCircleIcon },
+      rejected: { color: 'bg-red-100 text-red-800', icon: XCircleIcon },
+      paid: { color: 'bg-purple-100 text-purple-800' }
+    }
+
+    const config = statusConfig[status] || statusConfig.draft
+
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+        {config.icon && <config.icon className="w-3 h-3 mr-1" />}
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+    )
+  }
+
   const canEdit = (userRole === 'admin' || userRole === 'boss') && 
-                  proposal.status !== 'approved' && 
-                  proposal.status !== 'paid'
+    (proposal.status === 'draft' || proposal.status === 'sent' || 
+     (proposal.status === 'approved' && !proposal.deposit_paid_at))
+
+  const canSendEmail = (userRole === 'admin' || userRole === 'boss') && 
+    (proposal.status === 'draft' || proposal.status === 'sent')
 
   const canCreateJob = (userRole === 'admin' || userRole === 'boss') && 
-                       proposal.status === 'approved' && 
-                       !proposal.job_created
+    proposal.status === 'approved' && !proposal.job_created
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-8 flex justify-between items-center">
         <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold">Proposal #{proposal.proposal_number}</h1>
-          <Badge className={getStatusColor(proposal.status)} variant="secondary">
-            {proposal.status}
-          </Badge>
+          <Link
+            href="/proposals"
+            className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
+          >
+            <ArrowLeftIcon className="w-4 h-4 mr-1" />
+            Back to Proposals
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Proposal {proposal.proposal_number}
+          </h1>
+          {getStatusBadge(proposal.status)}
         </div>
         
         <div className="flex gap-2">
           {canEdit && (
-            <Button
-              onClick={() => router.push(`/proposals/${proposal.id}/edit`)}
-              variant="outline"
-            >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
+            <Link href={`/proposals/${proposal.id}/edit`}>
+              <button className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                <PencilIcon className="w-4 h-4 mr-2" />
+                Edit
+              </button>
+            </Link>
           )}
           
+          {canSendEmail && (
+            <SendProposal 
+              proposalId={proposal.id}
+              customerEmail={proposal.customers?.email}
+              customerName={proposal.customers?.name}
+              proposalNumber={proposal.proposal_number}
+              onSent={() => router.refresh()}
+            />
+          )}
+          
+          <button
+            onClick={handlePrint}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+          >
+            <PrinterIcon className="w-4 h-4 mr-2" />
+            Print
+          </button>
+
           {canCreateJob && (
-            <Button
-              onClick={() => router.push(`/jobs/new?proposal=${proposal.id}`)}
-              variant="outline"
-            >
-              <Briefcase className="h-4 w-4 mr-2" />
-              Create Job
-            </Button>
-          )}
-          
-          {(userRole === 'admin' || userRole === 'boss') && (
-            <>
-              <Button
-                onClick={() => setShowSendModal(true)}
-                variant="outline"
-              >
-                <Send className="h-4 w-4 mr-2" />
-                Send to Customer
-              </Button>
-              <Button
-                onClick={() => window.print()}
-                variant="outline"
-              >
-                <Printer className="h-4 w-4 mr-2" />
-                Print
-              </Button>
-            </>
+            <CreateJobButton 
+              proposalId={proposal.id}
+              customerId={proposal.customer_id}
+              proposalNumber={proposal.proposal_number}
+              customerName={proposal.customers?.name}
+              serviceAddress={proposal.customers?.address}
+            />
           )}
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Customer Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-gray-500" />
-              <span>{proposal.customers?.name || 'No customer assigned'}</span>
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+        <div className="px-4 py-5 sm:px-6">
+          <h3 className="text-lg leading-6 font-medium text-gray-900">
+            {proposal.title}
+          </h3>
+          {proposal.description && (
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">
+              {proposal.description}
+            </p>
+          )}
+        </div>
+        
+        <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Customer</dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {proposal.customers?.name || 'No customer assigned'}
+              </dd>
             </div>
-            {proposal.customers?.email && (
-              <div className="text-sm text-gray-600">{proposal.customers.email}</div>
-            )}
-            {proposal.customers?.phone && (
-              <div className="text-sm text-gray-600">{proposal.customers.phone}</div>
-            )}
-          </CardContent>
-        </Card>
+            
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Date Created</dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {formatDate(proposal.created_at)}
+              </dd>
+            </div>
+            
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Total Amount</dt>
+              <dd className="mt-1 text-sm text-gray-900 font-semibold">
+                {formatCurrency(proposal.total || 0)}
+              </dd>
+            </div>
+            
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Status</dt>
+              <dd className="mt-1">
+                {getStatusBadge(proposal.status)}
+              </dd>
+            </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Proposal Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-gray-500" />
-              <span className="font-semibold">{formatCurrency(proposal.total || 0)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-gray-500" />
-              <span className="text-sm">Created: {new Date(proposal.created_at).toLocaleDateString()}</span>
-            </div>
             {proposal.valid_until && (
-              <div className="text-sm text-gray-600">
-                Valid until: {new Date(proposal.valid_until).toLocaleDateString()}
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Valid Until</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {formatDate(proposal.valid_until)}
+                </dd>
               </div>
             )}
-          </CardContent>
-        </Card>
+
+            {proposal.sent_at && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Sent At</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {formatDate(proposal.sent_at)}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </div>
+
+        {proposal.proposal_items && proposal.proposal_items.length > 0 && (
+          <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+              Items
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Item
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Quantity
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Unit Price
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {proposal.proposal_items
+                    .filter((item: any) => item.is_selected)
+                    .map((item: any) => (
+                      <tr key={item.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {item.name}
+                          {item.description && (
+                            <p className="text-gray-500 text-xs">{item.description}</p>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                          {item.quantity}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                          {formatCurrency(item.unit_price)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                          {formatCurrency(item.total_price)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+                <tfoot className="bg-gray-50">
+                  <tr>
+                    <td colSpan={3} className="px-6 py-3 text-right text-sm font-medium text-gray-900">
+                      Subtotal
+                    </td>
+                    <td className="px-6 py-3 text-right text-sm font-medium text-gray-900">
+                      {formatCurrency(proposal.subtotal || 0)}
+                    </td>
+                  </tr>
+                  {proposal.tax_amount > 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-3 text-right text-sm font-medium text-gray-900">
+                        Tax ({proposal.tax_rate}%)
+                      </td>
+                      <td className="px-6 py-3 text-right text-sm font-medium text-gray-900">
+                        {formatCurrency(proposal.tax_amount)}
+                      </td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td colSpan={3} className="px-6 py-3 text-right text-sm font-bold text-gray-900">
+                      Total
+                    </td>
+                    <td className="px-6 py-3 text-right text-sm font-bold text-gray-900">
+                      {formatCurrency(proposal.total || 0)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+EOF
+
+# 2. Create CreateJobButton component  
+cat > app/\(authenticated\)/proposals/\[id\]/CreateJobButton.tsx << 'EOF'
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { BriefcaseIcon } from '@heroicons/react/24/outline'
+
+interface CreateJobButtonProps {
+  proposalId: string
+  customerId: string
+  proposalNumber: string
+  customerName?: string
+  serviceAddress?: string
+}
+
+export default function CreateJobButton({ 
+  proposalId, 
+  customerId, 
+  proposalNumber, 
+  customerName,
+  serviceAddress 
+}: CreateJobButtonProps) {
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
+  const supabase = createClient()
+
+  const handleCreateJob = async () => {
+    if (!confirm('Create a job from this proposal?')) return
+    
+    setIsLoading(true)
+    try {
+      // Get user info
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      // Generate job number
+      const today = new Date()
+      const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+      const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+      const jobNumber = `JOB-${dateStr}-${randomNum}`
+
+      // Create the job
+      const { data: newJob, error: jobError } = await supabase
+        .from('jobs')
+        .insert({
+          job_number: jobNumber,
+          customer_id: customerId,
+          proposal_id: proposalId,
+          title: `Service from Proposal ${proposalNumber}`,
+          description: `Job created from proposal ${proposalNumber}`,
+          job_type: 'installation',
+          status: 'not_scheduled',
+          service_address: serviceAddress || '',
+          created_by: user.id
+        })
+        .select()
+        .single()
+
+      if (jobError) throw jobError
+
+      // Mark proposal as job created
+      await supabase
+        .from('proposals')
+        .update({ job_created: true })
+        .eq('id', proposalId)
+
+      // Redirect to the new job
+      router.push(`/jobs/${newJob.id}`)
+    } catch (error) {
+      console.error('Error creating job:', error)
+      alert('Failed to create job. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCreateJob}
+      disabled={isLoading}
+      className="inline-flex items-center px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50"
+    >
+      <BriefcaseIcon className="w-4 h-4 mr-2" />
+      {isLoading ? 'Creating...' : 'Create Job'}
+    </button>
+  )
+}
+EOF
+
+echo "✅ Fixed ProposalView and added CreateJobButton"
+
+# 3. Fix Technicians refresh
+cat > app/\(authenticated\)/technicians/TechniciansClientView.tsx << 'EOF'
+'use client'
+
+import React, { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Plus, Mail, Phone, UserCheck, UserX, RefreshCw, Edit2, Trash2 } from 'lucide-react'
+import AddTechnicianModal from './AddTechnicianModal'
+import EditTechnicianModal from './EditTechnicianModal'
+import { toast } from 'sonner'
+import { createClient } from '@/lib/supabase/client'
+
+interface Technician {
+  id: string
+  email: string
+  full_name: string | null
+  phone: string | null
+  is_active?: boolean
+  created_at: string
+  role: string
+}
+
+export default function TechniciansClientView({ technicians: initialTechnicians }: { technicians: Technician[] }) {
+  const [technicians, setTechnicians] = useState(initialTechnicians)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [editingTechnician, setEditingTechnician] = useState<Technician | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const router = useRouter()
+  const supabase = createClient()
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'technician')
+        .order('created_at', { ascending: false })
+      
+      if (data) {
+        setTechnicians(data)
+        toast.success('Technicians list refreshed')
+      }
+    } catch (error) {
+      toast.error('Failed to refresh technicians')
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const handleTechnicianAdded = (newTechnician: Technician) => {
+    setTechnicians([newTechnician, ...technicians])
+    setShowAddModal(false)
+  }
+
+  const handleTechnicianUpdated = (updatedTechnician: Technician) => {
+    setTechnicians(technicians.map(t => 
+      t.id === updatedTechnician.id ? updatedTechnician : t
+    ))
+    setEditingTechnician(null)
+  }
+
+  const handleDelete = async (techId: string, email: string) => {
+    if (!confirm(`Are you sure you want to permanently delete ${email}? This cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/technicians/${techId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete technician')
+      }
+
+      toast.success('Technician deleted successfully')
+      setTechnicians(technicians.filter(t => t.id !== techId))
+    } catch (error) {
+      toast.error('Failed to delete technician')
+    }
+  }
+
+  const activeTechnicians = technicians.filter(t => t.is_active !== false)
+  const inactiveTechnicians = technicians.filter(t => t.is_active === false)
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Technicians</h1>
+          <p className="text-muted-foreground">
+            Manage your field technicians
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button onClick={() => setShowAddModal(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Technician
+          </Button>
+        </div>
       </div>
 
-      {proposal.status === 'approved' && (
-        <MultiStagePayment proposal={proposal} />
+      {/* Active Technicians */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Active Technicians ({activeTechnicians.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {activeTechnicians.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No active technicians found</p>
+              <p className="text-sm mt-2">Click "Add Technician" to create one</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeTechnicians.map((tech) => (
+                <Card key={tech.id} className="border">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center">
+                        <UserCheck className="h-4 w-4 text-green-500 mr-2" />
+                        <Badge variant="outline" className="text-xs">Active</Badge>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setEditingTechnician(tech)}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(tech.id, tech.email)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <h3 className="font-medium text-gray-900">
+                      {tech.full_name || 'No name set'}
+                    </h3>
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Mail className="h-3 w-3 mr-2" />
+                        {tech.email}
+                      </div>
+                      {tech.phone && (
+                        <div className="flex items-center text-sm text-gray-600">
+                          <Phone className="h-3 w-3 mr-2" />
+                          {tech.phone}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Inactive Technicians */}
+      {inactiveTechnicians.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Inactive Technicians ({inactiveTechnicians.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {inactiveTechnicians.map((tech) => (
+                <Card key={tech.id} className="border opacity-75">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center">
+                        <UserX className="h-4 w-4 text-gray-400 mr-2" />
+                        <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setEditingTechnician(tech)}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(tech.id, tech.email)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <h3 className="font-medium text-gray-700">
+                      {tech.full_name || 'No name set'}
+                    </h3>
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center text-sm text-gray-500">
+                        <Mail className="h-3 w-3 mr-2" />
+                        {tech.email}
+                      </div>
+                      {tech.phone && (
+                        <div className="flex items-center text-sm text-gray-500">
+                          <Phone className="h-3 w-3 mr-2" />
+                          {tech.phone}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {showSendModal && (
-        <SendProposal
-          proposalId={proposal.id}
-          proposalNumber={proposal.proposal_number}
-          customer={proposal.customers}
-          total={proposal.total}
-          onClose={() => setShowSendModal(false)}
-          onSuccess={() => {
-            setShowSendModal(false)
-            window.location.reload()
-          }}
+      {showAddModal && (
+        <AddTechnicianModal 
+          onClose={() => setShowAddModal(false)}
+          onSuccess={handleTechnicianAdded}
+        />
+      )}
+
+      {editingTechnician && (
+        <EditTechnicianModal
+          technician={editingTechnician}
+          onClose={() => setEditingTechnician(null)}
+          onSuccess={handleTechnicianUpdated}
         />
       )}
     </div>
@@ -229,526 +623,874 @@ export default function ProposalView({ proposal: initialProposal }: ProposalView
 }
 EOF
 
-# 3. Create EditJobModal with technician search
-cat > app/jobs/[id]/EditJobModal.tsx << 'EOF'
+echo "✅ Fixed technician refresh functionality"
+
+echo "🏗️ Creating comprehensive job detail system..."
+
+# Create job detail view with all functionality
+cat > app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx << 'EOF'
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { TechnicianSearch } from '@/components/technician/TechnicianSearch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { 
+  ArrowLeft, Edit, Calendar, Clock, MapPin, User, 
+  FileText, Camera, Upload, Plus, X, Save, Trash2 
+} from 'lucide-react'
+import Link from 'next/link'
+import { toast } from 'sonner'
 
-interface EditJobModalProps {
+interface JobDetailViewProps {
   job: any
-  onClose: () => void
-  onSuccess: (updatedJob: any) => void
+  userRole: string
 }
 
-export default function EditJobModal({ job, onClose, onSuccess }: EditJobModalProps) {
-  const [loading, setLoading] = useState(false)
-  const [selectedTechnicians, setSelectedTechnicians] = useState<string[]>([])
+export default function JobDetailView({ job: initialJob, userRole }: JobDetailViewProps) {
+  const router = useRouter()
+  const supabase = createClient()
+  const [job, setJob] = useState(initialJob)
+  const [isEditingOverview, setIsEditingOverview] = useState(false)
+  const [overviewText, setOverviewText] = useState(job.description || '')
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [notesText, setNotesText] = useState(job.notes || '')
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [technicians, setTechnicians] = useState<any[]>([])
+  const [assignedTechnicians, setAssignedTechnicians] = useState<any[]>([])
+  const [jobPhotos, setJobPhotos] = useState<any[]>([])
+  const [jobFiles, setJobFiles] = useState<any[]>([])
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(false)
+
+  useEffect(() => {
+    loadTechnicians()
+    loadAssignedTechnicians()
+    loadJobPhotos()
+    loadJobFiles()
+  }, [job.id])
+
+  const loadTechnicians = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'technician')
+      .eq('is_active', true)
+      .order('full_name')
+    
+    if (data) setTechnicians(data)
+  }
+
+  const loadAssignedTechnicians = async () => {
+    const { data } = await supabase
+      .from('job_technicians')
+      .select('*, technician:technician_id(id, full_name, email)')
+      .eq('job_id', job.id)
+    
+    if (data) setAssignedTechnicians(data)
+  }
+
+  const loadJobPhotos = async () => {
+    const { data } = await supabase
+      .from('job_photos')
+      .select('*')
+      .eq('job_id', job.id)
+      .order('created_at', { ascending: false })
+    
+    if (data) setJobPhotos(data)
+  }
+
+  const loadJobFiles = async () => {
+    const { data } = await supabase
+      .from('job_files')
+      .select('*')
+      .eq('job_id', job.id)
+      .order('created_at', { ascending: false })
+    
+    if (data) setJobFiles(data)
+  }
+
+  const handleSaveOverview = async () => {
+    const { error } = await supabase
+      .from('jobs')
+      .update({ description: overviewText })
+      .eq('id', job.id)
+    
+    if (!error) {
+      setJob({ ...job, description: overviewText })
+      setIsEditingOverview(false)
+      toast.success('Overview updated')
+    } else {
+      toast.error('Failed to update overview')
+    }
+  }
+
+  const handleSaveNotes = async () => {
+    const { error } = await supabase
+      .from('jobs')
+      .update({ notes: notesText })
+      .eq('id', job.id)
+    
+    if (!error) {
+      setJob({ ...job, notes: notesText })
+      setIsEditingNotes(false)
+      toast.success('Notes updated')
+    } else {
+      toast.error('Failed to update notes')
+    }
+  }
+
+  const handleAssignTechnician = async (technicianId: string) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    const { error } = await supabase
+      .from('job_technicians')
+      .insert({
+        job_id: job.id,
+        technician_id: technicianId,
+        assigned_by: user?.id
+      })
+    
+    if (!error) {
+      loadAssignedTechnicians()
+      toast.success('Technician assigned')
+    } else {
+      toast.error('Failed to assign technician')
+    }
+  }
+
+  const handleRemoveTechnician = async (assignmentId: string) => {
+    const { error } = await supabase
+      .from('job_technicians')
+      .delete()
+      .eq('id', assignmentId)
+    
+    if (!error) {
+      loadAssignedTechnicians()
+      toast.success('Technician removed')
+    } else {
+      toast.error('Failed to remove technician')
+    }
+  }
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingPhoto(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const fileName = `${job.id}/${Date.now()}_${file.name}`
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('job-photos')
+        .upload(fileName, file)
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('job-photos')
+        .getPublicUrl(fileName)
+
+      const { error: dbError } = await supabase
+        .from('job_photos')
+        .insert({
+          job_id: job.id,
+          uploaded_by: user?.id,
+          photo_url: publicUrl,
+          photo_type: 'general'
+        })
+
+      if (dbError) throw dbError
+
+      loadJobPhotos()
+      toast.success('Photo uploaded')
+    } catch (error) {
+      toast.error('Failed to upload photo')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingFile(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const fileName = `${job.id}/${Date.now()}_${file.name}`
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('job-files')
+        .upload(fileName, file)
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('job-files')
+        .getPublicUrl(fileName)
+
+      const { error: dbError } = await supabase
+        .from('job_files')
+        .insert({
+          job_id: job.id,
+          uploaded_by: user?.id,
+          file_name: file.name,
+          file_url: publicUrl,
+          file_size: file.size,
+          mime_type: file.type
+        })
+
+      if (dbError) throw dbError
+
+      loadJobFiles()
+      toast.success('File uploaded')
+    } catch (error) {
+      toast.error('Failed to upload file')
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      'not_scheduled': 'bg-gray-100 text-gray-800',
+      'scheduled': 'bg-blue-100 text-blue-800',
+      'in_progress': 'bg-yellow-100 text-yellow-800',
+      'completed': 'bg-green-100 text-green-800',
+      'cancelled': 'bg-red-100 text-red-800'
+    }
+    return colors[status] || 'bg-gray-100 text-gray-800'
+  }
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-4">
+          <Link href="/jobs">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Jobs
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold">Job {job.job_number}</h1>
+            <p className="text-muted-foreground">{job.title}</p>
+          </div>
+          <Badge className={getStatusColor(job.status)}>
+            {job.status.replace('_', ' ').toUpperCase()}
+          </Badge>
+        </div>
+        <Button onClick={() => setShowEditModal(true)}>
+          <Edit className="h-4 w-4 mr-2" />
+          Edit Job
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="technicians">Technicians</TabsTrigger>
+              <TabsTrigger value="photos">Photos</TabsTrigger>
+              <TabsTrigger value="files">Files</TabsTrigger>
+              <TabsTrigger value="notes">Notes</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Job Overview</CardTitle>
+                    {!isEditingOverview && (
+                      <Button size="sm" variant="outline" onClick={() => setIsEditingOverview(true)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isEditingOverview ? (
+                    <div className="space-y-4">
+                      <textarea
+                        value={overviewText}
+                        onChange={(e) => setOverviewText(e.target.value)}
+                        className="w-full h-32 p-3 border rounded-md"
+                        placeholder="Enter job overview..."
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleSaveOverview}>
+                          <Save className="h-4 w-4 mr-2" />
+                          Save
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => {
+                            setIsEditingOverview(false)
+                            setOverviewText(job.description || '')
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-700">
+                      {job.description || 'No overview available. Click edit to add one.'}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="technicians">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Assigned Technicians</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="flex-1 p-2 border rounded-md"
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleAssignTechnician(e.target.value)
+                            e.target.value = ''
+                          }
+                        }}
+                      >
+                        <option value="">Select technician to assign...</option>
+                        {technicians
+                          .filter(t => !assignedTechnicians.find(at => at.technician_id === t.id))
+                          .map(tech => (
+                            <option key={tech.id} value={tech.id}>
+                              {tech.full_name || tech.email}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      {assignedTechnicians.map((assignment) => (
+                        <div key={assignment.id} className="flex items-center justify-between p-3 border rounded-md">
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-gray-500" />
+                            <span>{assignment.technician?.full_name || assignment.technician?.email}</span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleRemoveTechnician(assignment.id)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      {assignedTechnicians.length === 0 && (
+                        <p className="text-gray-500 text-center py-4">
+                          No technicians assigned yet
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="photos">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Job Photos</CardTitle>
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handlePhotoUpload}
+                        disabled={uploadingPhoto}
+                      />
+                      <Button size="sm" disabled={uploadingPhoto}>
+                        <Upload className="h-4 w-4 mr-2" />
+                        {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                      </Button>
+                    </label>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {jobPhotos.map((photo) => (
+                      <div key={photo.id} className="relative group">
+                        <img
+                          src={photo.photo_url}
+                          alt="Job photo"
+                          className="w-full h-32 object-cover rounded-md"
+                        />
+                      </div>
+                    ))}
+                    {jobPhotos.length === 0 && (
+                      <p className="text-gray-500 col-span-full text-center py-8">
+                        No photos uploaded yet
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="files">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Job Files</CardTitle>
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                        disabled={uploadingFile}
+                      />
+                      <Button size="sm" disabled={uploadingFile}>
+                        <Upload className="h-4 w-4 mr-2" />
+                        {uploadingFile ? 'Uploading...' : 'Upload File'}
+                      </Button>
+                    </label>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {jobFiles.map((file) => (
+                      <div key={file.id} className="flex items-center justify-between p-3 border rounded-md">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-gray-500" />
+                          <a 
+                            href={file.file_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline"
+                          >
+                            {file.file_name}
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                    {jobFiles.length === 0 && (
+                      <p className="text-gray-500 text-center py-8">
+                        No files uploaded yet
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="notes">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Job Notes</CardTitle>
+                    {!isEditingNotes && (
+                      <Button size="sm" variant="outline" onClick={() => setIsEditingNotes(true)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isEditingNotes ? (
+                    <div className="space-y-4">
+                      <textarea
+                        value={notesText}
+                        onChange={(e) => setNotesText(e.target.value)}
+                        className="w-full h-32 p-3 border rounded-md"
+                        placeholder="Enter job notes..."
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleSaveNotes}>
+                          <Save className="h-4 w-4 mr-2" />
+                          Save
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => {
+                            setIsEditingNotes(false)
+                            setNotesText(job.notes || '')
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-700">
+                      {job.notes || 'No notes available. Click edit to add notes.'}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Job Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Customer</p>
+                <p className="font-medium">{job.customers?.name || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Job Type</p>
+                <p className="font-medium">{job.job_type}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Scheduled Date</p>
+                <p className="font-medium">
+                  {job.scheduled_date ? new Date(job.scheduled_date).toLocaleDateString() : 'Not scheduled'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Service Address</p>
+                <p className="font-medium">
+                  {job.service_address || 'No address specified'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Edit Job Modal */}
+      {showEditModal && (
+        <EditJobModal 
+          job={job}
+          onClose={() => setShowEditModal(false)}
+          onSave={(updatedJob) => {
+            setJob(updatedJob)
+            setShowEditModal(false)
+            router.refresh()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function EditJobModal({ job, onClose, onSave }: any) {
   const [formData, setFormData] = useState({
+    customer_id: job.customer_id,
     title: job.title,
     description: job.description || '',
     job_type: job.job_type,
     status: job.status,
+    service_address: job.service_address || '',
+    service_city: job.service_city || '',
+    service_state: job.service_state || '',
+    service_zip: job.service_zip || '',
     scheduled_date: job.scheduled_date || '',
     scheduled_time: job.scheduled_time || '',
-    service_address: job.service_address || '',
     notes: job.notes || ''
   })
-  
+  const [customers, setCustomers] = useState<any[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(job.customers)
+  const [isLoading, setIsLoading] = useState(false)
   const supabase = createClient()
-  const adminClient = createAdminClient()
 
   useEffect(() => {
-    fetchJobTechnicians()
+    loadCustomers()
   }, [])
 
-  const fetchJobTechnicians = async () => {
-    const { data } = await adminClient
-      .from('job_technicians')
-      .select('technician_id')
-      .eq('job_id', job.id)
+  const loadCustomers = async () => {
+    const { data } = await supabase
+      .from('customers')
+      .select('*')
+      .order('name')
     
-    if (data) {
-      setSelectedTechnicians(data.map(jt => jt.technician_id))
-    }
+    if (data) setCustomers(data)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-
-    try {
-      // Update job details
-      const { data: updatedJob, error } = await supabase
-        .from('jobs')
-        .update({
-          ...formData,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', job.id)
-        .select()
-        .single()
-
-      if (error) throw error
-
-      // Update technician assignments
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        // Delete existing assignments
-        await adminClient
-          .from('job_technicians')
-          .delete()
-          .eq('job_id', job.id)
-
-        // Add new assignments
-        if (selectedTechnicians.length > 0) {
-          const assignments = selectedTechnicians.map(techId => ({
-            job_id: job.id,
-            technician_id: techId,
-            assigned_by: user.id
-          }))
-
-          await adminClient
-            .from('job_technicians')
-            .insert(assignments)
-        }
+  const handleSave = async () => {
+    setIsLoading(true)
+    
+    const { error } = await supabase
+      .from('jobs')
+      .update(formData)
+      .eq('id', job.id)
+    
+    if (!error) {
+      // If customer changed, update customer details
+      if (selectedCustomer && selectedCustomer.id !== job.customer_id) {
+        await supabase
+          .from('customers')
+          .update({
+            name: selectedCustomer.name,
+            email: selectedCustomer.email,
+            phone: selectedCustomer.phone,
+            address: selectedCustomer.address
+          })
+          .eq('id', selectedCustomer.id)
       }
-
-      onSuccess(updatedJob)
-    } catch (error) {
-      console.error('Error updating job:', error)
-      alert('Failed to update job')
-    } finally {
-      setLoading(false)
+      
+      toast.success('Job updated successfully')
+      onSave({ ...job, ...formData, customers: selectedCustomer })
+    } else {
+      toast.error('Failed to update job')
     }
+    
+    setIsLoading(false)
   }
 
   return (
-    <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Job: {job.job_number}</DialogTitle>
-        </DialogHeader>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="title">Job Title</Label>
-            <Input
-              id="title"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              required
-            />
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold">Edit Job</h2>
+            <button onClick={onClose}>
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4">
+            {/* Customer Selection */}
             <div>
-              <Label htmlFor="job_type">Job Type</Label>
-              <Select
-                value={formData.job_type}
-                onValueChange={(value) => setFormData({ ...formData, job_type: value })}
+              <label className="block text-sm font-medium mb-1">Customer</label>
+              <select
+                value={formData.customer_id}
+                onChange={(e) => {
+                  const customer = customers.find(c => c.id === e.target.value)
+                  setSelectedCustomer(customer)
+                  setFormData({ ...formData, customer_id: e.target.value })
+                }}
+                className="w-full p-2 border rounded-md"
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="service">Service</SelectItem>
-                  <SelectItem value="installation">Installation</SelectItem>
-                  <SelectItem value="maintenance">Maintenance</SelectItem>
-                  <SelectItem value="repair">Repair</SelectItem>
-                </SelectContent>
-              </Select>
+                {customers.map(customer => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div>
-              <Label htmlFor="status">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value) => setFormData({ ...formData, status: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+            {/* Customer Details (editable) */}
+            {selectedCustomer && (
+              <div className="p-4 bg-gray-50 rounded-md space-y-3">
+                <h3 className="font-medium">Customer Details</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm text-gray-600">Name</label>
+                    <input
+                      type="text"
+                      value={selectedCustomer.name}
+                      onChange={(e) => setSelectedCustomer({ ...selectedCustomer, name: e.target.value })}
+                      className="w-full p-2 border rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600">Email</label>
+                    <input
+                      type="email"
+                      value={selectedCustomer.email || ''}
+                      onChange={(e) => setSelectedCustomer({ ...selectedCustomer, email: e.target.value })}
+                      className="w-full p-2 border rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600">Phone</label>
+                    <input
+                      type="text"
+                      value={selectedCustomer.phone || ''}
+                      onChange={(e) => setSelectedCustomer({ ...selectedCustomer, phone: e.target.value })}
+                      className="w-full p-2 border rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600">Address</label>
+                    <input
+                      type="text"
+                      value={selectedCustomer.address || ''}
+                      onChange={(e) => setSelectedCustomer({ ...selectedCustomer, address: e.target.value })}
+                      className="w-full p-2 border rounded-md"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
-          <div className="grid grid-cols-2 gap-4">
+            {/* Job Details */}
             <div>
-              <Label htmlFor="scheduled_date">Scheduled Date</Label>
-              <Input
-                id="scheduled_date"
-                type="date"
-                value={formData.scheduled_date}
-                onChange={(e) => setFormData({ ...formData, scheduled_date: e.target.value })}
+              <label className="block text-sm font-medium mb-1">Job Title</label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                className="w-full p-2 border rounded-md"
               />
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Job Type</label>
+                <select
+                  value={formData.job_type}
+                  onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value="installation">Installation</option>
+                  <option value="repair">Repair</option>
+                  <option value="maintenance">Maintenance</option>
+                  <option value="inspection">Inspection</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value="not_scheduled">Not Scheduled</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Service Location */}
             <div>
-              <Label htmlFor="scheduled_time">Scheduled Time</Label>
-              <Input
-                id="scheduled_time"
-                type="time"
-                value={formData.scheduled_time}
-                onChange={(e) => setFormData({ ...formData, scheduled_time: e.target.value })}
+              <label className="block text-sm font-medium mb-1">Service Address</label>
+              <input
+                type="text"
+                value={formData.service_address}
+                onChange={(e) => setFormData({ ...formData, service_address: e.target.value })}
+                className="w-full p-2 border rounded-md"
+                placeholder="123 Main St"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">City</label>
+                <input
+                  type="text"
+                  value={formData.service_city}
+                  onChange={(e) => setFormData({ ...formData, service_city: e.target.value })}
+                  className="w-full p-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">State</label>
+                <input
+                  type="text"
+                  value={formData.service_state}
+                  onChange={(e) => setFormData({ ...formData, service_state: e.target.value })}
+                  className="w-full p-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">ZIP</label>
+                <input
+                  type="text"
+                  value={formData.service_zip}
+                  onChange={(e) => setFormData({ ...formData, service_zip: e.target.value })}
+                  className="w-full p-2 border rounded-md"
+                />
+              </div>
+            </div>
+
+            {/* Scheduling */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Scheduled Date</label>
+                <input
+                  type="date"
+                  value={formData.scheduled_date}
+                  onChange={(e) => setFormData({ ...formData, scheduled_date: e.target.value })}
+                  className="w-full p-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Scheduled Time</label>
+                <input
+                  type="time"
+                  value={formData.scheduled_time}
+                  onChange={(e) => setFormData({ ...formData, scheduled_time: e.target.value })}
+                  className="w-full p-2 border rounded-md"
+                />
+              </div>
+            </div>
+
+            {/* Overview */}
+            <div>
+              <label className="block text-sm font-medium mb-1">Overview</label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="w-full p-2 border rounded-md h-24"
+                placeholder="Job overview..."
+              />
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-medium mb-1">Notes</label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className="w-full p-2 border rounded-md h-24"
+                placeholder="Additional notes..."
               />
             </div>
           </div>
 
-          <div>
-            <Label htmlFor="service_address">Service Address</Label>
-            <Input
-              id="service_address"
-              value={formData.service_address}
-              onChange={(e) => setFormData({ ...formData, service_address: e.target.value })}
-            />
-          </div>
-
-          <div>
-            <Label>Assigned Technicians</Label>
-            <TechnicianSearch
-              selectedTechnicians={selectedTechnicians}
-              onSelectionChange={setSelectedTechnicians}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={3}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              rows={3}
-            />
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Updating...' : 'Update Job'}
+            <Button onClick={handleSave} disabled={isLoading}>
+              {isLoading ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-EOF
-
-# 4. Create FileUpload component for Jobs
-cat > app/jobs/[id]/FileUpload.tsx << 'EOF'
-'use client'
-
-import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Upload, FileText, Download, Trash2 } from 'lucide-react'
-
-interface FileUploadProps {
-  jobId: string
-}
-
-export default function FileUpload({ jobId }: FileUploadProps) {
-  const [uploading, setUploading] = useState(false)
-  const [files, setFiles] = useState<any[]>([])
-  const supabase = createClient()
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return
-
-    const file = e.target.files[0]
-    setUploading(true)
-
-    try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${jobId}/${Date.now()}.${fileExt}`
-
-      const { data, error } = await supabase.storage
-        .from('job-files')
-        .upload(fileName, file)
-
-      if (error) throw error
-
-      // Save file reference to database
-      const { error: dbError } = await supabase
-        .from('job_files')
-        .insert({
-          job_id: jobId,
-          file_name: file.name,
-          file_url: data.path,
-          file_size: file.size,
-          mime_type: file.type,
-          uploaded_by: (await supabase.auth.getUser()).data.user?.id
-        })
-
-      if (dbError) throw dbError
-
-      alert('File uploaded successfully!')
-      fetchFiles()
-    } catch (error) {
-      console.error('Error uploading file:', error)
-      alert('Failed to upload file')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const fetchFiles = async () => {
-    const { data } = await supabase
-      .from('job_files')
-      .select('*')
-      .eq('job_id', jobId)
-    
-    setFiles(data || [])
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Files & Documents</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-            <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-2">Upload files for this job</p>
-            <input
-              type="file"
-              id="file-upload"
-              className="hidden"
-              onChange={handleFileUpload}
-              disabled={uploading}
-            />
-            <Button
-              onClick={() => document.getElementById('file-upload')?.click()}
-              disabled={uploading}
-            >
-              {uploading ? 'Uploading...' : 'Choose File'}
-            </Button>
-          </div>
-
-          {files.length > 0 && (
-            <div className="space-y-2">
-              {files.map((file) => (
-                <div key={file.id} className="flex items-center justify-between p-3 border rounded">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-gray-500" />
-                    <span className="text-sm">{file.file_name}</span>
-                  </div>
-                  <Button size="sm" variant="ghost">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 EOF
 
-# 5. Create PhotoUpload component that actually works
-cat > app/jobs/[id]/PhotoUpload.tsx << 'EOF'
-'use client'
+echo "✅ Created comprehensive JobDetailView component"
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Camera, Upload, Trash2 } from 'lucide-react'
+# Test the build
+echo "🧪 Testing build..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+npm run build 2>&1 | head -50
 
-interface PhotoUploadProps {
-  jobId: string
-}
-
-export default function PhotoUpload({ jobId }: PhotoUploadProps) {
-  const [uploading, setUploading] = useState(false)
-  const [photos, setPhotos] = useState<any[]>([])
-  const supabase = createClient()
-
-  useEffect(() => {
-    fetchPhotos()
-  }, [jobId])
-
-  const fetchPhotos = async () => {
-    const { data } = await supabase
-      .from('job_photos')
-      .select('*')
-      .eq('job_id', jobId)
-      .order('created_at', { ascending: false })
+# Check for build errors
+if [ $? -eq 0 ]; then
+    echo "✅ Build successful!"
     
-    setPhotos(data || [])
-  }
+    # Commit and push
+    git add -A
+    git commit -m "Fix: Comprehensive update - Send button visibility, technician refresh, job management with file uploads and editing"
+    git push origin main
+    
+    echo "✅ Changes pushed to GitHub!"
+else
+    echo "❌ Build failed. Please check the errors above."
+fi
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return
-
-    const file = e.target.files[0]
-    setUploading(true)
-
-    try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${jobId}/${Date.now()}.${fileExt}`
-
-      const { data, error } = await supabase.storage
-        .from('job-photos')
-        .upload(fileName, file)
-
-      if (error) throw error
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('job-photos')
-        .getPublicUrl(data.path)
-
-      // Save photo reference to database
-      const { data: { user } } = await supabase.auth.getUser()
-      const { error: dbError } = await supabase
-        .from('job_photos')
-        .insert({
-          job_id: jobId,
-          photo_url: publicUrl,
-          photo_type: 'job_photo',
-          uploaded_by: user?.id
-        })
-
-      if (dbError) throw dbError
-
-      fetchPhotos()
-    } catch (error) {
-      console.error('Error uploading photo:', error)
-      alert('Failed to upload photo')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const deletePhoto = async (photoId: string, photoPath: string) => {
-    try {
-      // Delete from storage
-      const fileName = photoPath.split('/').pop()
-      if (fileName) {
-        await supabase.storage
-          .from('job-photos')
-          .remove([`${jobId}/${fileName}`])
-      }
-
-      // Delete from database
-      await supabase
-        .from('job_photos')
-        .delete()
-        .eq('id', photoId)
-
-      fetchPhotos()
-    } catch (error) {
-      console.error('Error deleting photo:', error)
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Job Photos</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-            <Camera className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-2">Upload photos for this job</p>
-            <input
-              type="file"
-              id="photo-upload"
-              className="hidden"
-              accept="image/*"
-              onChange={handlePhotoUpload}
-              disabled={uploading}
-            />
-            <Button
-              onClick={() => document.getElementById('photo-upload')?.click()}
-              disabled={uploading}
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              {uploading ? 'Uploading...' : 'Upload Photo'}
-            </Button>
-          </div>
-
-          {photos.length > 0 && (
-            <div className="grid grid-cols-3 gap-4">
-              {photos.map((photo) => (
-                <div key={photo.id} className="relative group">
-                  <img
-                    src={photo.photo_url}
-                    alt="Job photo"
-                    className="w-full h-32 object-cover rounded-lg"
-                  />
-                  <button
-                    onClick={() => deletePhoto(photo.id, photo.photo_url)}
-                    className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-EOF
-
-echo "📝 Running SQL setup via Supabase CLI..."
-echo ""
-echo "To run the SQL directly from terminal, you need Supabase CLI:"
-echo "1. Install: brew install supabase/tap/supabase"
-echo "2. Link: supabase link --project-ref YOUR_PROJECT_REF"
-echo "3. Run: supabase db push < setup_storage.sql"
-echo ""
-echo "OR manually run this SQL in Supabase dashboard:"
-cat setup_storage.sql
-
-# Commit all changes
-git add .
-git commit -m "feat: complete automation - job edit, file uploads, photo uploads, create job button"
-git push origin main
-
-echo "✅ All features automated and implemented!"
-echo ""
-echo "Completed:"
-echo "1. ✅ ProposalView - Added Create Job button"
-echo "2. ✅ EditJobModal - With technician search"
-echo "3. ✅ FileUpload - Fully functional"
-echo "4. ✅ PhotoUpload - Fully functional"
-echo "5. ✅ Notes save - Integrated in EditJobModal"
-echo ""
-echo "Don't forget to run the SQL in Supabase to create storage buckets!"
+echo "🎉 Update complete!"
