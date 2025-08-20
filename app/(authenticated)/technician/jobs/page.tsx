@@ -62,7 +62,7 @@ export default async function TechnicianJobsPage() {
     console.error('Error fetching technician jobs:', error)
   }
 
-  // Flatten the jobs data - properly handle the nested structure
+  // Flatten the jobs data
   const jobs = assignedJobs?.map(item => ({
     ...item.jobs,
     assigned_at: item.assigned_at
@@ -73,6 +73,9 @@ export default async function TechnicianJobsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">My Jobs</h1>
         <p className="text-gray-600">Welcome back, {profile?.full_name || 'Technician'}</p>
+        <p className="text-sm text-gray-500 mt-1">
+          You have {jobs.length} job{jobs.length !== 1 ? 's' : ''} assigned
+        </p>
       </div>
       
       <TechnicianJobsList jobs={jobs} technicianId={user.id} />
