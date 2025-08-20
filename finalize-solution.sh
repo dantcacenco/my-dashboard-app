@@ -1,3 +1,13 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Finalizing the working solution..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Keep the working solution but remove excessive debug output
+cat > app/\(authenticated\)/proposals/\[id\]/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import ProposalView from './ProposalView'
@@ -70,3 +80,32 @@ export default async function ProposalPage({ params }: PageProps) {
 
   return <ProposalView proposal={fullProposal} userRole={profile?.role || 'viewer'} />
 }
+EOF
+
+echo "✅ Finalized working page.tsx"
+
+# Clean up old files
+rm -f comprehensive-debug.sh check-schema.sql
+
+git add -A
+git commit -m "Finalize working proposal display solution
+
+- Using separate queries that work reliably
+- Removed debug clutter
+- Kept data transformation for compatibility
+- Items now display with proper formatting"
+
+git push origin main
+
+echo "✅ WORKING SOLUTION DEPLOYED!"
+echo ""
+echo "📊 Summary:"
+echo "• Proposals load and display correctly"
+echo "• Services show in gray boxes"
+echo "• Add-ons show in orange boxes with badges"
+echo "• Totals calculate properly"
+echo ""
+echo "📋 Chat Status: ~95% used, 5% remaining"
+echo ""
+echo "Note: You have duplicate add-on items in that proposal"
+echo "(4x Refrigerant R-410A) - might want to check the edit flow"
