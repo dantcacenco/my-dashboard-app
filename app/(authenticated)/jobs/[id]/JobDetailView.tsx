@@ -70,7 +70,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
         setProposal(data)
         // Update job with proposal amounts if not set
         if (!job.total_amount && data.total) {
-          setJob(prev => ({ ...prev, total_amount: data.total }))
+          setJob((prev: any) => ({ ...prev, total_amount: data.total }))
         }
       }
     }
