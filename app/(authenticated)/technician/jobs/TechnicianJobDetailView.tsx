@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import MediaUpload from '@/components/uploads/MediaUpload'
 import FileUpload from '@/components/uploads/FileUpload'
 import MediaViewer from '@/components/MediaViewer'
+import VideoThumbnail from '@/components/VideoThumbnail'
 import TimeTracking from '@/components/TimeTracking'
 
 interface TechnicianJobDetailViewProps {
@@ -202,25 +203,24 @@ export default function TechnicianJobDetailView({ jobId, userId }: TechnicianJob
                     const isVideo = photo.mime_type?.startsWith('video/')
                     return (
                       <div key={photo.id} className="relative group">
-                        <button
-                          onClick={() => openPhotoViewer(index)}
-                          className="block w-full aspect-square overflow-hidden rounded-lg bg-gray-100 hover:opacity-90 transition-opacity"
-                        >
-                          {isVideo ? (
-                            <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                              <Camera className="h-8 w-8 text-gray-500" />
-                              <span className="absolute bottom-2 left-2 text-xs bg-black/50 text-white px-2 py-1 rounded">
-                                Video
-                              </span>
-                            </div>
-                          ) : (
+                        {isVideo ? (
+                          <VideoThumbnail
+                            videoUrl={photo.photo_url}
+                            onClick={() => openPhotoViewer(index)}
+                            caption={photo.caption}
+                          />
+                        ) : (
+                          <button
+                            onClick={() => openPhotoViewer(index)}
+                            className="block w-full aspect-square overflow-hidden rounded-lg bg-gray-100 hover:opacity-90 transition-opacity"
+                          >
                             <img 
                               src={photo.photo_url} 
                               alt={photo.caption || 'Job media'}
                               className="w-full h-full object-cover"
                             />
-                          )}
-                        </button>
+                          </button>
+                        )}
                       </div>
                     )
                   })}
