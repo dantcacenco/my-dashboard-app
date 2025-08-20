@@ -1,3 +1,13 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Fixing proposal redirect issue..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Update page.tsx to handle errors better and not redirect immediately
+cat > app/\(authenticated\)/proposals/\[id\]/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import ProposalView from './ProposalView'
@@ -81,3 +91,20 @@ export default async function ProposalPage({ params }: PageProps) {
     />
   )
 }
+EOF
+
+echo "✅ Fixed page.tsx with better error handling"
+
+# Commit and push
+git add -A
+git commit -m "Fix proposal redirect issue - show errors instead of redirecting
+
+- Remove immediate redirect on error
+- Show error details to help debug
+- Use notFound() for proper 404 handling
+- Keep user on proposal page even if there's an error"
+
+git push origin main
+
+echo "✅ Fix deployed! Proposals should now display properly."
+echo "📋 Chat Status: ~80% used, 20% remaining"
