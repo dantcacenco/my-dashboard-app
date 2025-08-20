@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import ProposalView from './ProposalView'
 import CreateJobButton from "./CreateJobButton"
-
 interface PageProps {
   params: Promise<{ id: string }>
 }
@@ -34,7 +33,7 @@ export default async function ProposalPage({ params }: PageProps) {
     redirect('/')
   }
 
-  // Get proposal with all related data including proposal_items
+  // Get proposal with all related data
   const { data: proposal, error } = await supabase
     .from('proposals')
     .select(`
@@ -48,15 +47,15 @@ export default async function ProposalPage({ params }: PageProps) {
       ),
       proposal_items (
         id,
-        item_type,
-        title,
+        name,
         description,
         quantity,
         unit_price,
         total_price,
+        is_addon,
+        is_selected,
         sort_order
-      ),
-      payment_stages (*)
+      )
     `)
     .eq('id', id)
     .single()
@@ -66,17 +65,11 @@ export default async function ProposalPage({ params }: PageProps) {
     redirect('/proposals')
   }
 
-  // Debug log to see what data we're getting
-  console.log('Proposal data:', {
-    id: proposal.id,
-    items_count: proposal.proposal_items?.length || 0,
-    items: proposal.proposal_items
-  })
-
   return (
     <ProposalView 
       proposal={proposal} 
       userRole={profile.role}
+      
     />
   )
 }
