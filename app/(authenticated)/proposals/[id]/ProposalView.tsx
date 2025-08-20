@@ -311,7 +311,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
       {showCreateJobModal && (
         <CreateJobModal
           proposal={proposal}
-          onClose={() => setShowCreateJobModal(false)}
           onClose={() => {
             setShowCreateJobModal(false)
             router.push('/jobs')
