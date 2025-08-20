@@ -1,3 +1,13 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Part 2: Redesigning JobDetailView layout and fixing proposal linking..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# 3. Create new JobDetailView with no tabs, everything in one page
+cat > app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx << 'EOF'
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -595,3 +605,43 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
 
 // Import EditJobModal component
 import { EditJobModal } from './EditJobModal'
+EOF
+
+echo "✅ Redesigned JobDetailView layout"
+
+# Clean up
+rm -f fix-file-bucket.sh
+rm -f add-media-viewer.sh
+
+# Commit all changes
+git add -A
+git commit -m "Major fixes: bucket name, video support, layout redesign, proposal linking
+
+- Fixed file upload to use correct bucket 'job-files'
+- Created MediaUpload component supporting photos AND videos
+- Redesigned JobDetailView: removed tabs, all content in one page
+- Job overview now inside Job Details card
+- Fixed proposal linking and amount display
+- Shows linked proposal and calculates balance due
+- Added file size warnings and tips for videos
+- All media types now supported with appropriate icons"
+
+git push origin main
+
+echo ""
+echo "✅ ALL FIXES COMPLETE!"
+echo ""
+echo "Changes made:"
+echo "• File uploads now use correct bucket 'job-files'"
+echo "• Photos section now accepts videos too (renamed to Photos & Videos)"
+echo "• Removed tabs - everything displays in cards on one page"
+echo "• Job overview moved inside Job Details card"
+echo "• Fixed proposal linking and amount display"
+echo "• Shows balance due calculation"
+echo "• File size warnings for large uploads"
+echo ""
+echo "📋 Note about file sizes:"
+echo "• 50MB limit is set by Supabase free tier"
+echo "• To increase: upgrade Supabase plan for larger limits"
+echo "• For videos: users should record at 1080p or lower for smaller files"
+EOF
