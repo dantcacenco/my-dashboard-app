@@ -133,7 +133,7 @@ export default function TimeTracking({ jobId, userId, userRole }: TimeTrackingPr
       .update({
         clock_in: clockIn.toISOString(),
         clock_out: clockOut?.toISOString() || null,
-        duration_minutes
+        durationMinutes
       })
       .eq('id', editingId)
     
