@@ -1,269 +1,153 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import SendProposal from '@/components/SendProposal'
-import CreateJobButton from './CreateJobButton'
-import { createClient } from '@/lib/supabase/client'
-import { PrinterIcon, ArrowLeftIcon, PencilIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft, Edit, Send, FileText, DollarSign, Calendar, User } from 'lucide-react'
 import Link from 'next/link'
+import { CreateJobModal } from './CreateJobModal'
+import ProposalItemsDisplay from '@/components/ProposalItemsDisplay'
 
 interface ProposalViewProps {
   proposal: any
   userRole: string
-  userId?: string
 }
 
-export default function ProposalView({ proposal, userRole, userId }: ProposalViewProps) {
+export default function ProposalView({ proposal, userRole }: ProposalViewProps) {
   const router = useRouter()
-  const [showPrintView, setShowPrintView] = useState(false)
-  const printRef = useRef<HTMLDivElement>(null)
-  const supabase = createClient()
+  const [showCreateJobModal, setShowCreateJobModal] = useState(false)
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
+  const handleEdit = () => {
+    router.push(`/proposals/${proposal.id}/edit`)
   }
 
-  const formatDate = (dateString: string) => {
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    }).format(new Date(dateString))
+  const handleSendProposal = () => {
+    router.push(`/proposals/${proposal.id}/send`)
   }
 
-  const handlePrint = () => {
-    setShowPrintView(true)
-    setTimeout(() => {
-      window.print()
-      setShowPrintView(false)
-    }, 100)
-  }
-
-  const getStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { color: string; icon?: any }> = {
-      draft: { color: 'bg-gray-100 text-gray-800' },
-      sent: { color: 'bg-blue-100 text-blue-800', icon: CheckCircleIcon },
-      approved: { color: 'bg-green-100 text-green-800', icon: CheckCircleIcon },
-      rejected: { color: 'bg-red-100 text-red-800', icon: XCircleIcon },
-      paid: { color: 'bg-purple-100 text-purple-800' }
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'draft': return 'bg-gray-100 text-gray-800'
+      case 'sent': return 'bg-blue-100 text-blue-800'
+      case 'accepted': return 'bg-green-100 text-green-800'
+      case 'rejected': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
     }
-
-    const config = statusConfig[status] || statusConfig.draft
-
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
-        {config.icon && <config.icon className="w-3 h-3 mr-1" />}
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    )
   }
 
-  const canEdit = (userRole === 'admin' || userRole === 'boss') && 
-    (proposal.status === 'draft' || proposal.status === 'sent' || 
-     (proposal.status === 'approved' && !proposal.deposit_paid_at))
-
-  const canSendEmail = (userRole === 'admin' || userRole === 'boss') && 
-    (proposal.status === 'draft' || proposal.status === 'sent')
-
-  const canCreateJob = (userRole === 'admin' || userRole === 'boss') && 
-    proposal.status === 'approved' && !proposal.job_created
+  // Format items for ProposalItemsDisplay
+  const formattedItems = proposal.proposal_items?.map((item: any) => ({
+    id: item.id,
+    item_type: item.item_type,
+    title: item.title,
+    description: item.description,
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    total_price: item.total_price
+  })) || []
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8 flex justify-between items-center">
+    <div className="max-w-4xl mx-auto p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
-          <Link
-            href="/proposals"
-            className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
-          >
-            <ArrowLeftIcon className="w-4 h-4 mr-1" />
-            Back to Proposals
+          <Link href="/proposals">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Proposals
+            </Button>
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Proposal {proposal.proposal_number}
-          </h1>
-          {getStatusBadge(proposal.status)}
+          <h1 className="text-2xl font-bold">Proposal {proposal.proposal_number}</h1>
+          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(proposal.status)}`}>
+            {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
+          </span>
         </div>
         
         <div className="flex gap-2">
-          {canEdit && (
-            <Link href={`/proposals/${proposal.id}/edit`}>
-              <button className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                <PencilIcon className="w-4 h-4 mr-2" />
+          {proposal.status === 'draft' && (
+            <>
+              <Button onClick={handleEdit} variant="outline">
+                <Edit className="h-4 w-4 mr-2" />
                 Edit
-              </button>
-            </Link>
+              </Button>
+              <Button onClick={handleSendProposal}>
+                <Send className="h-4 w-4 mr-2" />
+                Send Proposal
+              </Button>
+            </>
           )}
-          
-          {canSendEmail && (
-            <SendProposal 
-              proposalId={proposal.id}
-              customerEmail={proposal.customers?.email}
-              customerName={proposal.customers?.name}
-              proposalNumber={proposal.proposal_number}
-              onSent={() => router.refresh()}
-            />
+          {proposal.status === 'sent' && userRole === 'boss' && (
+            <Button onClick={() => setShowCreateJobModal(true)} variant="default">
+              <FileText className="h-4 w-4 mr-2" />
+              Create Job
+            </Button>
           )}
-          
-          <button
-            onClick={handlePrint}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-          >
-            <PrinterIcon className="w-4 h-4 mr-2" />
-            Print
-          </button>
-
-          {canCreateJob && (
-            <CreateJobButton proposal={proposal} />
+          {proposal.status === 'accepted' && !proposal.job_created && (
+            <Button onClick={() => setShowCreateJobModal(true)} variant="default">
+              <FileText className="h-4 w-4 mr-2" />
+              Create Job
+            </Button>
           )}
         </div>
       </div>
 
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">
-            {proposal.title}
-          </h3>
-          {proposal.description && (
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              {proposal.description}
-            </p>
-          )}
-        </div>
-        
-        <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Customer</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {proposal.customers?.name || 'No customer assigned'}
-              </dd>
-            </div>
-            
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Date Created</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {formatDate(proposal.created_at)}
-              </dd>
-            </div>
-            
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Total Amount</dt>
-              <dd className="mt-1 text-sm text-gray-900 font-semibold">
-                {formatCurrency(proposal.total || 0)}
-              </dd>
-            </div>
-            
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Status</dt>
-              <dd className="mt-1">
-                {getStatusBadge(proposal.status)}
-              </dd>
-            </div>
-
-            {proposal.valid_until && (
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Valid Until</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {formatDate(proposal.valid_until)}
-                </dd>
-              </div>
-            )}
-
-            {proposal.sent_at && (
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Sent At</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {formatDate(proposal.sent_at)}
-                </dd>
-              </div>
-            )}
-          </dl>
-        </div>
-
-        {proposal.proposal_items && proposal.proposal_items.length > 0 && (
-          <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-              Items
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Item
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Quantity
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Unit Price
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {proposal.proposal_items
-                    .filter((item: any) => item.is_selected)
-                    .map((item: any) => (
-                      <tr key={item.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {item.name}
-                          {item.description && (
-                            <p className="text-gray-500 text-xs">{item.description}</p>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                          {item.quantity}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                          {formatCurrency(item.unit_price)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                          {formatCurrency(item.total_price)}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-                <tfoot className="bg-gray-50">
-                  <tr>
-                    <td colSpan={3} className="px-6 py-3 text-right text-sm font-medium text-gray-900">
-                      Subtotal
-                    </td>
-                    <td className="px-6 py-3 text-right text-sm font-medium text-gray-900">
-                      {formatCurrency(proposal.subtotal || 0)}
-                    </td>
-                  </tr>
-                  {proposal.tax_amount > 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-3 text-right text-sm font-medium text-gray-900">
-                        Tax ({proposal.tax_rate}%)
-                      </td>
-                      <td className="px-6 py-3 text-right text-sm font-medium text-gray-900">
-                        {formatCurrency(proposal.tax_amount)}
-                      </td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td colSpan={3} className="px-6 py-3 text-right text-sm font-bold text-gray-900">
-                      Total
-                    </td>
-                    <td className="px-6 py-3 text-right text-sm font-bold text-gray-900">
-                      {formatCurrency(proposal.total || 0)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
+      {/* Proposal Info */}
+      <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+        <h2 className="text-xl font-semibold mb-4">{proposal.title}</h2>
+        {proposal.description && (
+          <p className="text-gray-600 mb-6">{proposal.description}</p>
         )}
+        
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4 text-gray-500" />
+            <span className="text-gray-500">Customer:</span>
+            <span className="font-medium">{proposal.customers?.name || proposal.customer_name}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-gray-500" />
+            <span className="text-gray-500">Created:</span>
+            <span className="font-medium">{new Date(proposal.created_at).toLocaleDateString()}</span>
+          </div>
+        </div>
       </div>
+
+      {/* Items Section with ProposalItemsDisplay */}
+      <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+        <h2 className="text-xl font-semibold mb-4">Items</h2>
+        <ProposalItemsDisplay 
+          items={formattedItems}
+          taxRate={proposal.tax_rate || 0.08}
+          showCheckboxes={false}
+        />
+      </div>
+
+      {/* Payment Terms */}
+      {proposal.payment_stages && proposal.payment_stages.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h2 className="text-xl font-semibold mb-4">Payment Terms</h2>
+          <div className="space-y-3">
+            {proposal.payment_stages.map((stage: any, index: number) => (
+              <div key={stage.id || index} className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                <div>
+                  <span className="font-medium">{stage.stage_name}</span>
+                  <span className="text-sm text-gray-500 ml-2">({stage.percentage}%)</span>
+                </div>
+                <span className="font-semibold">${stage.amount.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Create Job Modal */}
+      {showCreateJobModal && (
+        <CreateJobModal
+          isOpen={showCreateJobModal}
+          onClose={() => setShowCreateJobModal(false)}
+          proposal={proposal}
+        />
+      )}
     </div>
   )
 }
