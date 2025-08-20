@@ -16,16 +16,25 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const supabase = createClient()
 
-  const getFileIcon = (mimeType: string) => {
+  const getFileIcon = (mimeType: string, fileName: string) => {
+    // Check by mime type first
     if (mimeType.startsWith('image/')) return Image
     if (mimeType.startsWith('audio/')) return Music
     if (mimeType.startsWith('video/')) return FileVideo
     if (mimeType === 'application/pdf') return FileText
+    
+    // Check by file extension as fallback
+    const ext = fileName.split('.').pop()?.toLowerCase()
+    if (ext === 'mp3' || ext === 'wav' || ext === 'ogg' || ext === 'm4a') return Music
+    if (ext === 'mp4' || ext === 'mov' || ext === 'avi') return FileVideo
+    if (ext === 'pdf') return FileText
+    
     return File
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
+    console.log('Selected files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })))
     
     const validFiles = files.filter(file => {
       if (file.size > 50 * 1024 * 1024) { // 50MB limit
@@ -43,12 +52,14 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
       const fileExt = file.name.split('.').pop()
       const fileName = `${jobId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
 
-      // Upload to correct bucket name: 'job-files' (with hyphen)
+      console.log(`Uploading ${file.name} (${file.type || 'unknown type'}) to job-files bucket`)
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('job-files')
         .upload(fileName, file, {
           cacheControl: '3600',
-          upsert: false
+          upsert: false,
+          contentType: file.type || 'application/octet-stream'
         })
 
       if (uploadError) throw uploadError
@@ -149,7 +160,7 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
               Click to select files or drag and drop
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              PDFs, documents, audio files, etc. (max 50MB each)
+              PDFs, documents, MP3, audio files, etc. (max 50MB each)
             </p>
           </div>
           <input
@@ -158,7 +169,7 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
             onChange={handleFileSelect}
             className="hidden"
             disabled={isUploading}
-            accept="*/*"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.mp3,.wav,.ogg,.m4a,.aac,.flac,audio/*,application/*,text/*"
           />
         </label>
       </div>
@@ -167,7 +178,7 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
         <div className="mb-4">
           <div className="space-y-2">
             {selectedFiles.map((file, index) => {
-              const Icon = getFileIcon(file.type)
+              const Icon = getFileIcon(file.type, file.name)
               return (
                 <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
