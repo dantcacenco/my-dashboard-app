@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { FileText, Upload, X, Loader2, File } from 'lucide-react'
+import { FileText, Upload, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface FileUploadProps {
@@ -16,25 +16,10 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const supabase = createClient()
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B'
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-  }
-
-  const getFileIcon = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase()
-    if (['pdf'].includes(ext || '')) return '📄'
-    if (['doc', 'docx'].includes(ext || '')) return '📝'
-    if (['xls', 'xlsx'].includes(ext || '')) return '📊'
-    if (['zip', 'rar'].includes(ext || '')) return '📦'
-    return '📎'
-  }
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     
-    // Validate files
+    // Validate file sizes
     const validFiles = files.filter(file => {
       if (file.size > 50 * 1024 * 1024) { // 50MB limit
         toast.error(`${file.name} is too large (max 50MB)`)
@@ -76,8 +61,7 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
           file_name: file.name,
           file_url: publicUrl,
           file_size: file.size,
-          mime_type: file.type,
-          is_visible_to_all: true
+          mime_type: file.type
         })
 
       if (dbError) throw dbError
@@ -125,6 +109,17 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
     setSelectedFiles(prev => prev.filter((_, i) => i !== index))
   }
 
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const files = Array.from(e.dataTransfer.files)
+    const input = { target: { files } } as any
+    handleFileSelect(input)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+  }
+
   return (
     <div className="bg-white rounded-lg border p-4">
       <h3 className="font-medium mb-3 flex items-center gap-2">
@@ -135,7 +130,11 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
       {/* File Input */}
       <div className="mb-4">
         <label className="block w-full cursor-pointer">
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+          <div 
+            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+          >
             <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
             <p className="text-sm text-gray-600">
               Click to select files or drag and drop
@@ -160,12 +159,12 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
           <div className="space-y-2">
             {selectedFiles.map((file, index) => (
               <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                <div className="flex items-center gap-2 flex-1">
-                  <span className="text-xl">{getFileIcon(file.name)}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{file.name}</p>
-                    <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
-                  </div>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <FileText className="h-4 w-4 text-gray-500 flex-shrink-0" />
+                  <span className="text-sm truncate">{file.name}</span>
+                  <span className="text-xs text-gray-500">
+                    ({(file.size / 1024).toFixed(0)} KB)
+                  </span>
                 </div>
                 <button
                   onClick={() => removeFile(index)}
@@ -176,6 +175,9 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
               </div>
             ))}
           </div>
+          <p className="text-sm text-gray-600 mt-2">
+            {selectedFiles.length} file(s) selected
+          </p>
         </div>
       )}
 

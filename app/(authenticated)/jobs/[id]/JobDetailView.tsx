@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import PhotoUploadDebug from '@/components/uploads/PhotoUploadDebug'
+import PhotoUpload from '@/components/uploads/PhotoUpload'
 import FileUpload from '@/components/uploads/FileUpload'
 
 interface JobDetailViewProps {
@@ -354,7 +354,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {currentUserId && (
-                    <PhotoUploadDebug 
+                    <PhotoUpload 
                       jobId={job.id} 
                       userId={currentUserId} 
                       onUploadComplete={refreshJobMedia}

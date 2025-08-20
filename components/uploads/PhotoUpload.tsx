@@ -71,14 +71,14 @@ export default function PhotoUpload({ jobId, userId, onUploadComplete }: PhotoUp
         .from('job-photos')
         .getPublicUrl(fileName)
 
-      // Save to database
+      // Save to database - without photo_type to avoid constraint
       const { error: dbError } = await supabase
         .from('job_photos')
         .insert({
           job_id: jobId,
           uploaded_by: userId,
           photo_url: publicUrl,
-          photo_type: 'job_progress',
+          caption: file.name,
           file_size_bytes: file.size,
           mime_type: file.type
         })
@@ -130,6 +130,17 @@ export default function PhotoUpload({ jobId, userId, onUploadComplete }: PhotoUp
     setPreviews(prev => prev.filter((_, i) => i !== index))
   }
 
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const files = Array.from(e.dataTransfer.files)
+    const input = { target: { files } } as any
+    handleFileSelect(input)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+  }
+
   return (
     <div className="bg-white rounded-lg border p-4">
       <h3 className="font-medium mb-3 flex items-center gap-2">
@@ -140,7 +151,11 @@ export default function PhotoUpload({ jobId, userId, onUploadComplete }: PhotoUp
       {/* File Input */}
       <div className="mb-4">
         <label className="block w-full cursor-pointer">
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+          <div 
+            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+          >
             <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
             <p className="text-sm text-gray-600">
               Click to select photos or drag and drop
