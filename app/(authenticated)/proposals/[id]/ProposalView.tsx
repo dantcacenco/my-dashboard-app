@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Edit, Send, FileText, DollarSign, Calendar, User, MapPin, Phone, Mail } from 'lucide-react'
+import { Edit, Send, FileText, Mail, Link2 } from 'lucide-react'
 import CreateJobModal from './CreateJobModal'
 import SendProposal from './SendProposal'
+import { toast } from 'sonner'
 
 interface ProposalViewProps {
   proposal: any
@@ -27,6 +28,15 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
   const handleSendComplete = () => {
     setShowSendModal(false)
     router.refresh()
+    toast.success('Proposal sent successfully!')
+  }
+
+  const copyCustomerLink = () => {
+    if (proposal.customer_view_token) {
+      const url = `${window.location.origin}/proposal/view/${proposal.customer_view_token}`
+      navigator.clipboard.writeText(url)
+      toast.success('Link copied to clipboard!')
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -43,7 +53,6 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
   const services = proposal.proposal_items?.filter((item: any) => !item.is_addon) || []
   const addons = proposal.proposal_items?.filter((item: any) => item.is_addon) || []
   
-  // Services are always included, add-ons only if selected
   const subtotal = services.reduce((sum: number, item: any) => sum + (item.total_price || 0), 0) +
                    addons.filter((item: any) => item.is_selected).reduce((sum: number, item: any) => sum + (item.total_price || 0), 0)
   
@@ -70,25 +79,25 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
           </span>
           
           <div className="flex gap-2">
-            {proposal.status === 'draft' && (
-              <>
-                <Button onClick={handleEdit} variant="outline">
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-                <Button onClick={() => setShowSendModal(true)}>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send Proposal
-                </Button>
-              </>
-            )}
-            {proposal.status === 'sent' && userRole === 'boss' && (
-              <Button onClick={() => setShowCreateJobModal(true)} variant="default">
-                <FileText className="h-4 w-4 mr-2" />
-                Create Job
+            <Button onClick={handleEdit} variant="outline">
+              <Edit className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+            
+            {/* Always show Send to Customer button */}
+            <Button onClick={() => setShowSendModal(true)} variant="default">
+              <Mail className="h-4 w-4 mr-2" />
+              Send to Customer
+            </Button>
+            
+            {customerViewUrl && (
+              <Button onClick={copyCustomerLink} variant="outline">
+                <Link2 className="h-4 w-4 mr-2" />
+                Copy Link
               </Button>
             )}
-            {proposal.status === 'accepted' && !proposal.job_created && (
+            
+            {(proposal.status === 'sent' || proposal.status === 'accepted') && !proposal.job_created && (
               <Button onClick={() => setShowCreateJobModal(true)} variant="default">
                 <FileText className="h-4 w-4 mr-2" />
                 Create Job
@@ -107,22 +116,22 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
               <CardTitle>Customer Information</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-gray-500" />
-                  <span>{proposal.customers?.name || 'No customer'}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Name</p>
+                  <p className="font-medium">{proposal.customers?.name || 'No customer'}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-gray-500" />
-                  <span>{proposal.customers?.email || '-'}</span>
+                <div>
+                  <p className="text-sm text-gray-600">Email</p>
+                  <p className="font-medium">{proposal.customers?.email || '-'}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-gray-500" />
-                  <span>{proposal.customers?.phone || '-'}</span>
+                <div>
+                  <p className="text-sm text-gray-600">Phone</p>
+                  <p className="font-medium">{proposal.customers?.phone || '-'}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-gray-500" />
-                  <span>{proposal.customers?.address || '-'}</span>
+                <div>
+                  <p className="text-sm text-gray-600">Address</p>
+                  <p className="font-medium">{proposal.customers?.address || '-'}</p>
                 </div>
               </div>
             </CardContent>
@@ -199,7 +208,7 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
                   ))}
                 </div>
                 <div className="mt-4 p-3 bg-blue-50 rounded text-sm text-blue-700">
-                  Note: Add-ons will only be included in the total when selected by the customer
+                  Note: Customers can select add-ons when viewing the proposal
                 </div>
               </CardContent>
             </Card>
@@ -242,7 +251,7 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
           </Card>
 
           {/* Customer View Link */}
-          {customerViewUrl && proposal.status !== 'draft' && (
+          {customerViewUrl && (
             <Card>
               <CardHeader>
                 <CardTitle>Customer Access</CardTitle>
@@ -266,40 +275,13 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
               </CardContent>
             </Card>
           )}
-
-          {/* Dates */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Timeline</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Created:</span>
-                  <span>{new Date(proposal.created_at).toLocaleDateString()}</span>
-                </div>
-                {proposal.sent_date && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Sent:</span>
-                    <span>{new Date(proposal.sent_date).toLocaleDateString()}</span>
-                  </div>
-                )}
-                {proposal.valid_until && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Valid Until:</span>
-                    <span>{new Date(proposal.valid_until).toLocaleDateString()}</span>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
       {/* Modals */}
       {showSendModal && (
         <SendProposal
-          proposalId={proposal?.id || proposal?.proposal_id || ""}
+          proposalId={proposal.id}
           proposalNumber={proposal.proposal_number}
           customer={proposal.customers}
           total={total}
@@ -314,7 +296,8 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
           onClose={() => {
             setShowCreateJobModal(false)
             router.push('/jobs')
-          }}        />
+          }}
+        />
       )}
     </div>
   )

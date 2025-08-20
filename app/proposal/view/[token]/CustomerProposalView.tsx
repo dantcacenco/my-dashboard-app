@@ -1,388 +1,351 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
-import MobileDebug from '@/components/MobileDebug'
+import { createClient } from '@/lib/supabase/client'
+
+interface ProposalData {
+  id: string
+  proposal_number: string
+  title: string
+  description: string
+  subtotal: number
+  tax_rate: number
+  tax_amount: number
+  total: number
+  status: string
+  customers: any
+  proposal_items: any[]
+  customer_view_token: string
+}
 
 interface CustomerProposalViewProps {
-  proposal: any
+  proposal: ProposalData
   token: string
 }
 
 export default function CustomerProposalView({ proposal: initialProposal, token }: CustomerProposalViewProps) {
   const router = useRouter()
   const supabase = createClient()
-  const [proposal, setProposal] = useState(initialProposal)
-  const [isApproving, setIsApproving] = useState(false)
-  const [isRejecting, setIsRejecting] = useState(false)
-  const [showRejectDialog, setShowRejectDialog] = useState(false)
-  const [rejectionReason, setRejectionReason] = useState('')
-  const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set())
-  const [proposalTotal, setProposalTotal] = useState(proposal.total)
+  
+  // Initialize selected add-ons from the proposal
+  const [selectedAddons, setSelectedAddons] = useState<Set<string>>(
+    new Set(initialProposal.proposal_items?.filter(item => item.is_addon && item.is_selected).map(item => item.id))
+  )
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [error, setError] = useState('')
 
-  // Initialize selected addons from proposal items
-  useEffect(() => {
-    const initialAddons = new Set<string>()
-    proposal.proposal_items?.forEach((item: any) => {
-      // Only pre-select addons that are already selected
-      if (item.is_addon && item.is_selected) {
-        initialAddons.add(item.id)
-      }
-    })
-    setSelectedAddons(initialAddons)
-    calculateTotal(initialAddons)
-  }, [])
+  // Separate services and add-ons
+  const services = initialProposal.proposal_items?.filter(item => !item.is_addon) || []
+  const addons = initialProposal.proposal_items?.filter(item => item.is_addon) || []
 
-  const calculateTotal = (addons: Set<string>) => {
-    let subtotal = 0
+  // Toggle addon selection
+  const toggleAddon = (addonId: string) => {
+    const newSelected = new Set(selectedAddons)
+    if (newSelected.has(addonId)) {
+      newSelected.delete(addonId)
+    } else {
+      newSelected.add(addonId)
+    }
+    setSelectedAddons(newSelected)
+  }
+
+  // Calculate totals based on selections
+  const calculateTotals = () => {
+    // Services are always included
+    const servicesTotal = services.reduce((sum: number, item: any) => 
+      sum + (item.total_price || 0), 0
+    )
     
-    // Add base items (non-addons) - they're always included
-    proposal.proposal_items?.forEach((item: any) => {
-      if (!item.is_addon) {
-        subtotal += item.total_price || 0
-      } else if (addons.has(item.id)) {
-        // Add selected addons
-        subtotal += item.total_price || 0
-      }
-    })
-
-    const taxAmount = subtotal * (proposal.tax_rate || 0)
+    // Only selected add-ons
+    const addonsTotal = addons
+      .filter(item => selectedAddons.has(item.id))
+      .reduce((sum: number, item: any) => sum + (item.total_price || 0), 0)
+    
+    const subtotal = servicesTotal + addonsTotal
+    const taxAmount = subtotal * (initialProposal.tax_rate || 0)
     const total = subtotal + taxAmount
     
-    setProposalTotal(total)
-    return total
+    return { servicesTotal, addonsTotal, subtotal, taxAmount, total }
   }
 
-  const toggleAddon = async (itemId: string) => {
-    const newAddons = new Set(selectedAddons)
-    if (newAddons.has(itemId)) {
-      newAddons.delete(itemId)
-    } else {
-      newAddons.add(itemId)
-    }
-    setSelectedAddons(newAddons)
-    
-    // Update the proposal item selection in database
-    const { error } = await supabase
-      .from('proposal_items')
-      .update({ is_selected: newAddons.has(itemId) })
-      .eq('id', itemId)
-    
-    if (error) {
-      console.error('Error updating addon:', error)
-      toast.error('Failed to update selection')
-      return
-    }
-    
-    // Recalculate total
-    const newTotal = calculateTotal(newAddons)
-    
-    // Update proposal total in database
-    const { error: totalError } = await supabase
-      .from('proposals')
-      .update({ 
-        total: newTotal,
-        subtotal: newTotal / (1 + (proposal.tax_rate || 0)),
-        tax_amount: newTotal - (newTotal / (1 + (proposal.tax_rate || 0)))
-      })
-      .eq('id', proposal.id)
-    
-    if (totalError) {
-      console.error('Error updating total:', totalError)
-    }
-  }
+  const totals = calculateTotals()
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
-
+  // Handle proposal approval
   const handleApprove = async () => {
-    setIsApproving(true)
+    setIsProcessing(true)
+    setError('')
+
     try {
-      const response = await fetch('/api/proposal-approval', {
+      // Update selected add-ons in the database
+      for (const addon of addons) {
+        await supabase
+          .from('proposal_items')
+          .update({ is_selected: selectedAddons.has(addon.id) })
+          .eq('id', addon.id)
+      }
+
+      // Update proposal totals and status
+      await supabase
+        .from('proposals')
+        .update({
+          subtotal: totals.subtotal,
+          tax_amount: totals.taxAmount,
+          total: totals.total,
+          status: 'accepted',
+          accepted_at: new Date().toISOString()
+        })
+        .eq('id', initialProposal.id)
+
+      // Create payment session
+      const response = await fetch('/api/create-payment-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          proposalId: proposal.id,
-          action: 'approve'
+          proposalId: initialProposal.id,
+          amount: totals.total,
+          customerEmail: initialProposal.customers?.email,
+          proposalNumber: initialProposal.proposal_number,
+          selectedAddons: Array.from(selectedAddons)
         })
       })
 
-      const data = await response.json()
-
       if (!response.ok) {
-        throw new Error(data.error || data.mobileMessage || 'Failed to approve proposal')
+        throw new Error('Failed to create payment session')
       }
 
-      toast.success('Proposal approved successfully!')
+      const { url } = await response.json()
       
-      // Redirect to payment page
-      if (data.redirectUrl) {
-        router.push(data.redirectUrl)
+      if (url) {
+        // Redirect to Stripe checkout
+        window.location.href = url
       } else {
-        router.push(`/proposal/view/${token}/payment`)
+        // If no payment URL, just show success
+        router.push(`/proposal/payment-success?proposal=${initialProposal.id}`)
       }
-    } catch (error: any) {
-      console.error('Approval error:', error)
-      toast.error(error.message || 'Failed to approve proposal')
-      setIsApproving(false)
+    } catch (err) {
+      console.error('Error approving proposal:', err)
+      setError('Failed to approve proposal. Please try again.')
+      setIsProcessing(false)
     }
   }
 
   const handleReject = async () => {
-    setIsRejecting(true)
+    if (!confirm('Are you sure you want to reject this proposal?')) return
+
+    setIsProcessing(true)
     try {
-      const response = await fetch('/api/proposal-approval', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          proposalId: proposal.id,
-          action: 'reject',
-          rejectionReason
+      await supabase
+        .from('proposals')
+        .update({
+          status: 'rejected',
+          rejected_at: new Date().toISOString()
         })
-      })
+        .eq('id', initialProposal.id)
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || data.mobileMessage || 'Failed to reject proposal')
-      }
-
-      toast.success('Proposal rejected')
-      setShowRejectDialog(false)
-      
-      // Refresh the proposal
-      window.location.reload()
-    } catch (error: any) {
-      console.error('Rejection error:', error)
-      toast.error(error.message || 'Failed to reject proposal')
+      alert('Proposal has been rejected.')
+      router.refresh()
+    } catch (err) {
+      console.error('Error rejecting proposal:', err)
+      setError('Failed to reject proposal.')
     } finally {
-      setIsRejecting(false)
+      setIsProcessing(false)
     }
   }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
-        <div className="bg-white shadow-lg rounded-lg overflow-hidden">
-          {/* Header */}
-          <div className="bg-blue-600 text-white p-6">
-            <h1 className="text-2xl font-bold">{proposal.title}</h1>
-            <p className="mt-2">Proposal #{proposal.proposal_number}</p>
-            <p className="text-sm mt-1 opacity-90">
-              Valid until: {proposal.valid_until ? new Date(proposal.valid_until).toLocaleDateString() : 'No expiration'}
-            </p>
-          </div>
-
-          {/* Customer Info */}
-          <div className="p-6 border-b">
-            <h2 className="text-lg font-semibold mb-3">Customer Information</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-600">Name</p>
-                <p className="font-medium">{proposal.customers?.name}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Email</p>
-                <p className="font-medium">{proposal.customers?.email}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Phone</p>
-                <p className="font-medium">{proposal.customers?.phone}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Address</p>
-                <p className="font-medium">{proposal.customers?.address}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Proposal Items */}
-          <div className="p-6 border-b">
-            <h2 className="text-lg font-semibold mb-3">Services & Options</h2>
-            <div className="space-y-3">
-              {/* Base Services */}
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Included Services</h3>
-                {proposal.proposal_items?.filter((item: any) => !item.is_addon).map((item: any) => (
-                  <div key={item.id} className="p-3 rounded-lg border bg-gray-50 mb-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="font-medium">{item.name}</div>
-                        {item.description && (
-                          <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                        )}
-                        <div className="text-sm text-gray-500 mt-1">
-                          Qty: {item.quantity} × {formatCurrency(item.unit_price)}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold">{formatCurrency(item.total_price)}</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add-ons */}
-              {proposal.proposal_items?.filter((item: any) => item.is_addon).length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">
-                    Optional Add-ons 
-                    <span className="text-xs text-gray-500 ml-2">(Check to include)</span>
-                  </h3>
-                  {proposal.proposal_items?.filter((item: any) => item.is_addon).map((item: any) => (
-                    <div 
-                      key={item.id} 
-                      className={`p-3 rounded-lg border mb-2 transition-colors ${
-                        selectedAddons.has(item.id) 
-                          ? 'bg-orange-50 border-orange-300' 
-                          : 'bg-white border-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedAddons.has(item.id)}
-                            onChange={() => toggleAddon(item.id)}
-                            className="mt-1 h-5 w-5 text-orange-600 rounded cursor-pointer"
-                            disabled={proposal.status !== 'sent'}
-                          />
-                          <div className="flex-1">
-                            <div className="font-medium">
-                              {item.name}
-                              <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded">
-                                ADD-ON
-                              </span>
-                            </div>
-                            {item.description && (
-                              <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                            )}
-                            <div className="text-sm text-gray-500 mt-1">
-                              Qty: {selectedAddons.has(item.id) ? item.quantity : 0} × {formatCurrency(item.unit_price)}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-semibold">
-                            {selectedAddons.has(item.id) 
-                              ? formatCurrency(item.total_price)
-                              : formatCurrency(0)
-                            }
-                          </div>
-                          {!selectedAddons.has(item.id) && (
-                            <div className="text-xs text-gray-500">
-                              +{formatCurrency(item.total_price)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {initialProposal.title}
+              </h1>
+              <p className="text-gray-600 mt-1">
+                Proposal #{initialProposal.proposal_number}
+              </p>
+              {initialProposal.description && (
+                <p className="text-gray-700 mt-3">{initialProposal.description}</p>
               )}
             </div>
-          </div>
-
-          {/* Totals */}
-          <div className="p-6 bg-gray-50">
-            <div className="space-y-2">
-              <div className="flex justify-between text-lg">
-                <span>Subtotal</span>
-                <span>{formatCurrency(proposalTotal / (1 + (proposal.tax_rate || 0)))}</span>
-              </div>
-              <div className="flex justify-between text-lg">
-                <span>Tax ({((proposal.tax_rate || 0) * 100).toFixed(2)}%)</span>
-                <span>{formatCurrency(proposalTotal - (proposalTotal / (1 + (proposal.tax_rate || 0))))}</span>
-              </div>
-              <div className="flex justify-between text-xl font-bold pt-2 border-t">
-                <span>Total</span>
-                <span className="text-blue-600">{formatCurrency(proposalTotal)}</span>
-              </div>
+            <div className="text-right">
+              <span className="inline-block px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-800">
+                {initialProposal.status}
+              </span>
             </div>
           </div>
-
-          {/* Actions */}
-          {proposal.status === 'sent' && (
-            <div className="p-6 bg-white border-t">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={handleApprove}
-                  disabled={isApproving}
-                  className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isApproving ? (
-                    <>Processing...</>
-                  ) : (
-                    <>
-                      <CheckCircleIcon className="h-5 w-5" />
-                      Approve Proposal
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => setShowRejectDialog(true)}
-                  className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 flex items-center justify-center gap-2"
-                >
-                  <XCircleIcon className="h-5 w-5" />
-                  Reject Proposal
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Status Display */}
-          {proposal.status !== 'sent' && (
-            <div className="p-6 bg-white border-t">
-              <div className={`text-center py-3 px-6 rounded-lg ${
-                proposal.status === 'approved' ? 'bg-green-100 text-green-800' :
-                proposal.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                'bg-gray-100 text-gray-800'
-              }`}>
-                Proposal Status: {proposal.status.toUpperCase()}
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Customer Info */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Customer Information</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-600">Name</p>
+              <p className="font-medium">{initialProposal.customers?.name}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Email</p>
+              <p className="font-medium">{initialProposal.customers?.email}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Phone</p>
+              <p className="font-medium">{initialProposal.customers?.phone || '-'}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Address</p>
+              <p className="font-medium">{initialProposal.customers?.address || '-'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Services */}
+        {services.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-4">Services</h2>
+            <div className="space-y-3">
+              {services.map((item: any) => (
+                <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
+                  <div className="flex justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-medium">{item.name}</h3>
+                      <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        Qty: {item.quantity} × ${item.unit_price?.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-lg">${item.total_price?.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Optional Add-ons */}
+        {addons.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-4">Optional Add-ons</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Select any additional services you'd like to include:
+            </p>
+            <div className="space-y-3">
+              {addons.map((item: any) => (
+                <div 
+                  key={item.id} 
+                  className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                    selectedAddons.has(item.id) 
+                      ? 'bg-orange-50 border-orange-300' 
+                      : 'bg-gray-50 border-gray-200 opacity-75'
+                  }`}
+                  onClick={() => toggleAddon(item.id)}
+                >
+                  <div className="flex items-start">
+                    <input
+                      type="checkbox"
+                      checked={selectedAddons.has(item.id)}
+                      onChange={() => toggleAddon(item.id)}
+                      className="mt-1 mr-3 w-4 h-4 text-orange-600 focus:ring-orange-500"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium">{item.name}</h3>
+                        <span className="text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded">
+                          Add-on
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        Qty: {item.quantity} × ${item.unit_price?.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="text-right ml-4">
+                      <p className={`font-bold text-lg ${
+                        selectedAddons.has(item.id) ? 'text-green-600' : 'text-gray-400'
+                      }`}>
+                        ${item.total_price?.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Totals */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Total</h2>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span>Services:</span>
+              <span>${totals.servicesTotal.toFixed(2)}</span>
+            </div>
+            {totals.addonsTotal > 0 && (
+              <div className="flex justify-between text-orange-600">
+                <span>Selected Add-ons:</span>
+                <span>+${totals.addonsTotal.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-medium pt-2 border-t">
+              <span>Subtotal:</span>
+              <span>${totals.subtotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Tax ({(initialProposal.tax_rate * 100).toFixed(1)}%):</span>
+              <span>${totals.taxAmount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-xl pt-2 border-t">
+              <span>Total:</span>
+              <span className="text-green-600">${totals.total.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-6">
+            {error}
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        {initialProposal.status === 'sent' && (
+          <div className="flex gap-4">
+            <button
+              onClick={handleApprove}
+              disabled={isProcessing}
+              className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {isProcessing ? 'Processing...' : '✓ Approve Proposal'}
+            </button>
+            <button
+              onClick={handleReject}
+              disabled={isProcessing}
+              className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              ✗ Reject Proposal
+            </button>
+          </div>
+        )}
+
+        {initialProposal.status === 'accepted' && (
+          <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg p-4 text-center">
+            <p className="font-semibold">This proposal has been accepted.</p>
+          </div>
+        )}
+
+        {initialProposal.status === 'rejected' && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-center">
+            <p className="font-semibold">This proposal has been rejected.</p>
+          </div>
+        )}
       </div>
-
-      {/* Reject Dialog */}
-      {showRejectDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold mb-3">Reject Proposal</h3>
-            <textarea
-              value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-              placeholder="Please provide a reason for rejection (optional)"
-              className="w-full p-3 border rounded-lg mb-4"
-              rows={4}
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowRejectDialog(false)}
-                className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleReject}
-                disabled={isRejecting}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-              >
-                {isRejecting ? 'Rejecting...' : 'Confirm Reject'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
