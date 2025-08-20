@@ -24,7 +24,7 @@ export default async function ProposalPage({ params }: PageProps) {
     .eq('id', user.id)
     .single()
 
-  // Get proposal with all related data - using is_addon instead of item_type
+  // Get proposal with ACTUAL column names from database
   const { data: proposal, error } = await supabase
     .from('proposals')
     .select(`
@@ -38,15 +38,17 @@ export default async function ProposalPage({ params }: PageProps) {
       ),
       proposal_items (
         id,
+        proposal_id,
+        pricing_item_id,
         name,
-        title,
         description,
         quantity,
         unit_price,
         total_price,
         is_addon,
         is_selected,
-        sort_order
+        sort_order,
+        created_at
       ),
       payment_stages (
         id,
@@ -76,11 +78,14 @@ export default async function ProposalPage({ params }: PageProps) {
     return notFound()
   }
 
-  // Transform is_addon to item_type for consistency with ProposalView
+  // Transform the data for ProposalView compatibility
+  // ProposalView expects 'title' but database has 'name'
+  // ProposalView expects 'item_type' but database has 'is_addon'
   if (proposal.proposal_items) {
     proposal.proposal_items = proposal.proposal_items.map((item: any) => ({
       ...item,
-      item_type: item.is_addon ? 'add_on' : 'service'
+      title: item.name, // Map name to title
+      item_type: item.is_addon ? 'add_on' : 'service' // Create item_type from is_addon
     }))
   }
 
