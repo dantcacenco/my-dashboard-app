@@ -1,5 +1,6 @@
 -- ================================================
 -- Fix Critical Security Issues in Service Pro DB
+-- Run this entire script in Supabase SQL Editor
 -- ================================================
 
 -- 1. FIX: dashboard_stats view with SECURITY DEFINER
@@ -7,6 +8,7 @@
 DROP VIEW IF EXISTS public.dashboard_stats CASCADE;
 
 -- Recreate the view without SECURITY DEFINER (use SECURITY INVOKER instead - default)
+-- Using correct column names: subtotal, tax_amount, deposit_amount, etc.
 CREATE OR REPLACE VIEW public.dashboard_stats AS
 SELECT 
     -- Job counts
@@ -19,9 +21,9 @@ SELECT
     COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'approved') as approved_proposals,
     COUNT(DISTINCT p.id) FILTER (WHERE p.created_at >= CURRENT_DATE - INTERVAL '7 days') as new_proposals_this_week,
     
-    -- Revenue metrics
-    COALESCE(SUM(p.total_amount) FILTER (WHERE p.status = 'approved' AND p.created_at >= CURRENT_DATE - INTERVAL '30 days'), 0) as revenue_this_month,
-    COALESCE(SUM(p.total_amount) FILTER (WHERE p.status = 'approved' AND p.created_at >= CURRENT_DATE - INTERVAL '7 days'), 0) as revenue_this_week,
+    -- Revenue metrics (using subtotal + tax_amount as total)
+    COALESCE(SUM(p.subtotal + COALESCE(p.tax_amount, 0)) FILTER (WHERE p.status = 'approved' AND p.created_at >= CURRENT_DATE - INTERVAL '30 days'), 0) as revenue_this_month,
+    COALESCE(SUM(p.subtotal + COALESCE(p.tax_amount, 0)) FILTER (WHERE p.status = 'approved' AND p.created_at >= CURRENT_DATE - INTERVAL '7 days'), 0) as revenue_this_week,
     
     -- Customer metrics
     COUNT(DISTINCT c.id) as total_customers,
@@ -295,4 +297,3 @@ WHERE tablename IN (
     'job_activity_log'
 )
 ORDER BY tablename, policyname;
-
