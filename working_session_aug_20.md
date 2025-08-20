@@ -33,35 +33,40 @@
 - Shows both scheduled_date and scheduled_time
 - Only displays time if it exists
 
+### 5. **Fixed Duplicate Add-ons Issue** ✅ JUST COMPLETED
+- **Problem**: Proposals saving duplicate add-on items (4x same item)
+- **Root Cause**: Malformed `is_selected` property and no deduplication
+- **Solution**: 
+  - Fixed property assignment bug
+  - Added duplicate prevention when adding items
+  - Use Map to ensure uniqueness during database save
+  - Added sort_order for consistent item ordering
+- **Files Changed**: `/app/(authenticated)/proposals/[id]/edit/ProposalEditor.tsx`
+
 ---
 
 ## 🔴 REMAINING PRIORITY TASKS
 
-### **1. Fix Duplicate Add-ons Issue** 🔴 HIGH
-**Problem**: Proposals saving duplicate add-on items (4x same item)  
-**Location**: `/app/(authenticated)/proposals/[id]/edit/ProposalEditor.tsx`  
-**Solution Needed**: Check save logic, prevent duplicates
-
-### **2. Add Customer Button** 🔴 HIGH
+### **1. Add Customer Button** 🔴 HIGH
 **Problem**: "Add Customer" button exists but doesn't work  
 **Files Needed**:
 - Create `/app/(authenticated)/customers/AddCustomerModal.tsx`
 - Update CustomersList to trigger modal
 **Fields**: name, email, phone, address, notes
 
-### **3. Edit Job Modal** 🔴 HIGH
+### **2. Edit Job Modal** 🔴 HIGH
 **Problem**: Edit Job button doesn't work  
 **Files Needed**: 
 - `/app/(authenticated)/jobs/[id]/EditJobModal.tsx`
 - Import TechnicianSearch component
 **Features**: Edit details, assign technicians, save changes
 
-### **4. Functional File Upload** 🟡 MEDIUM
+### **3. Functional File Upload** 🟡 MEDIUM
 **Problem**: Files tab shows placeholder only  
 **Storage**: Use `job-files` bucket (already created)  
 **Database**: Save to `job_files` table
 
-### **5. Remove Invoices from Navigation** 🟢 LOW
+### **4. Remove Invoices from Navigation** 🟢 LOW
 **File**: `/components/Navigation.tsx`  
 **Action**: Remove Invoices link from navigationLinks array
 
@@ -129,14 +134,24 @@ EOF
 chmod +x fix-something.sh && ./fix-something.sh && rm -f fix-something.sh
 ```
 
-### **Data Transformation Pattern**
+### **Component Props Pattern**
 ```typescript
-// Database has 'name', component expects 'title'
-proposal_items: items?.map(item => ({
-  ...item,
-  title: item.name, // Map database field to component field
-  item_type: item.is_addon ? 'add_on' : 'service'
-}))
+// Always check interface definitions first
+// ServiceSearch expects: onAddItem, onClose, onShowAddNew
+// AddNewPricingItem expects: onCancel (not onClose), onPricingItemAdded, userId
+```
+
+### **Deduplication Pattern**
+```typescript
+// Use Map for uniqueness by composite key
+const uniqueItemsMap = new Map()
+items.forEach(item => {
+  const key = `${item.name}-${item.is_addon}`
+  if (!uniqueItemsMap.has(key)) {
+    uniqueItemsMap.set(key, item)
+  }
+})
+const uniqueItems = Array.from(uniqueItemsMap.values())
 ```
 
 ---
@@ -148,6 +163,8 @@ proposal_items: items?.map(item => ({
 3. **Transform data after fetch** - Map database fields to component expectations
 4. **Test in incognito** - Avoids cache issues
 5. **Add debug logging** - Essential for troubleshooting production issues
+6. **Check component interfaces** - Verify prop names before using components
+7. **Use Maps for deduplication** - Efficient way to ensure uniqueness by composite keys
 
 ---
 
@@ -162,9 +179,9 @@ Please load the working session file first:
 /Users/dantcacenco/Documents/GitHub/my-dashboard-app/working_session_aug_20.md
 
 Current priorities:
-1. Fix duplicate add-on items being saved in proposals
-2. Implement Add Customer modal functionality
-3. Create Edit Job modal with technician assignment
+1. Implement Add Customer modal functionality
+2. Create Edit Job modal with technician assignment
+3. Add functional file upload for jobs
 
 Use Desktop Commander for all file operations. Create single .sh scripts that replace entire files, test with TypeScript checking, and auto-commit/push to GitHub.
 ```
@@ -181,5 +198,8 @@ Use Desktop Commander for all file operations. Create single .sh scripts that re
 
 ---
 
-*Session ended at ~95% chat capacity*  
-*Last commit: d6a8756 - Finalize working proposal display solution*
+## 📈 PROGRESS STATUS
+- **Chat Capacity**: ~40% used
+- **Tasks Completed**: 5/9 priority items
+- **Build Status**: ✅ Passing (with warnings)
+- **Last Commit**: 21a6a07 - Fix AddNewPricingItem props

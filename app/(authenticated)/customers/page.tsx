@@ -1,41 +1,78 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Plus, Search, Users } from 'lucide-react'
+import AddCustomerModal from './AddCustomerModal'
 
-export const metadata = {
-  title: 'Customers | Service Pro',
-}
-
-export default async function CustomersPage() {
-  const supabase = await createClient()
+export default function CustomersPage() {
+  const [customers, setCustomers] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [userId, setUserId] = useState<string>('')
   
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  const supabase = createClient()
+  const router = useRouter()
 
-  // Get all customers with their proposals and jobs
-  const { data: customers, error } = await supabase
-    .from('customers')
-    .select(`
-      *,
-      proposals (
-        id,
-        total,
-        status,
-        total_paid
-      ),
-      jobs (
-        id,
-        status
-      )
-    `)
-    .order('name', { ascending: true })
+  useEffect(() => {
+    checkAuth()
+    fetchCustomers()
+  }, [])
 
-  if (error) {
-    console.error('Error fetching customers:', error)
+  const checkAuth = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      router.push('/auth/login')
+    } else {
+      setUserId(user.id)
+    }
+  }
+
+  const fetchCustomers = async () => {
+    setIsLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select(`
+          *,
+          proposals (
+            id,
+            total,
+            status,
+            total_paid
+          ),
+          jobs (
+            id,
+            status
+          )
+        `)
+        .order('name', { ascending: true })
+
+      if (error) throw error
+      setCustomers(data || [])
+    } catch (error) {
+      console.error('Error fetching customers:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCustomerAdded = (newCustomer: any) => {
+    setCustomers([...customers, newCustomer])
+    setShowAddModal(false)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-6 flex justify-center items-center">
+        <div className="text-gray-500">Loading customers...</div>
+      </div>
+    )
   }
 
   return (
@@ -45,7 +82,7 @@ export default async function CustomersPage() {
           <h1 className="text-3xl font-bold">Customers</h1>
           <p className="text-muted-foreground">Manage your customer relationships</p>
         </div>
-        <Button>
+        <Button onClick={() => setShowAddModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Customer
         </Button>
@@ -55,7 +92,7 @@ export default async function CustomersPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            All Customers ({customers?.length || 0})
+            All Customers ({customers.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -72,7 +109,7 @@ export default async function CustomersPage() {
                 </tr>
               </thead>
               <tbody>
-                {customers?.map((customer) => {
+                {customers.map((customer) => {
                   const totalRevenue = customer.proposals?.reduce((sum: number, p: any) => sum + (p.total || 0), 0) || 0
                   const totalPaid = customer.proposals?.reduce((sum: number, p: any) => sum + (p.total_paid || 0), 0) || 0
                   const activeJobs = customer.jobs?.filter((j: any) => j.status !== 'completed').length || 0
@@ -98,29 +135,44 @@ export default async function CustomersPage() {
                         <Badge variant="secondary">{customer.proposals?.length || 0}</Badge>
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <Badge variant={activeJobs > 0 ? "default" : "secondary"}>
-                          {customer.jobs?.length || 0}
-                        </Badge>
+                        {activeJobs > 0 && (
+                          <Badge variant="default">{activeJobs} active</Badge>
+                        )}
+                        {customer.jobs?.length > 0 && (
+                          <span className="text-sm text-gray-500 ml-2">
+                            ({customer.jobs.length} total)
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right font-medium">
                         ${totalRevenue.toFixed(2)}
                       </td>
-                      <td className="py-3 px-4 text-right text-green-600 font-medium">
-                        ${totalPaid.toFixed(2)}
+                      <td className="py-3 px-4 text-right">
+                        <span className={totalPaid > 0 ? 'text-green-600' : 'text-gray-400'}>
+                          ${totalPaid.toFixed(2)}
+                        </span>
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
-            {(!customers || customers.length === 0) && (
-              <div className="text-center py-8 text-muted-foreground">
-                No customers found
+            
+            {customers.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                No customers yet. Click "Add Customer" to get started.
               </div>
             )}
           </div>
         </CardContent>
       </Card>
+
+      <AddCustomerModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onCustomerAdded={handleCustomerAdded}
+        userId={userId}
+      />
     </div>
   )
 }
