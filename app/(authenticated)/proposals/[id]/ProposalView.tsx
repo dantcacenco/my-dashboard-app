@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Edit, Send, FileText, DollarSign, Calendar, User } from 'lucide-react'
 import Link from 'next/link'
-import { CreateJobModal } from './CreateJobModal'
+import CreateJobModal from './CreateJobModal'
 import ProposalItemsDisplay from '@/components/ProposalItemsDisplay'
 
 interface ProposalViewProps {
