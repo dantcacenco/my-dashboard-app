@@ -339,8 +339,8 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
               {/* Add New Pricing Item Modal */}
               {showAddNewPricing && (
                 <AddNewPricingItem
-                  isOpen={showAddNewPricing}
-                  onClose={() => setShowAddNewPricing(false)}
+                  
+                  onCancel={() => setShowAddNewPricing(false)}
                   onPricingItemAdded={handlePricingItemAdded}
                   userId={userId}
                 />
