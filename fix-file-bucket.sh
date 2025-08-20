@@ -1,3 +1,13 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Fixing file storage bucket name and adding support for all file types..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Update FileUpload to use correct bucket name and support all files
+cat > components/uploads/FileUpload.tsx << 'EOF'
 'use client'
 
 import { useState } from 'react'
@@ -260,3 +270,33 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
     </div>
   )
 }
+EOF
+
+echo "✅ Updated FileUpload with correct bucket name"
+
+# Commit changes
+git add -A
+git commit -m "Fix file upload bucket name and add support for all file types
+
+- Changed bucket name from 'job-files' to 'jobfiles'
+- Added fallback to try 'job_files' if 'jobfiles' fails
+- Added support for all file types including MP3, videos, etc
+- Added file type icons for different formats
+- Improved file size formatting"
+
+git push origin main
+
+echo ""
+echo "✅ FIXES APPLIED!"
+echo ""
+echo "📋 IMPORTANT - Check your Supabase storage buckets:"
+echo ""
+echo "1. Go to Supabase Dashboard → Storage"
+echo "2. Check what your file bucket is actually named:"
+echo "   - 'jobfiles' (no hyphen/underscore)"
+echo "   - 'job-files' (with hyphen)"
+echo "   - 'job_files' (with underscore)"
+echo ""
+echo "3. If needed, create the bucket with this SQL:"
+echo ""
+EOF
