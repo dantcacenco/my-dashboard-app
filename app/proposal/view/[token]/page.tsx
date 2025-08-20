@@ -10,7 +10,7 @@ export default async function CustomerProposalPage({ params }: PageProps) {
   const { token } = await params
   const supabase = await createClient()
 
-  // Get proposal by token
+  // Get proposal by token with ALL necessary fields
   const { data: proposal, error } = await supabase
     .from('proposals')
     .select(`
@@ -29,6 +29,8 @@ export default async function CustomerProposalPage({ params }: PageProps) {
         quantity,
         unit_price,
         total_price,
+        is_addon,
+        is_selected,
         sort_order
       )
     `)
@@ -36,7 +38,13 @@ export default async function CustomerProposalPage({ params }: PageProps) {
     .single()
 
   if (error || !proposal) {
+    console.error('Error fetching proposal:', error)
     notFound()
+  }
+
+  // Sort proposal items by sort_order
+  if (proposal.proposal_items) {
+    proposal.proposal_items.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
   }
 
   return <CustomerProposalView proposal={proposal} token={token} />
