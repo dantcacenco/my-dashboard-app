@@ -14,7 +14,8 @@ import {
 import Link from 'next/link'
 import { toast } from 'sonner'
 import PhotoUpload from '@/components/uploads/PhotoUpload'
-import FileUploadDebug from '@/components/uploads/FileUploadDebug'
+import FileUpload from '@/components/uploads/FileUpload'
+import MediaViewer from '@/components/MediaViewer'
 
 interface JobDetailViewProps {
   job: any
@@ -36,6 +37,9 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
   const [jobPhotos, setJobPhotos] = useState<any[]>([])
   const [jobFiles, setJobFiles] = useState<any[]>([])
   const [currentUserId, setCurrentUserId] = useState(userId)
+  const [viewerOpen, setViewerOpen] = useState(false)
+  const [viewerItems, setViewerItems] = useState<any[]>([])
+  const [viewerIndex, setViewerIndex] = useState(0)
 
   useEffect(() => {
     loadTechnicians()
@@ -80,10 +84,6 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
       .eq('job_id', job.id)
       .order('created_at', { ascending: false })
     
-    if (error) {
-      console.error('[JobDetailView] Error loading photos:', error)
-    }
-    
     setJobPhotos(data || [])
   }
 
@@ -94,11 +94,34 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
       .eq('job_id', job.id)
       .order('created_at', { ascending: false })
     
-    if (error) {
-      console.error('[JobDetailView] Error loading files:', error)
-    }
-    
     setJobFiles(data || [])
+  }
+
+  const openPhotoViewer = (index: number) => {
+    const items = jobPhotos.map(photo => ({
+      id: photo.id,
+      url: photo.photo_url,
+      name: photo.caption || 'Photo',
+      caption: photo.caption,
+      type: 'photo' as const,
+      mime_type: photo.mime_type
+    }))
+    setViewerItems(items)
+    setViewerIndex(index)
+    setViewerOpen(true)
+  }
+
+  const openFileViewer = (index: number) => {
+    const items = jobFiles.map(file => ({
+      id: file.id,
+      url: file.file_url,
+      name: file.file_name,
+      type: 'file' as const,
+      mime_type: file.mime_type
+    }))
+    setViewerItems(items)
+    setViewerIndex(index)
+    setViewerOpen(true)
   }
 
   const handleSaveOverview = async () => {
@@ -355,20 +378,18 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                   
                   {jobPhotos.length > 0 && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {jobPhotos.map((photo) => (
+                      {jobPhotos.map((photo, index) => (
                         <div key={photo.id} className="relative group">
-                          <a 
-                            href={photo.photo_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="block aspect-square overflow-hidden rounded-lg bg-gray-100"
+                          <button
+                            onClick={() => openPhotoViewer(index)}
+                            className="block w-full aspect-square overflow-hidden rounded-lg bg-gray-100 hover:opacity-90 transition-opacity"
                           >
                             <img 
                               src={photo.photo_url} 
                               alt={photo.caption || 'Job photo'}
-                              className="w-full h-full object-cover hover:scale-105 transition-transform"
+                              className="w-full h-full object-cover"
                             />
-                          </a>
+                          </button>
                           <button
                             onClick={() => deletePhoto(photo.id)}
                             className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -399,7 +420,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {currentUserId && (
-                    <FileUploadDebug 
+                    <FileUpload 
                       jobId={job.id} 
                       userId={currentUserId} 
                       onUploadComplete={refreshJobMedia}
@@ -408,13 +429,11 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                   
                   {jobFiles.length > 0 && (
                     <div className="space-y-2">
-                      {jobFiles.map((file) => (
+                      {jobFiles.map((file, index) => (
                         <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
-                          <a 
-                            href={file.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-3 flex-1 min-w-0"
+                          <button
+                            onClick={() => openFileViewer(index)}
+                            className="flex items-center gap-3 flex-1 min-w-0 text-left"
                           >
                             <FileText className="h-5 w-5 text-gray-500 flex-shrink-0" />
                             <div className="flex-1 min-w-0">
@@ -425,7 +444,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                                 {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
                               </p>
                             </div>
-                          </a>
+                          </button>
                           <button
                             onClick={() => deleteFile(file.id)}
                             className="text-red-500 hover:text-red-700 p-2"
@@ -541,6 +560,15 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
           </Card>
         </div>
       </div>
+
+      {/* Media Viewer Modal */}
+      {viewerOpen && (
+        <MediaViewer
+          items={viewerItems}
+          initialIndex={viewerIndex}
+          onClose={() => setViewerOpen(false)}
+        />
+      )}
 
       {/* Edit Job Modal */}
       {showEditModal && (
