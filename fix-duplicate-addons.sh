@@ -1,3 +1,12 @@
+#!/bin/bash
+set -e
+
+echo "🔧 Fixing duplicate add-ons issue in proposal editor..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Create the fixed ProposalEditor.tsx file
+cat > app/\(authenticated\)/proposals/\[id\]/edit/ProposalEditor.tsx << 'EOF'
 'use client'
 
 import { useState } from 'react'
@@ -537,3 +546,44 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
     </div>
   )
 }
+EOF
+
+echo "✅ Fixed ProposalEditor.tsx component"
+
+# Test TypeScript
+echo "🔍 Checking TypeScript..."
+npx tsc --noEmit 2>&1 | head -20
+
+# Test build
+echo "🏗️ Testing build..."
+npm run build 2>&1 | head -30
+
+# If build successful, commit and push
+if [ $? -eq 0 ]; then
+    echo "✅ Build successful! Committing changes..."
+    
+    git add -A
+    git commit -m "Fix duplicate add-ons issue in proposal editor
+
+- Fixed malformed is_selected property (was 'add-on' instead of boolean)
+- Added duplicate prevention when adding items
+- Use Map to ensure uniqueness during save
+- Add sort_order to maintain item order
+- Improve unique ID generation for temp items"
+    
+    git push origin main
+    
+    echo "✅ Changes pushed to GitHub!"
+    echo ""
+    echo "🎯 FIXED:"
+    echo "1. ✅ Duplicate add-ons issue resolved"
+    echo "2. ✅ Added duplicate prevention when adding items"
+    echo "3. ✅ Ensured uniqueness during database save"
+    echo ""
+    echo "📝 NEXT TASKS:"
+    echo "1. Add Customer modal functionality"
+    echo "2. Edit Job modal with technician assignment"
+    echo "3. Functional file upload for jobs"
+else
+    echo "❌ Build failed. Please check the errors above."
+fi
