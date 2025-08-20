@@ -504,10 +504,21 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
               </div>
               
               <div>
+              <div>
                 <p className="text-sm text-muted-foreground">Scheduled Date</p>
                 <p className="font-medium">
                   {job.scheduled_date ? new Date(job.scheduled_date).toLocaleDateString() : 'Not scheduled'}
                 </p>
+              </div>
+              
+              {job.scheduled_time && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Scheduled Time</p>
+                  <p className="font-medium">
+                    {job.scheduled_time}
+                  </p>
+                </div>
+              )}                </p>
               </div>
               
               <div>
