@@ -69,7 +69,7 @@ export default async function ProposalPage({ params }: PageProps) {
     <ProposalView 
       proposal={proposal} 
       userRole={profile.role}
-      userId={user.id}
+      
     />
   )
 }

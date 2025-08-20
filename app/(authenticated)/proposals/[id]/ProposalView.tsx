@@ -143,7 +143,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
       {/* Create Job Modal */}
       {showCreateJobModal && (
         <CreateJobModal
-          isOpen={showCreateJobModal}
+          open={showCreateJobModal}
           onClose={() => setShowCreateJobModal(false)}
           proposal={proposal}
         />
