@@ -1,3 +1,13 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Creating comprehensive debug version..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Create a debug page that shows EVERYTHING
+cat > app/\(authenticated\)/proposals/\[id\]/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import ProposalView from './ProposalView'
@@ -202,3 +212,31 @@ export default async function ProposalPage({ params }: PageProps) {
 
   return <ProposalView proposal={proposalFull} userRole={profile?.role || 'viewer'} />
 }
+EOF
+
+echo "✅ Created comprehensive debug version"
+
+# Commit and push
+git add -A
+git commit -m "Add comprehensive debugging for proposal display
+
+- Try queries step by step to isolate the issue
+- Show exactly which query fails and why
+- Display all collected data for debugging
+- Attempt to show proposal even if joins fail
+- Add ?debug=true option for production debugging"
+
+git push origin main
+
+echo "✅ Debug version deployed!"
+echo ""
+echo "📋 What this does:"
+echo "1. Tries basic proposal fetch (no joins)"
+echo "2. Tries proposal_items separately"
+echo "3. Tries customer separately"
+echo "4. Tries full join query"
+echo "5. Shows exactly where it fails with full error details"
+echo "6. Shows all data that WAS successfully fetched"
+echo "7. Attempts to display proposal with separate queries if join fails"
+echo ""
+echo "Add ?debug=true to URL for extra debug info even on success"
