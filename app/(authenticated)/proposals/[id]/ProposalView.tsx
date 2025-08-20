@@ -299,7 +299,7 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
       {/* Modals */}
       {showSendModal && (
         <SendProposal
-          proposalId={proposal.id}
+          proposalId={proposal?.id || proposal?.proposal_id || ""}
           proposalNumber={proposal.proposal_number}
           customer={proposal.customers}
           total={total}
