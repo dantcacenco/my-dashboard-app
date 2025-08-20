@@ -2,11 +2,11 @@
 
 set -e
 
-echo "🔧 Fixing proposal redirect issue..."
+echo "🔧 Fixing proposal_items column issue..."
 
 cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
 
-# Update page.tsx to handle errors better and not redirect immediately
+# Fix the page.tsx to use the correct column names
 cat > app/\(authenticated\)/proposals/\[id\]/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
@@ -34,7 +34,7 @@ export default async function ProposalPage({ params }: PageProps) {
     .eq('id', user.id)
     .single()
 
-  // Get proposal with all related data
+  // Get proposal with all related data - using is_addon instead of item_type
   const { data: proposal, error } = await supabase
     .from('proposals')
     .select(`
@@ -48,12 +48,14 @@ export default async function ProposalPage({ params }: PageProps) {
       ),
       proposal_items (
         id,
-        item_type,
+        name,
         title,
         description,
         quantity,
         unit_price,
         total_price,
+        is_addon,
+        is_selected,
         sort_order
       ),
       payment_stages (
@@ -84,6 +86,14 @@ export default async function ProposalPage({ params }: PageProps) {
     return notFound()
   }
 
+  // Transform is_addon to item_type for consistency with ProposalView
+  if (proposal.proposal_items) {
+    proposal.proposal_items = proposal.proposal_items.map((item: any) => ({
+      ...item,
+      item_type: item.is_addon ? 'add_on' : 'service'
+    }))
+  }
+
   return (
     <ProposalView 
       proposal={proposal} 
@@ -93,18 +103,17 @@ export default async function ProposalPage({ params }: PageProps) {
 }
 EOF
 
-echo "✅ Fixed page.tsx with better error handling"
+echo "✅ Fixed column names in page.tsx"
 
 # Commit and push
 git add -A
-git commit -m "Fix proposal redirect issue - show errors instead of redirecting
+git commit -m "Fix proposal_items column names - use is_addon instead of item_type
 
-- Remove immediate redirect on error
-- Show error details to help debug
-- Use notFound() for proper 404 handling
-- Keep user on proposal page even if there's an error"
+- Database uses is_addon boolean, not item_type string
+- Transform data after fetch to maintain consistency
+- This fixes the column does not exist error"
 
 git push origin main
 
-echo "✅ Fix deployed! Proposals should now display properly."
-echo "📋 Chat Status: ~80% used, 20% remaining"
+echo "✅ Fix deployed! Proposals should now load properly."
+echo "📋 Chat Status: ~85% used, 15% remaining"
