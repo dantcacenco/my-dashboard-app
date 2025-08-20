@@ -68,5 +68,5 @@ export default async function ProposalPage({ params }: PageProps) {
     })) || []
   }
 
-  return <ProposalView proposal={fullProposal} userRole={profile?.role || 'viewer'} />
+  return <ProposalView proposal={fullProposal} userRole={profile?.role || 'viewer'} userId={user?.id || ''} />
 }
