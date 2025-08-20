@@ -1,3 +1,13 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Adding debug logging to ProposalView to diagnose issue..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Update ProposalView to add debugging
+cat > app/\(authenticated\)/proposals/\[id\]/ProposalView.tsx << 'EOF'
 'use client'
 
 import { useState } from 'react'
@@ -259,3 +269,22 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
     </div>
   )
 }
+EOF
+
+echo "✅ Updated ProposalView with extensive debugging"
+
+# Clean up and commit
+rm -f app/\(authenticated\)/proposals/\[id\]/page.tsx.backup
+
+git add -A
+git commit -m "Add debug logging to ProposalView to diagnose items issue
+
+- Added extensive console logging
+- Shows raw item data in debug section
+- Helps identify if items are missing or have wrong structure"
+
+git push origin main
+
+echo "✅ Debug version deployed. Check browser console for detailed info."
+echo ""
+echo "📋 Chat Status: ~75% used, 25% remaining"
