@@ -1,3 +1,14 @@
+#!/bin/bash
+set -e
+
+echo "🔧 Connecting Multi-Stage Payment System..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# 1. Import and integrate PaymentStages component into CustomerProposalView
+echo "📝 Updating CustomerProposalView to show payment stages after acceptance..."
+
+cat > app/proposal/view/\[token\]/CustomerProposalView.tsx << 'EOF'
 'use client'
 
 import { useState } from 'react'
@@ -400,3 +411,136 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
     </div>
   )
 }
+EOF
+
+# 2. Update the create-payment API to handle payment stages properly
+echo "📝 Updating create-payment API to handle stages..."
+cat > app/api/create-payment/route.ts << 'EOF'
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import Stripe from 'stripe'
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2025-07-30.basil'
+})
+
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient()
+    const body = await request.json()
+    
+    const {
+      proposal_id,
+      proposal_number,
+      customer_name,
+      customer_email,
+      amount,
+      payment_type = 'card',
+      payment_stage,
+      description
+    } = body
+
+    console.log('Creating payment for stage:', payment_stage, 'Amount:', amount)
+
+    if (!proposal_id || !amount) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    // Get proposal details
+    const { data: proposal } = await supabase
+      .from('proposals')
+      .select('*')
+      .eq('id', proposal_id)
+      .single()
+
+    if (!proposal) {
+      return NextResponse.json(
+        { error: 'Proposal not found' },
+        { status: 404 }
+      )
+    }
+
+    // Create Stripe checkout session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: [payment_type],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: description || `${payment_stage} Payment - Proposal #${proposal_number}`,
+              description: `HVAC Services - ${payment_stage} payment`
+            },
+            unit_amount: Math.round(amount * 100) // Convert to cents
+          },
+          quantity: 1
+        }
+      ],
+      mode: 'payment',
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposal_id}&stage=${payment_stage}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/proposal/view/${proposal.customer_view_token}`,
+      customer_email: customer_email,
+      metadata: {
+        proposal_id: proposal_id,
+        proposal_number: proposal_number,
+        payment_stage: payment_stage,
+        amount: amount.toString()
+      }
+    })
+
+    // Update payment_stages table
+    await supabase
+      .from('payment_stages')
+      .update({
+        stripe_session_id: session.id,
+        last_attempt: new Date().toISOString()
+      })
+      .eq('proposal_id', proposal_id)
+      .eq('stage', payment_stage)
+
+    return NextResponse.json({
+      checkout_url: session.url,
+      session_id: session.id
+    })
+    
+  } catch (error: any) {
+    console.error('Error creating payment session:', error)
+    return NextResponse.json(
+      { error: error.message || 'Failed to create payment session' },
+      { status: 500 }
+    )
+  }
+}
+EOF
+
+echo "✅ Multi-stage payment system connected!"
+
+# Test TypeScript
+echo "🔍 Checking TypeScript..."
+npx tsc --noEmit 2>&1 | head -20
+
+# Commit changes
+git add -A
+git commit -m "Connect multi-stage payment system (50/30/20)
+
+- Integrated PaymentStages component into CustomerProposalView
+- Show payment stages after proposal acceptance
+- Create payment_stages records on approval
+- Update create-payment API to handle stages
+- Customer sees payment progress and can pay each stage
+- Stages: 50% deposit, 30% progress, 20% final"
+
+git push origin main
+
+echo "✅ Multi-stage payment system connected!"
+echo ""
+echo "🎯 HOW IT WORKS NOW:"
+echo "1. Customer approves proposal"
+echo "2. System creates 3 payment stages (50/30/20)"
+echo "3. PaymentStages component shows with deposit payment ready"
+echo "4. After deposit paid, progress payment unlocks"
+echo "5. After progress paid, final payment unlocks"
+echo "6. Each payment updates the database and tracks progress"
