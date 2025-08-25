@@ -97,11 +97,15 @@ export default async function DashboardPage() {
   const recentProposals = proposalList.slice(0, 10).map(p => ({
     id: p.id,
     proposal_number: p.proposal_number,
-    customer_name: p.customers?.name || 'No customer',
+    title: p.title || `Proposal #${p.proposal_number}`,
     total: p.total || 0,
     status: p.status,
-    created_at: p.created_at
+    created_at: p.created_at,
+    customers: p.customers ? [p.customers] : null
   }))
+
+  // Get recent activities (empty for now)
+  const recentActivities: any[] = []
 
   const dashboardData = {
     metrics: {
@@ -114,8 +118,8 @@ export default async function DashboardPage() {
     monthlyRevenue,
     statusCounts,
     recentProposals,
-    activities: [] // Empty for now since we don't have recent_activities table
+    recentActivities
   }
 
-  return <DashboardContent initialData={dashboardData} />
+  return <DashboardContent data={dashboardData} />
 }
