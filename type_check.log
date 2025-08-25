@@ -1,5 +1,0 @@
-app/jobs/[id]/JobDetailView.tsx(171,24): error TS2339: Property 'customers' does not exist on type 'Job'.
-app/jobs/[id]/JobDetailView.tsx(172,24): error TS2339: Property 'proposals' does not exist on type 'Job'.
-app/jobs/[id]/JobDetailView.tsx(173,26): error TS2339: Property 'profiles' does not exist on type 'Job'.
-app/jobs/[id]/page.tsx(87,7): error TS2322: Type '{ job: any; userRole: any; userId: string; }' is not assignable to type 'IntrinsicAttributes & JobDetailViewProps'.
-  Property 'job' does not exist on type 'IntrinsicAttributes & JobDetailViewProps'.
