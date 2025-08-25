@@ -85,8 +85,8 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
           progressPaidAt={proposal.progress_paid_at}
           finalPaidAt={proposal.final_paid_at}
           depositAmount={proposal.deposit_amount || 0}
-          progressAmount={proposal.progress_payment_amount || 0}
-          finalAmount={proposal.final_payment_amount || 0}
+          progressPaymentAmount={proposal.progress_payment_amount || 0}
+          finalPaymentAmount={proposal.final_payment_amount || 0}
           currentStage={proposal.payment_stage || 'deposit'}
         />
       </div>
