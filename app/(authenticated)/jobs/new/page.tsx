@@ -16,7 +16,7 @@ export default async function NewJobPage() {
     .single()
   
   // Only boss/admin can create jobs
-  if (profile?.role !== 'admin') {
+  if (profile?.role !== 'boss') {
     redirect('/jobs')
   }
 
@@ -103,8 +103,8 @@ export default async function NewJobPage() {
   let finalTechnicians = technicians
   if (technicians.length === 0 && allProfiles) {
     finalTechnicians = allProfiles.filter(p => 
-      p.role !== 'admin' && 
-      p.role !== 'admin' && 
+      p.role !== 'boss' && 
+      p.role !== 'boss' && 
       (p.is_active === true || p.is_active === null)
     )
     console.log('Using fallback technicians (non-boss/admin):', finalTechnicians)

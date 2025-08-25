@@ -74,9 +74,9 @@ export default async function TestAuthPage() {
         <div className="bg-blue-100 p-4 rounded">
           <h2 className="font-bold mb-2">Authorization Result:</h2>
           <p>Role from profile1: {profile1?.role || 'NOT FOUND'}</p>
-          <p>Is Admin: {profile1?.role === 'admin' ? 'YES' : 'NO'}</p>
-          <p>Is Boss: {profile1?.role === 'admin' ? 'YES' : 'NO'}</p>
-          <p>Should have access: {(profile1?.role === 'admin') ? 'YES' : 'NO'}</p>
+          <p>Is Admin: {profile1?.role === 'boss' ? 'YES' : 'NO'}</p>
+          <p>Is Boss: {profile1?.role === 'boss' ? 'YES' : 'NO'}</p>
+          <p>Should have access: {(profile1?.role === 'boss') ? 'YES' : 'NO'}</p>
         </div>
       </div>
       

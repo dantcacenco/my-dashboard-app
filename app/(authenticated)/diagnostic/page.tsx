@@ -244,7 +244,7 @@ export default function DiagnosticPage() {
                         <p><strong>User ID:</strong> {diagnostics.auth.id}</p>
                         <p><strong>Email:</strong> {diagnostics.auth.email}</p>
                         <p><strong>Role:</strong> 
-                          <Badge className="ml-2" variant={diagnostics.auth.profile?.role === 'admin' ? 'default' : 'secondary'}>
+                          <Badge className="ml-2" variant={diagnostics.auth.profile?.role === 'boss' ? 'default' : 'secondary'}>
                             {diagnostics.auth.profile?.role || 'No role'}
                           </Badge>
                         </p>

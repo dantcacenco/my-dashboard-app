@@ -25,7 +25,7 @@ export default async function EditProposalPage({
     .single()
 
   // Only boss/admin can edit proposals
-  if (profile?.role !== 'admin') {
+  if (profile?.role !== 'boss') {
     redirect('/')
   }
 

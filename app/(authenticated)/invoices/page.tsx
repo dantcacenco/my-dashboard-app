@@ -17,7 +17,7 @@ export default async function InvoicesPage() {
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'admin') {
+  if (profile?.role !== 'boss') {
     redirect('/')
   }
 

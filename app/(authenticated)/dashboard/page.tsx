@@ -21,7 +21,7 @@ export default async function DashboardPage() {
   if (!profile) {
     // For now, since we can't insert due to RLS, just treat as admin
     console.log('No profile found for user, treating as admin')
-  } else if (profile.role !== 'admin' && profile.role !== 'boss') {
+  } else if (profile.role !== 'boss' && profile.role !== 'boss') {
     // Not an admin or boss
     redirect('/')
   }

@@ -24,7 +24,7 @@ export default async function HomePage() {
   // Route based on role - handle both 'boss' and 'admin'
   const userRole = profile?.role
   
-  if (userRole === 'admin' || userRole === 'boss') {
+  if (userRole === 'boss' || userRole === 'boss') {
     redirect('/dashboard')
   } else if (userRole === 'technician') {
     redirect('/technician')

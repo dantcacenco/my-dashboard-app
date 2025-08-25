@@ -18,7 +18,7 @@ export default async function TechnicianPage() {
     .single()
 
   // IMPORTANT: Technician stays here, admin goes to dashboard
-  if (profile?.role === 'admin') {
+  if (profile?.role === 'boss') {
     redirect('/dashboard')
   }
 

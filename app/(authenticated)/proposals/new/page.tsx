@@ -24,7 +24,7 @@ export default async function NewProposalPage() {
   }
 
   // Check authorization - allow both admin and boss
-  if (profile.role !== 'admin' && profile.role !== 'admin') {
+  if (profile.role !== 'boss' && profile.role !== 'boss') {
     redirect('/')
   }
 

@@ -18,7 +18,7 @@ export default async function TechniciansPage() {
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'admin') {
+  if (profile?.role !== 'boss') {
     redirect('/dashboard')
   }
 
