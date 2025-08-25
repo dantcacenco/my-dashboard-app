@@ -4,65 +4,48 @@ import TechnicianJobsList from './TechnicianJobsList'
 
 export default async function TechnicianJobsPage() {
   const supabase = await createClient()
-  
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/signin')
+
+  if (!user) {
+    redirect('/auth/signin')
+  }
 
   // Get user profile
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name')
+    .select('*')
     .eq('id', user.id)
     .single()
 
-  // If admin, redirect to dashboard
-  if (profile?.role === 'admin') {
-    redirect('/dashboard')
-  }
-
-  // Only technicians can access this
+  // Verify technician role
   if (profile?.role !== 'technician') {
-    redirect('/dashboard')
+    redirect('/')
   }
 
   // Get jobs assigned to this technician
-  const { data: assignedJobs, error } = await supabase
-    .from('job_technicians')
+  const { data: jobs } = await supabase
+    .from('jobs')
     .select(`
-      job_id,
-      assigned_at,
-      jobs!inner (
-        id,
-        title,
-        description,
-        status,
-        priority,
-        scheduled_date,
-        scheduled_time,
-        service_address,
-        customer_id,
-        proposal_id,
-        created_at,
-        updated_at,
-        customers (
-          name,
-          phone,
-          address
-        )
+      *,
+      customers (
+        name,
+        email,
+        phone,
+        address
+      ),
+      proposals (
+        proposal_number,
+        title
       )
     `)
-    .eq('technician_id', user.id)
-    .order('assigned_at', { ascending: false })
+    .eq('assigned_technician_id', user.id)
+    .order('scheduled_date', { ascending: true })
 
-  if (error) {
-    console.error('Error fetching jobs:', error)
-  }
-
-  // Transform the data to flatten the structure
-  const jobs = assignedJobs?.map(aj => ({
-    ...aj.jobs,
-    assigned_at: aj.assigned_at
+  // Format jobs data
+  const formattedJobs = jobs?.map(job => ({
+    ...job,
+    assigned_at: job.assigned_at || job.created_at
   })) || []
 
-  return <TechnicianJobsList jobs={jobs} />
+  return <TechnicianJobsList jobs={formattedJobs} technicianId={user.id} />
 }

@@ -16,20 +16,23 @@ export default async function HomePage() {
     .eq('id', user.id)
     .single()
 
-  // Redirect based on role
-  if (profile?.role === 'admin') {
-    redirect('/dashboard')
-  } else if (profile?.role === 'technician') {
-    redirect('/technician')
-  } else {
-    // Default page for users without a role
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Welcome to Service Pro</h1>
-          <p className="text-gray-600">Your account is being set up. Please contact support if you need assistance.</p>
+  // Route based on role - NO CIRCULAR REDIRECTS
+  switch(profile?.role) {
+    case 'admin':
+      redirect('/dashboard')
+    case 'technician':
+      redirect('/technician')
+    default:
+      // Show welcome for users without roles
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">Welcome to Service Pro</h1>
+            <p className="text-gray-600">Your account is being set up.</p>
+            <p className="text-sm text-gray-500 mt-2">Role: {profile?.role || 'Not assigned'}</p>
+            <p className="text-sm text-gray-500">Please contact support if you need assistance.</p>
+          </div>
         </div>
-      </div>
-    )
+      )
   }
 }

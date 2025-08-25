@@ -17,7 +17,8 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .single()
 
-  // Only allow admin to view dashboard
+  // IMPORTANT: Only admin can view dashboard
+  // Redirect to HOME (not technician) to avoid loops
   if (!profile || profile.role !== 'admin') {
     redirect('/')
   }
@@ -51,10 +52,21 @@ export default async function DashboardPage() {
     return total + proposalRevenue
   }, 0)
 
-  const approvedProposals = proposalList.filter(p => p.status === 'approved' || p.status === 'accepted').length
-  const paidProposals = proposalList.filter(p => p.deposit_paid_at || p.progress_paid_at || p.final_paid_at).length
-  const conversionRate = proposalList.length > 0 ? (approvedProposals / proposalList.length) * 100 : 0
-  const paymentRate = approvedProposals > 0 ? (paidProposals / approvedProposals) * 100 : 0
+  const approvedProposals = proposalList.filter(p => 
+    p.status === 'approved' || p.status === 'accepted'
+  ).length
+  
+  const paidProposals = proposalList.filter(p => 
+    p.deposit_paid_at || p.progress_paid_at || p.final_paid_at
+  ).length
+  
+  const conversionRate = proposalList.length > 0 
+    ? (approvedProposals / proposalList.length) * 100 
+    : 0
+    
+  const paymentRate = approvedProposals > 0 
+    ? (paidProposals / approvedProposals) * 100 
+    : 0
 
   // Calculate status counts
   const statusCounts = {
@@ -75,7 +87,8 @@ export default async function DashboardPage() {
     
     const monthProposals = proposalList.filter(p => {
       const created = new Date(p.created_at)
-      return created.getMonth() === date.getMonth() && created.getFullYear() === date.getFullYear()
+      return created.getMonth() === date.getMonth() && 
+             created.getFullYear() === date.getFullYear()
     })
     
     const revenue = monthProposals.reduce((total, proposal) => {
@@ -93,7 +106,7 @@ export default async function DashboardPage() {
     })
   }
 
-  // Get recent proposals
+  // Format recent proposals correctly for DashboardContent
   const recentProposals = proposalList.slice(0, 10).map(p => ({
     id: p.id,
     proposal_number: p.proposal_number,
@@ -104,7 +117,7 @@ export default async function DashboardPage() {
     customers: p.customers ? [p.customers] : null
   }))
 
-  // Get recent activities (empty for now)
+  // Empty activities array (we don't have recent_activities table yet)
   const recentActivities: any[] = []
 
   const dashboardData = {
@@ -121,5 +134,6 @@ export default async function DashboardPage() {
     recentActivities
   }
 
+  // Pass as 'data' prop (not 'initialData')
   return <DashboardContent data={dashboardData} />
 }
