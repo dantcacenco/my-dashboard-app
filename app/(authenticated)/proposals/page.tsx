@@ -26,7 +26,7 @@ export default async function ProposalsPage() {
     .single();
 
   // Allow both admin and boss roles
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'boss')) {
+  if (!profile || (profile.role !== 'admin' && profile.role !== 'admin')) {
     redirect('/');
   }
 

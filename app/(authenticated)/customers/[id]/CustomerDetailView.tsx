@@ -76,7 +76,7 @@ export default function CustomerDetailView({ customer, userRole }: CustomerDetai
               )}
             </div>
           </div>
-          {(userRole === 'boss' || userRole === 'admin') && (
+          {(userRole === 'admin') && (
             <Button>
               <Edit className="h-4 w-4 mr-2" />
               Edit Customer
@@ -165,7 +165,7 @@ export default function CustomerDetailView({ customer, userRole }: CustomerDetai
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Proposals</CardTitle>
-                {(userRole === 'boss' || userRole === 'admin') && (
+                {(userRole === 'admin') && (
                   <Link href={`/proposals/new?customer_id=${customer.id}`}>
                     <Button size="sm">
                       <Plus className="h-4 w-4 mr-2" />

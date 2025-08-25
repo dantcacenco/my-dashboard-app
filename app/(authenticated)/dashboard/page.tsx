@@ -19,7 +19,7 @@ export default async function DashboardPage() {
     .single()
 
   // Only allow boss/admin to view dashboard
-  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
+  if (profile?.role !== 'admin') {
     redirect('/technician')
   }
 

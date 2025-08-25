@@ -16,7 +16,7 @@ export default async function NewJobPage() {
     .single()
   
   // Only boss/admin can create jobs
-  if (profile?.role !== 'boss' && profile?.role !== 'admin') {
+  if (profile?.role !== 'admin') {
     redirect('/jobs')
   }
 
@@ -103,7 +103,7 @@ export default async function NewJobPage() {
   let finalTechnicians = technicians
   if (technicians.length === 0 && allProfiles) {
     finalTechnicians = allProfiles.filter(p => 
-      p.role !== 'boss' && 
+      p.role !== 'admin' && 
       p.role !== 'admin' && 
       (p.is_active === true || p.is_active === null)
     )

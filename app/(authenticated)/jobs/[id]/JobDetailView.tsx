@@ -527,7 +527,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
               </div>
 
               {/* Financial Information */}
-              {userRole === 'boss' && (
+              {userRole === 'admin' && (
                 <>
                   <div className="pt-4 border-t">
                     <p className="text-sm text-muted-foreground flex items-center gap-1">

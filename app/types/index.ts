@@ -17,7 +17,7 @@ export interface Profile {
   id: string
   email: string
   full_name: string | null
-  role: 'boss' | 'admin' | 'technician'
+  role: 'admin' | 'admin' | 'technician'
   phone: string | null
   created_at: string
   updated_at: string
