@@ -2,39 +2,24 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Stripe from 'stripe'
 
-// Initialize Stripe with proper error handling
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-07-30.basil'
 })
 
 export async function POST(request: Request) {
   try {
-    // Check if Stripe key exists
-    if (!process.env.STRIPE_SECRET_KEY) {
-      console.error('STRIPE_SECRET_KEY is not configured')
-      return NextResponse.json(
-        { error: 'Payment system not configured' },
-        { status: 500 }
-      )
-    }
-
-    const supabase = await createClient()
     const body = await request.json()
+    const supabase = await createClient()
     
-    const { 
-      proposalId, 
-      amount, 
-      customerEmail, 
-      proposalNumber,
-      selectedAddons 
-    } = body
-
-    console.log('Creating payment session for:', {
+    const {
       proposalId,
       amount,
       customerEmail,
-      proposalNumber
-    })
+      proposalNumber,
+      paymentStage = 'full',
+      stageDescription = 'Full Payment',
+      selectedAddons
+    } = body
 
     if (!proposalId || !amount) {
       return NextResponse.json(
@@ -43,67 +28,72 @@ export async function POST(request: Request) {
       )
     }
 
-    // Ensure amount is a valid number
-    const amountInCents = Math.round(parseFloat(amount.toString()) * 100)
-    
-    if (isNaN(amountInCents) || amountInCents <= 0) {
+    // Get proposal to get customer_view_token
+    const { data: proposal } = await supabase
+      .from('proposals')
+      .select('customer_view_token')
+      .eq('id', proposalId)
+      .single()
+
+    if (!proposal) {
       return NextResponse.json(
-        { error: 'Invalid amount' },
-        { status: 400 }
+        { error: 'Proposal not found' },
+        { status: 404 }
       )
     }
 
-    try {
-      // Create Stripe checkout session
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: `Proposal #${proposalNumber || 'N/A'}`,
-                description: 'HVAC Services'
-              },
-              unit_amount: amountInCents
+    // Use production URL or fallback to request origin
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                    process.env.NEXT_PUBLIC_BASE_URL || 
+                    `https://${request.headers.get('host')}` ||
+                    'https://my-dashboard-app-tau.vercel.app'
+
+    // Create Stripe checkout session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `${stageDescription} - Proposal #${proposalNumber}`,
+              description: 'HVAC Services'
             },
-            quantity: 1
-          }
-        ],
-        mode: 'payment',
-        success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal=${proposalId}`,
-        cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/proposal/view/${proposalId}`,
-        customer_email: customerEmail || undefined,
-        metadata: {
-          proposalId,
-          proposalNumber: proposalNumber || '',
-          selectedAddons: JSON.stringify(selectedAddons || [])
+            unit_amount: Math.round(amount * 100)
+          },
+          quantity: 1
         }
-      })
+      ],
+      mode: 'payment',
+      success_url: `${baseUrl}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposalId}`,
+      cancel_url: `${baseUrl}/proposal/view/${proposal.customer_view_token}`,
+      customer_email: customerEmail,
+      metadata: {
+        proposalId,
+        proposalNumber,
+        paymentStage,
+        selectedAddons: JSON.stringify(selectedAddons || [])
+      }
+    })
 
-      console.log('Stripe session created:', session.id)
-
-      return NextResponse.json({ 
-        url: session.url,
-        sessionId: session.id 
+    // Update proposal with session info
+    await supabase
+      .from('proposals')
+      .update({
+        stripe_session_id: session.id,
+        payment_initiated_at: new Date().toISOString()
       })
-    } catch (stripeError: any) {
-      console.error('Stripe error:', stripeError)
-      return NextResponse.json(
-        { 
-          error: 'Failed to create payment session', 
-          details: stripeError.message 
-        },
-        { status: 500 }
-      )
-    }
+      .eq('id', proposalId)
+
+    return NextResponse.json({ 
+      url: session.url,
+      sessionId: session.id 
+    })
+
   } catch (error: any) {
-    console.error('Error creating payment session:', error)
+    console.error('Payment session error:', error)
     return NextResponse.json(
-      { 
-        error: 'Internal server error', 
-        details: error.message || 'Unknown error'
-      },
+      { error: error.message || 'Failed to create payment session' },
       { status: 500 }
     )
   }

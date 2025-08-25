@@ -45,6 +45,12 @@ export async function POST(request: Request) {
       )
     }
 
+    // Use production URL or fallback to request origin
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                    process.env.NEXT_PUBLIC_BASE_URL || 
+                    `https://${request.headers.get('host')}` ||
+                    'https://my-dashboard-app-tau.vercel.app'
+
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: [payment_type],
@@ -62,8 +68,8 @@ export async function POST(request: Request) {
         }
       ],
       mode: 'payment',
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposal_id}&stage=${payment_stage}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/proposal/view/${proposal.customer_view_token}`,
+      success_url: `${baseUrl}/proposal/payment-success?session_id={CHECKOUT_SESSION_ID}&proposal_id=${proposal_id}&stage=${payment_stage}`,
+      cancel_url: `${baseUrl}/proposal/view/${proposal.customer_view_token}`,
       customer_email: customer_email,
       metadata: {
         proposal_id: proposal_id,

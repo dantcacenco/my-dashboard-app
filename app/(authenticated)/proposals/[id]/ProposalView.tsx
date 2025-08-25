@@ -6,7 +6,7 @@ import SendProposal from '@/components/proposals/SendProposal'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import PaymentStages from './PaymentStages'
+import { PaymentStages } from './PaymentStages'
 
 interface ProposalViewProps {
   proposal: any
