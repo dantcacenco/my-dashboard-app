@@ -18,7 +18,7 @@ interface ProposalListProps {
 export default function ProposalsList({ initialProposals }: ProposalListProps) {
   const router = useRouter();
   const [proposals, setProposals] = useState(initialProposals);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode, setViewMode] = useState<string>('list');
   const supabase = createClient();
 
   useEffect(() => {
