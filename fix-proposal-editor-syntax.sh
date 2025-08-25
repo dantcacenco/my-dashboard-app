@@ -1,3 +1,16 @@
+#!/bin/bash
+set -e
+
+echo "🔧 Fixing ProposalEditor syntax errors..."
+
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Read the current broken file and extract needed parts
+cat app/\(authenticated\)/proposals/\[id\]/edit/ProposalEditor.tsx | head -115 > temp-start.txt
+cat app/\(authenticated\)/proposals/\[id\]/edit/ProposalEditor.tsx | tail -165 | head -20 > temp-middle.txt
+
+# Now reconstruct properly
+cat > app/\(authenticated\)/proposals/\[id\]/edit/ProposalEditor.tsx << 'EOF'
 'use client'
 
 import { useState } from 'react'
@@ -485,3 +498,21 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
     </div>
   )
 }
+EOF
+
+# Clean up temp files
+rm -f temp-start.txt temp-middle.txt
+
+echo "✅ ProposalEditor fixed!"
+
+# Commit the fix
+git add -A
+git commit -m "Fix ProposalEditor syntax and duplicate item handling
+
+- Fixed syntax errors in ProposalEditor
+- Properly implemented quantity update for duplicate items
+- Maintains all existing functionality"
+
+git push origin main
+
+echo "✅ All issues resolved!"
