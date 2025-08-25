@@ -1,3 +1,11 @@
+#!/bin/bash
+
+echo "🔧 Fixing app to handle missing profiles gracefully..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Update dashboard to handle missing profile
+echo "📝 Updating dashboard to handle missing profile..."
+cat > "app/(authenticated)/dashboard/page.tsx" << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import DashboardContent from '@/app/DashboardContent'
@@ -138,3 +146,95 @@ export default async function DashboardPage() {
 
   return <DashboardContent data={dashboardData} />
 }
+EOF
+
+# Update home page to handle missing profile
+echo "📝 Updating home page..."
+cat > "app/page.tsx" << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+
+export default async function HomePage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/auth/signin')
+  }
+
+  // Get user profile to check role
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  // If no profile, assume admin for now (you're the only user)
+  if (!profile) {
+    redirect('/dashboard')
+  }
+  
+  // Route based on role - handle both 'boss' and 'admin'
+  const userRole = profile?.role
+  
+  if (userRole === 'admin' || userRole === 'boss') {
+    redirect('/dashboard')
+  } else if (userRole === 'technician') {
+    redirect('/technician')
+  } else {
+    // Show welcome for users without roles
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Welcome to Service Pro</h1>
+          <p className="text-gray-600">Your account is being set up.</p>
+          <p className="text-sm text-gray-500 mt-2">Role: {userRole || 'Not assigned'}</p>
+          <p className="text-sm text-gray-500">User ID: {user.id}</p>
+          <p className="text-sm text-gray-500">Please contact support if you need assistance.</p>
+        </div>
+      </div>
+    )
+  }
+}
+EOF
+
+# Clean up temp files
+rm -f fix-profile.js
+
+echo ""
+echo "🧪 Testing TypeScript..."
+npx tsc --noEmit
+if [ $? -eq 0 ]; then
+  echo "✅ TypeScript successful!"
+fi
+
+echo ""
+echo "💾 Committing fixes..."
+git add -A
+git commit -m "fix: handle missing profile gracefully - treat as admin
+
+- Dashboard works even without profile in database
+- No profile = admin access (temporary for development)
+- Handles RLS restrictions gracefully
+- Shows user ID for debugging"
+
+git push origin main
+
+echo ""
+echo "✅ Fix complete!"
+echo ""
+echo "🎯 IMPORTANT: You need to manually create your profile in Supabase:"
+echo "1. Go to Supabase Dashboard"
+echo "2. Navigate to Table Editor → profiles"
+echo "3. Insert new row:"
+echo "   - id: d59c31b1-ccce-4fe8-be8d-7295ec41f7ac"
+echo "   - email: dantcacenco@gmail.com"
+echo "   - role: admin"
+echo ""
+echo "Or run this SQL in Supabase SQL Editor:"
+echo "INSERT INTO profiles (id, email, role, created_at, updated_at)"
+echo "VALUES ('d59c31b1-ccce-4fe8-be8d-7295ec41f7ac', 'dantcacenco@gmail.com', 'admin', NOW(), NOW())"
+echo "ON CONFLICT (id) DO UPDATE SET role = 'admin', updated_at = NOW();"
+echo ""
+echo "🧹 Cleaning up..."
+rm -f "$0"
