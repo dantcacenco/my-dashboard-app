@@ -6,7 +6,7 @@ export default async function TechnicianJobsPage() {
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) redirect('/auth/signin')
 
   // Get user profile
   const { data: profile } = await supabase
@@ -15,9 +15,14 @@ export default async function TechnicianJobsPage() {
     .eq('id', user.id)
     .single()
 
+  // If admin, redirect to dashboard
+  if (profile?.role === 'admin') {
+    redirect('/dashboard')
+  }
+
   // Only technicians can access this
   if (profile?.role !== 'technician') {
-    redirect('/')
+    redirect('/dashboard')
   }
 
   // Get jobs assigned to this technician
@@ -28,30 +33,21 @@ export default async function TechnicianJobsPage() {
       assigned_at,
       jobs!inner (
         id,
-        job_number,
         title,
         description,
-        job_type,
         status,
+        priority,
         scheduled_date,
         scheduled_time,
         service_address,
-        notes,
-        customer_name,
-        customer_phone,
-        customer_email,
+        customer_id,
+        proposal_id,
         created_at,
-        job_photos (
-          id,
-          photo_url,
-          caption,
-          created_at
-        ),
-        job_files (
-          id,
-          file_name,
-          file_url,
-          created_at
+        updated_at,
+        customers (
+          name,
+          phone,
+          address
         )
       )
     `)
@@ -59,26 +55,14 @@ export default async function TechnicianJobsPage() {
     .order('assigned_at', { ascending: false })
 
   if (error) {
-    console.error('Error fetching technician jobs:', error)
+    console.error('Error fetching jobs:', error)
   }
 
-  // Flatten the jobs data
-  const jobs = assignedJobs?.map(item => ({
-    ...item.jobs,
-    assigned_at: item.assigned_at
-  })).filter(Boolean) || []
+  // Transform the data to flatten the structure
+  const jobs = assignedJobs?.map(aj => ({
+    ...aj.jobs,
+    assigned_at: aj.assigned_at
+  })) || []
 
-  return (
-    <div className="container mx-auto py-6 px-4">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">My Jobs</h1>
-        <p className="text-gray-600">Welcome back, {profile?.full_name || 'Technician'}</p>
-        <p className="text-sm text-gray-500 mt-1">
-          You have {jobs.length} job{jobs.length !== 1 ? 's' : ''} assigned
-        </p>
-      </div>
-      
-      <TechnicianJobsList jobs={jobs} technicianId={user.id} />
-    </div>
-  )
+  return <TechnicianJobsList jobs={jobs} technicianName={profile?.full_name || user.email || ''} />
 }
