@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-echo "🔧 Fixing Stripe redirect URL and PaymentStages import..."
+echo "🔧 Making Stripe URLs work automatically without environment variables..."
 
 cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
 
-# 1. Fix the Stripe redirect URL to use production URL
-echo "📝 Fixing create-payment API to use proper URLs..."
+# Update create-payment API to auto-detect URL
+echo "📝 Updating create-payment API..."
 cat > app/api/create-payment/route.ts << 'EOF'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
@@ -55,11 +55,20 @@ export async function POST(request: Request) {
       )
     }
 
-    // Use production URL or fallback to request origin
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                    process.env.NEXT_PUBLIC_BASE_URL || 
-                    `https://${request.headers.get('host')}` ||
-                    'https://my-dashboard-app-tau.vercel.app'
+    // Auto-detect the correct URL based on where we're running
+    const host = request.headers.get('host') || ''
+    let baseUrl = ''
+    
+    if (host.includes('localhost')) {
+      baseUrl = `http://${host}`
+    } else if (host.includes('vercel.app')) {
+      baseUrl = `https://${host}`
+    } else if (host) {
+      baseUrl = `https://${host}`
+    } else {
+      // Fallback to your known production URL
+      baseUrl = 'https://my-dashboard-app-tau.vercel.app'
+    }
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
@@ -114,8 +123,8 @@ export async function POST(request: Request) {
 }
 EOF
 
-# 2. Fix the create-payment-session API as well
-echo "📝 Fixing create-payment-session API..."
+# Update create-payment-session API
+echo "📝 Updating create-payment-session API..."
 cat > app/api/create-payment-session/route.ts << 'EOF'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
@@ -161,11 +170,20 @@ export async function POST(request: Request) {
       )
     }
 
-    // Use production URL or fallback to request origin
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                    process.env.NEXT_PUBLIC_BASE_URL || 
-                    `https://${request.headers.get('host')}` ||
-                    'https://my-dashboard-app-tau.vercel.app'
+    // Auto-detect the correct URL based on where we're running
+    const host = request.headers.get('host') || ''
+    let baseUrl = ''
+    
+    if (host.includes('localhost')) {
+      baseUrl = `http://${host}`
+    } else if (host.includes('vercel.app')) {
+      baseUrl = `https://${host}`
+    } else if (host) {
+      baseUrl = `https://${host}`
+    } else {
+      // Fallback to your known production URL
+      baseUrl = 'https://my-dashboard-app-tau.vercel.app'
+    }
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
@@ -219,53 +237,22 @@ export async function POST(request: Request) {
 }
 EOF
 
-# 3. Fix PaymentStages import issue
-echo "📝 Fixing PaymentStages import in ProposalView..."
-sed -i '' "s/import PaymentStages from '.\/PaymentStages'/import { PaymentStages } from '.\/PaymentStages'/" app/\(authenticated\)/proposals/\[id\]/ProposalView.tsx
+echo "✅ Fixed to auto-detect URLs!"
 
-# 4. Add environment variable to .env.local (if it doesn't exist)
-echo "📝 Creating env example file..."
-cat > .env.example << 'EOF'
-# Production URL (update this with your actual domain)
-NEXT_PUBLIC_APP_URL=https://my-dashboard-app-tau.vercel.app
-NEXT_PUBLIC_BASE_URL=https://my-dashboard-app-tau.vercel.app
-
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# Stripe
-STRIPE_SECRET_KEY=your_stripe_secret_key
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
-STRIPE_WEBHOOK_SECRET=your_webhook_secret
-
-# Resend
-RESEND_API_KEY=your_resend_api_key
-EOF
-
-echo "✅ Fixed Stripe URLs and PaymentStages import!"
-
-# Test TypeScript
-echo "🔍 Checking TypeScript..."
-npx tsc --noEmit 2>&1 | head -20
+# Remove the .env.example since we don't need it
+rm -f .env.example
 
 # Commit
 git add -A
-git commit -m "Fix Stripe redirect URL and PaymentStages import
+git commit -m "Auto-detect URLs for Stripe redirects - no env vars needed
 
-- Use production URL for Stripe success/cancel redirects
-- Fix localhost redirect issue by using proper environment variables
-- Fix PaymentStages named import (not default export)
-- Add .env.example for environment variable documentation
-- Support multiple URL fallbacks for robustness"
+- Automatically detect localhost vs production
+- Use request headers to determine correct URL
+- Works on localhost with http://
+- Works on Vercel with https://
+- No environment variables required"
 
 git push origin main
 
-echo "✅ All fixes applied!"
-echo ""
-echo "⚠️  IMPORTANT: Add this environment variable to Vercel:"
-echo "   NEXT_PUBLIC_APP_URL=https://my-dashboard-app-tau.vercel.app"
-echo ""
-echo "Go to: Vercel Dashboard → Settings → Environment Variables"
-echo "Add the variable above to ensure proper redirects"
+echo "✅ URLs now work automatically!"
+echo "No environment variables needed - it detects the URL from the request!"

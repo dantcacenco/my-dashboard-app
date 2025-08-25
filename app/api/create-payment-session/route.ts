@@ -42,11 +42,20 @@ export async function POST(request: Request) {
       )
     }
 
-    // Use production URL or fallback to request origin
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                    process.env.NEXT_PUBLIC_BASE_URL || 
-                    `https://${request.headers.get('host')}` ||
-                    'https://my-dashboard-app-tau.vercel.app'
+    // Auto-detect the correct URL based on where we're running
+    const host = request.headers.get('host') || ''
+    let baseUrl = ''
+    
+    if (host.includes('localhost')) {
+      baseUrl = `http://${host}`
+    } else if (host.includes('vercel.app')) {
+      baseUrl = `https://${host}`
+    } else if (host) {
+      baseUrl = `https://${host}`
+    } else {
+      // Fallback to your known production URL
+      baseUrl = 'https://my-dashboard-app-tau.vercel.app'
+    }
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
