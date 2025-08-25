@@ -391,7 +391,11 @@ export default function ProposalView({ proposal, userRole, userId }: ProposalVie
       {/* Send Proposal Modal */}
       {showSendModal && (
         <SendProposal
-          proposal={proposal}
+          proposalId={proposal.id}
+          proposalNumber={proposal.proposal_number}
+          customerName={proposal.customers?.name || ""}
+          customerEmail={proposal.customers?.email || ""}
+          proposalTotal={proposal.total}
           onClose={() => setShowSendModal(false)}
           onSend={handleSendProposal}
         />
