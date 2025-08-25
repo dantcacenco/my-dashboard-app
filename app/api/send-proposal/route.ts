@@ -24,7 +24,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Create HTML email content with light blue design and rounded corners
+    // Create HTML email content with light blue design
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
               box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             }
             .header { 
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              background-color: #3B82F6;
               color: white; 
               padding: 30px; 
               text-align: center;
@@ -88,18 +88,16 @@ export async function POST(request: Request) {
             .button { 
               display: inline-block; 
               padding: 14px 32px; 
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              background-color: #3B82F6;
               color: white !important; 
               text-decoration: none; 
               border-radius: 8px; 
               font-weight: 600;
               font-size: 16px;
-              box-shadow: 0 4px 6px rgba(102, 126, 234, 0.25);
-              transition: transform 0.2s;
+              box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25);
             }
             .button:hover {
-              transform: translateY(-2px);
-              box-shadow: 0 6px 8px rgba(102, 126, 234, 0.35);
+              background-color: #2563EB;
             }
             .footer { 
               padding: 20px 30px; 
