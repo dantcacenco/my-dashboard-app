@@ -19,7 +19,7 @@ export default async function DashboardPage() {
 
   // IMPORTANT: Only admin can view dashboard
   // Redirect to HOME (not technician) to avoid loops
-  if (!profile || profile.role !== 'admin') {
+  if (!profile || profile.role !== 'admin' && profile.role !== 'boss') {
     redirect('/')
   }
 
