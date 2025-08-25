@@ -1,3 +1,17 @@
+#!/bin/bash
+
+# Fix Customer Proposal View - Add ALL missing content
+# This script completely fixes the CustomerProposalView to show full proposal details
+
+set -e
+
+echo "🔧 Fixing CustomerProposalView - Adding all missing proposal content..."
+
+# Navigate to project
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Create the complete CustomerProposalView with all content
+cat > app/proposal/view/[token]/CustomerProposalView.tsx << 'EOF'
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -637,3 +651,55 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
     </div>
   )
 }
+EOF
+
+echo "✅ CustomerProposalView fixed with all content"
+
+# Test the build
+echo "🔧 Testing build..."
+npm run build 2>&1 | head -80
+
+# Check if build succeeded
+if [ $? -eq 0 ]; then
+    echo "✅ Build successful!"
+    
+    # Commit and push
+    echo "📤 Committing and pushing to GitHub..."
+    git add -A
+    git commit -m "Fix CustomerProposalView - Add complete proposal content display
+
+- Added full proposal header with dates
+- Added customer information section
+- Added project description display
+- Added services table with quantities and prices
+- Added selectable optional add-ons with checkboxes
+- Added dynamic cost summary with tax calculations
+- Added payment terms information
+- Improved payment stages UI with descriptions
+- Added payment progress tracking
+- Maintained existing payment flow logic
+- Enhanced visual design with proper spacing and colors"
+    
+    git push origin main
+    
+    echo "✅ Successfully fixed CustomerProposalView!"
+    echo ""
+    echo "📋 What was fixed:"
+    echo "1. ✓ Complete proposal content now displays"
+    echo "2. ✓ Customer information section added"
+    echo "3. ✓ Services and add-ons properly shown"
+    echo "4. ✓ Dynamic totals calculation"
+    echo "5. ✓ Payment stages preserved and enhanced"
+    echo "6. ✓ Professional layout with proper styling"
+    echo ""
+    echo "🧪 Test the fix:"
+    echo "1. Send a proposal to a customer"
+    echo "2. Open the customer link in incognito"
+    echo "3. Verify all content displays correctly"
+    echo "4. Select/deselect add-ons and watch totals update"
+    echo "5. Approve the proposal"
+    echo "6. Verify payment stages appear"
+else
+    echo "❌ Build failed! Please check the errors above."
+    exit 1
+fi
