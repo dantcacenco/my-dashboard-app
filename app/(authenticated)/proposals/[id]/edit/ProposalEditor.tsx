@@ -82,256 +82,38 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
 
   // Add item to proposal
   const handleAddItem = (item: PricingItem, isAddon: boolean) => {
-    // Check if item already exists to prevent duplicates
-    const exists = proposalItems.some(pi => 
+    // Check if item already exists
+    const existingItem = proposalItems.find(pi => 
       pi.name === item.name && pi.is_addon === isAddon
     )
     
-    if (exists) {
-      alert('This item has already been added to the proposal.')
-      return
-    }
-
-    const newItem: ProposalItem = {
-      id: `temp-${Date.now()}-${Math.random()}`,
-      name: item.name,
-      description: item.description,
-      quantity: 1,
-      unit_price: item.price,
-      total_price: item.price,
-      is_addon: isAddon,
-      is_selected: true
-    }
-    setProposalItems([...proposalItems, newItem])
-    // Don't close - let user add multiple items
-  }
-
-  // Update item quantity
-  const updateItemQuantity = (itemId: string, quantity: number) => {
-    setProposalItems(proposalItems.map(item =>
-      item.id === itemId
-        ? { ...item, quantity, total_price: item.unit_price * quantity }
-        : item
-    ))
-  }
-
-  // Remove item
-  const removeItem = async (itemId: string) => {
-    setProposalItems(proposalItems.filter(item => item.id !== itemId))
-  }
-
-  // Toggle addon selection
-  const toggleAddon = (itemId: string) => {
-    setProposalItems(proposalItems.map(item =>
-      item.id === itemId
-        ? { ...item, is_selected: !item.is_selected }
-        : item
-    ))
-  }
-
-  // Update proposal
-  const updateProposal = async () => {
-    if (!selectedCustomer || !proposalTitle.trim() || proposalItems.length === 0) {
-      alert('Please fill in all required fields and add at least one item.')
-      return
-    }
-
-    setIsLoading(true)
-
-    try {
-      // Update proposal
-      const { error: proposalError } = await supabase
-        .from('proposals')
-        .update({
-          customer_id: selectedCustomer.id,
-          title: proposalTitle.trim(),
-          description: proposalDescription.trim(),
-          subtotal,
-          tax_rate: taxRate,
-          tax_amount: taxAmount,
-          total,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', proposal.id)
-
-      if (proposalError) throw proposalError
-
-      // Delete all existing items
-      const { error: deleteError } = await supabase
-        .from('proposal_items')
-        .delete()
-        .eq('proposal_id', proposal.id)
-
-      if (deleteError) throw deleteError
-
-      // Use Map to ensure uniqueness by name + is_addon
-      const uniqueItemsMap = new Map()
-      proposalItems.forEach(item => {
-        const key = `${item.name}-${item.is_addon}`
-        if (!uniqueItemsMap.has(key)) {
-          uniqueItemsMap.set(key, item)
-        }
-      })
-
-      // Insert unique items
-      const itemsToInsert = Array.from(uniqueItemsMap.values()).map((item, index) => ({
-        proposal_id: proposal.id,
+    if (existingItem) {
+      // Update quantity instead of adding duplicate
+      setProposalItems(proposalItems.map(pi => 
+        pi.id === existingItem.id 
+          ? { 
+              ...pi, 
+              quantity: pi.quantity + 1, 
+              total_price: pi.unit_price * (pi.quantity + 1) 
+            }
+          : pi
+      ))
+    } else {
+      // Add new item
+      const newItem: ProposalItem = {
+        id: `temp-${Date.now()}-${Math.random()}`,
         name: item.name,
         description: item.description,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_price: item.total_price,
-        is_addon: item.is_addon,
-        is_selected: item.is_selected,
-        sort_order: index
-      }))
-
-      if (itemsToInsert.length > 0) {
-        const { error: itemsError } = await supabase
-          .from('proposal_items')
-          .insert(itemsToInsert)
-
-        if (itemsError) throw itemsError
+        quantity: 1,
+        unit_price: item.price,
+        total_price: item.price,
+        is_addon: isAddon,
+        is_selected: true
       }
-
-      // Log the update
-      await supabase
-        .from('proposal_activities')
-        .insert({
-          proposal_id: proposal.id,
-          activity_type: 'updated',
-          description: `Proposal updated by user`,
-          metadata: {
-            total_amount: total,
-            items_count: itemsToInsert.length
-          }
-        })
-
-      router.push(`/proposals/${proposal.id}`)
-
-    } catch (error) {
-      console.error('Error updating proposal:', error)
-      alert('Error updating proposal. Please try again.')
-    } finally {
-      setIsLoading(false)
+      setProposalItems([...proposalItems, newItem])
     }
+    setShowAddItem(false)
   }
-
-  const handleCustomerSelect = (customer: Customer) => {
-    setSelectedCustomer(customer)
-    setShowCustomerSearch(false)
-  }
-
-  const handleCustomerAdded = (newCustomer: Customer) => {
-    setCustomers([...customers, newCustomer])
-    setSelectedCustomer(newCustomer)
-    setShowCustomerSearch(false)
-  }
-
-  const handlePricingItemAdded = (newItem: PricingItem) => {
-    setPricingItems([...pricingItems, newItem])
-    setShowAddNewPricing(false)
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Edit Proposal</h1>
-          <p className="text-gray-600 mt-2">Update proposal details and items</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Customer Section */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Customer Information</h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Selected Customer
-                  </label>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">{selectedCustomer.name}</p>
-                      <p className="text-sm text-gray-600">{selectedCustomer.email}</p>
-                      <p className="text-sm text-gray-600">{selectedCustomer.phone}</p>
-                    </div>
-                    <button
-                      onClick={() => setShowCustomerSearch(true)}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                    >
-                      Change Customer
-                    </button>
-                  </div>
-                </div>
-
-                {showCustomerSearch && (
-                  <CustomerSearch 
-                    customers={customers}
-                    onCustomerSelect={handleCustomerSelect}
-                    onCustomerAdded={handleCustomerAdded}
-                    userId={userId}
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* Proposal Details */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Proposal Details</h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                    Proposal Title
-                  </label>
-                  <input
-                    type="text"
-                    id="title"
-                    value={proposalTitle}
-                    onChange={(e) => setProposalTitle(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., HVAC System Installation"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                    Description (Optional)
-                  </label>
-                  <textarea
-                    id="description"
-                    value={proposalDescription}
-                    onChange={(e) => setProposalDescription(e.target.value)}
-                    rows={3}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Additional details about the proposal..."
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Services & Items */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-medium text-gray-900">Services & Items</h2>
-                <button
-                  onClick={() => setShowAddItem(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  Add Item
-                </button>
-              </div>
-
-              {/* Add Item Interface */}
-              {showAddItem && (
-                <ServiceSearch 
-                  pricingItems={pricingItems}
-                  onAddItem={handleAddItem}
-                  onClose={() => setShowAddItem(false)}
                   onShowAddNew={() => setShowAddNewPricing(true)}
                 />
               )}
