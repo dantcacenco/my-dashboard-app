@@ -245,6 +245,25 @@ NEXT_PUBLIC_BASE_URL
 - Keep backups of working versions
 - Test after every major change
 - Commit frequently with clear messages
+- **DELETE temporary scripts immediately after use**
+
+### 🧹 Project Hygiene Rules
+1. **No accumulation of .sh scripts** - Delete after execution
+2. **Clean up backup files** - Remove .backup, .bak files after confirming changes work
+3. **Remove old log files** - build.log, type_check.log, etc.
+4. **Keep only essential documentation**:
+   - PROJECT_SCOPE.md (this file - master reference)
+   - WORKING_SESSION.md (current active tasks)
+   - README.md (standard project readme)
+5. **Git commit cleanup changes** immediately
+
+### Cleanup Command
+```bash
+# Run periodically to clean up project
+rm -f *.sh *.log *.backup *.bak
+find . -name "*.backup" -type f -delete
+find . -name "*.bak" -type f -delete
+```
 
 ---
 
