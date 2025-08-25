@@ -1,3 +1,11 @@
+#!/bin/bash
+
+echo "🔧 Making proposal numbers clickable links..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+
+# Update ProposalsList to make proposal numbers clickable
+echo "📝 Updating ProposalsList component..."
+cat > "app/(authenticated)/proposals/ProposalsList.tsx" << 'EOF'
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -257,3 +265,24 @@ export default function ProposalsList({ initialProposals }: ProposalListProps) {
     </div>
   );
 }
+EOF
+
+echo ""
+echo "✅ Proposal numbers are now clickable!"
+echo ""
+echo "💾 Committing changes..."
+git add -A
+git commit -m "feat: make proposal numbers clickable links in list view
+
+- Proposal numbers now link to proposal detail page
+- Same destination as View button
+- Added hover underline effect
+- Styled as blue links for clarity"
+
+git push origin main
+
+echo ""
+echo "✅ Complete! Proposal numbers are now clickable and navigate to the same page as the View button."
+echo ""
+echo "🧹 Cleaning up..."
+rm -f "$0"
