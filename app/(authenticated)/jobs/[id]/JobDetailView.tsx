@@ -70,7 +70,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
       if (data) {
         setProposal(data)
         // Update job with proposal amounts if not set
-        if (!job.total_amount && data.total) {
+        if (!job.total && data.total) {
           setJob((prev: any) => ({ ...prev, total_amount: data.total }))
         }
       }
@@ -535,7 +535,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                       Total Amount
                     </p>
                     <p className="font-medium text-lg">
-                      ${job.total_amount ? job.total_amount.toFixed(2) : proposal?.total?.toFixed(2) || '0.00'}
+                      ${job.total ? job.total.toFixed(2) : proposal?.total?.toFixed(2) || '0.00'}
                     </p>
                   </div>
                   
@@ -552,7 +552,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                   <div>
                     <p className="text-sm text-muted-foreground">Balance Due</p>
                     <p className="font-medium text-lg text-orange-600">
-                      ${((job.total_amount || proposal?.total || 0) - (job.amount_paid || 0)).toFixed(2)}
+                      ${((job.total || proposal?.total || 0) - (job.amount_paid || 0)).toFixed(2)}
                     </p>
                   </div>
 

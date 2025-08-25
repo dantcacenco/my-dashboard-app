@@ -7,8 +7,8 @@ interface PaymentStagesProps {
   progressPaidAt: string | null
   finalPaidAt: string | null
   depositAmount: number
-  progressAmount: number
-  finalAmount: number
+  progressPaymentAmount: number
+  finalPaymentAmount: number
   currentStage: 'deposit' | 'roughin' | 'final' | 'complete'
 }
 
@@ -17,8 +17,8 @@ export function PaymentStages({
   progressPaidAt,
   finalPaidAt,
   depositAmount,
-  progressAmount,
-  finalAmount,
+  progressPaymentAmount,
+  finalPaymentAmount,
   currentStage
 }: PaymentStagesProps) {
   const formatCurrency = (amount: number) => {
@@ -46,13 +46,13 @@ export function PaymentStages({
     },
     {
       name: 'Rough-in',
-      amount: progressAmount,
+      amount: progressPaymentAmount,
       paidAt: progressPaidAt,
       stage: 'roughin' as const
     },
     {
       name: 'Final',
-      amount: finalAmount,
+      amount: finalPaymentAmount,
       paidAt: finalPaidAt,
       stage: 'final' as const
     }
@@ -120,7 +120,7 @@ export function PaymentStages({
         <div className="flex justify-between items-center">
           <p className="font-semibold text-gray-900">Total Amount</p>
           <p className="font-bold text-xl">
-            {formatCurrency(depositAmount + progressAmount + finalAmount)}
+            {formatCurrency(depositAmount + progressPaymentAmount + finalPaymentAmount)}
           </p>
         </div>
       </div>

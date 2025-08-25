@@ -65,8 +65,8 @@ export interface Proposal {
   deposit_percentage: number
   progress_percentage: number
   final_percentage: number
-  progress_amount: number
-  final_amount: number
+  progress_payment_amount: number
+  final_payment_amount: number
   job_created?: boolean
 }
 

@@ -114,8 +114,8 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
           tax_amount: totals.taxAmount,
           total: totals.total,
           deposit_amount: depositAmount,
-          progress_amount: totals.total * 0.3,
-          final_amount: totals.total * 0.2,
+          progress_payment_amount: totals.total * 0.3,
+          final_payment_amount: totals.total * 0.2,
           status: 'accepted',
           approved_at: new Date().toISOString(),
           payment_stage: 'deposit'
