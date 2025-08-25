@@ -107,7 +107,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 
   const totals = calculateTotals()
 
-  // Handle proposal approval - just update status, don't redirect to payment
+  // Handle proposal approval - FIXED with proper calculations
   const handleApprove = async () => {
     setIsProcessing(true)
     setError('')
@@ -115,41 +115,72 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
     try {
       // Update selected add-ons
       for (const addon of addons) {
-        await supabase
+        const { error: addonError } = await supabase
           .from('proposal_items')
           .update({ is_selected: selectedAddons.has(addon.id) })
           .eq('id', addon.id)
+        
+        if (addonError) {
+          console.error('Error updating addon:', addonError)
+        }
       }
 
-      // Calculate payment amounts
-      const depositAmount = totals.total * 0.5
-      const progressAmount = totals.total * 0.3
-      const finalAmount = totals.total * 0.2
+      // Calculate payment amounts with proper rounding
+      const total = Math.round(totals.total * 100) / 100
+      const depositAmount = Math.round((total * 0.5) * 100) / 100
+      const progressAmount = Math.round((total * 0.3) * 100) / 100
+      const finalAmount = Math.round((total * 0.2) * 100) / 100
+
+      // Ensure amounts add up exactly to total (handle rounding)
+      const sumOfPayments = depositAmount + progressAmount + finalAmount
+      const difference = Math.round((total - sumOfPayments) * 100) / 100
+      const adjustedFinalAmount = finalAmount + difference
+
+      console.log('Approval calculations:', {
+        subtotal: totals.subtotal,
+        tax: totals.taxAmount,
+        total,
+        deposit: depositAmount,
+        progress: progressAmount,
+        final: adjustedFinalAmount,
+        sum: depositAmount + progressAmount + adjustedFinalAmount
+      })
 
       // Update proposal status to accepted
-      const { error: updateError } = await supabase
-        .from('proposals')
-        .update({
-          subtotal: totals.subtotal,
-          tax_amount: totals.taxAmount,
-          total: totals.total,
-          deposit_amount: depositAmount,
-          progress_payment_amount: progressAmount,
-          final_payment_amount: finalAmount,
-          status: 'accepted',
-          approved_at: new Date().toISOString(),
-          payment_stage: 'deposit'
-        })
-        .eq('id', proposal.id)
+      const updateData = {
+        status: 'accepted',
+        subtotal: Math.round(totals.subtotal * 100) / 100,
+        tax_amount: Math.round(totals.taxAmount * 100) / 100,
+        total: total,
+        deposit_amount: depositAmount,
+        progress_payment_amount: progressAmount,
+        final_payment_amount: adjustedFinalAmount,
+        payment_stage: 'deposit',
+        approved_at: new Date().toISOString()
+      }
 
-      if (updateError) throw updateError
+      console.log('Updating proposal with:', updateData)
+
+      const { data: updateResult, error: updateError } = await supabase
+        .from('proposals')
+        .update(updateData)
+        .eq('id', proposal.id)
+        .select()
+        .single()
+
+      if (updateError) {
+        console.error('Full update error:', updateError)
+        throw new Error(updateError.message || 'Failed to approve proposal')
+      }
+
+      console.log('Update successful:', updateResult)
 
       // Refresh the proposal data to show payment stages
       await refreshProposal()
       
     } catch (err: any) {
       console.error('Approval error:', err)
-      setError('Failed to approve proposal. Please try again.')
+      setError(err.message || 'Failed to approve proposal. Please try again.')
     } finally {
       setIsProcessing(false)
     }

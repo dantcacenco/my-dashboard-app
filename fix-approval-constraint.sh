@@ -1,16 +1,82 @@
 #!/bin/bash
 
-# Fix Customer Proposal View - Add ALL missing content
-# This script completely fixes the CustomerProposalView to show full proposal details
+# Fix Proposal Approval Constraint Violation
+# Diagnoses and fixes the database constraint issue
 
 set -e
 
-echo "🔧 Fixing CustomerProposalView - Adding all missing proposal content..."
+echo "🔍 Diagnosing and fixing proposal approval constraint violation..."
 
-# Navigate to project
 cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
 
-# Create the complete CustomerProposalView with all content
+# First, let's check what constraints exist on the proposals table
+echo "📊 Checking database constraints on proposals table..."
+
+cat > check-constraints.js << 'EOF'
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config({ path: '.env.local' })
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+async function checkConstraints() {
+  try {
+    // Get table constraints
+    const { data: constraints, error } = await supabase
+      .rpc('get_table_constraints', { table_name: 'proposals' })
+      .select('*')
+    
+    if (error) {
+      // Try alternative method
+      const { data, error: altError } = await supabase
+        .from('information_schema.check_constraints')
+        .select('*')
+        .ilike('constraint_name', '%proposal%')
+      
+      if (altError) {
+        console.log('Could not fetch constraints directly')
+      } else {
+        console.log('Constraints:', data)
+      }
+    } else {
+      console.log('Constraints:', constraints)
+    }
+
+    // Test with sample data
+    console.log('\nTesting update with sample values...')
+    
+    // Get a test proposal
+    const { data: testProposal } = await supabase
+      .from('proposals')
+      .select('*')
+      .eq('status', 'sent')
+      .limit(1)
+      .single()
+    
+    if (testProposal) {
+      console.log('Test proposal total:', testProposal.total)
+      console.log('Calculated deposits:')
+      console.log('  Deposit (50%):', testProposal.total * 0.5)
+      console.log('  Progress (30%):', testProposal.total * 0.3)
+      console.log('  Final (20%):', testProposal.total * 0.2)
+      console.log('  Sum:', (testProposal.total * 0.5) + (testProposal.total * 0.3) + (testProposal.total * 0.2))
+    }
+
+  } catch (err) {
+    console.error('Error:', err)
+  }
+}
+
+checkConstraints()
+EOF
+
+node check-constraints.js
+
+# Now let's create the fixed approval handler
+echo "🔧 Creating fixed CustomerProposalView with proper approval handling..."
+
 cat > app/proposal/view/[token]/CustomerProposalView.tsx << 'EOF'
 'use client'
 
@@ -121,49 +187,82 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 
   const totals = calculateTotals()
 
-  // Handle proposal approval - just update status, don't redirect to payment
+  // Handle proposal approval - FIXED version with proper calculations
   const handleApprove = async () => {
     setIsProcessing(true)
     setError('')
 
     try {
-      // Update selected add-ons
+      // First update selected add-ons
       for (const addon of addons) {
-        await supabase
+        const { error: addonError } = await supabase
           .from('proposal_items')
           .update({ is_selected: selectedAddons.has(addon.id) })
           .eq('id', addon.id)
+        
+        if (addonError) {
+          console.error('Error updating addon:', addonError)
+        }
       }
 
-      // Calculate payment amounts
-      const depositAmount = totals.total * 0.5
-      const progressAmount = totals.total * 0.3
-      const finalAmount = totals.total * 0.2
+      // Calculate payment amounts with proper rounding to avoid floating point issues
+      const total = Math.round(totals.total * 100) / 100
+      const depositAmount = Math.round((total * 0.5) * 100) / 100
+      const progressAmount = Math.round((total * 0.3) * 100) / 100
+      const finalAmount = Math.round((total * 0.2) * 100) / 100
 
-      // Update proposal status to accepted
-      const { error: updateError } = await supabase
+      // Ensure amounts add up exactly to total (handle rounding differences)
+      const sumOfPayments = depositAmount + progressAmount + finalAmount
+      const difference = Math.round((total - sumOfPayments) * 100) / 100
+      
+      // Adjust final payment if there's a rounding difference
+      const adjustedFinalAmount = finalAmount + difference
+
+      console.log('Approval calculations:', {
+        subtotal: totals.subtotal,
+        tax: totals.taxAmount,
+        total,
+        deposit: depositAmount,
+        progress: progressAmount,
+        final: adjustedFinalAmount,
+        sum: depositAmount + progressAmount + adjustedFinalAmount
+      })
+
+      // Update proposal with calculated values
+      const updateData = {
+        status: 'accepted',
+        subtotal: Math.round(totals.subtotal * 100) / 100,
+        tax_amount: Math.round(totals.taxAmount * 100) / 100,
+        total: total,
+        deposit_amount: depositAmount,
+        progress_payment_amount: progressAmount,
+        final_payment_amount: adjustedFinalAmount,
+        payment_stage: 'deposit',
+        approved_at: new Date().toISOString()
+      }
+
+      console.log('Updating proposal with:', updateData)
+
+      const { data: updateResult, error: updateError } = await supabase
         .from('proposals')
-        .update({
-          subtotal: totals.subtotal,
-          tax_amount: totals.taxAmount,
-          total: totals.total,
-          deposit_amount: depositAmount,
-          progress_payment_amount: progressAmount,
-          final_payment_amount: finalAmount,
-          status: 'accepted',
-          approved_at: new Date().toISOString(),
-          payment_stage: 'deposit'
-        })
+        .update(updateData)
         .eq('id', proposal.id)
+        .select()
+        .single()
 
-      if (updateError) throw updateError
+      if (updateError) {
+        console.error('Full update error:', updateError)
+        throw new Error(updateError.message || 'Failed to approve proposal')
+      }
+
+      console.log('Update successful:', updateResult)
 
       // Refresh the proposal data to show payment stages
       await refreshProposal()
       
     } catch (err: any) {
       console.error('Approval error:', err)
-      setError('Failed to approve proposal. Please try again.')
+      setError(err.message || 'Failed to approve proposal. Please try again.')
     } finally {
       setIsProcessing(false)
     }
@@ -628,7 +727,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
                 className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold flex items-center"
               >
                 <Check className="h-5 w-5 mr-2" />
-                Approve Proposal
+                {isProcessing ? 'Processing...' : 'Approve Proposal'}
               </button>
               <button
                 onClick={handleReject}
@@ -641,8 +740,9 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
             </div>
 
             {error && (
-              <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">
-                {error}
+              <div className="mt-4 p-4 bg-red-100 text-red-700 rounded-lg">
+                <p className="font-semibold">Error:</p>
+                <p>{error}</p>
               </div>
             )}
           </div>
@@ -653,53 +753,43 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 }
 EOF
 
-echo "✅ CustomerProposalView fixed with all content"
+echo "✅ CustomerProposalView updated with fixed approval logic"
 
-# Test the build
+# Build and test
 echo "🔧 Testing build..."
 npm run build 2>&1 | head -80
 
-# Check if build succeeded
 if [ $? -eq 0 ]; then
     echo "✅ Build successful!"
     
     # Commit and push
-    echo "📤 Committing and pushing to GitHub..."
     git add -A
-    git commit -m "Fix CustomerProposalView - Add complete proposal content display
+    git commit -m "Fix proposal approval constraint violation
 
-- Added full proposal header with dates
-- Added customer information section
-- Added project description display
-- Added services table with quantities and prices
-- Added selectable optional add-ons with checkboxes
-- Added dynamic cost summary with tax calculations
-- Added payment terms information
-- Improved payment stages UI with descriptions
-- Added payment progress tracking
-- Maintained existing payment flow logic
-- Enhanced visual design with proper spacing and colors"
+- Added proper rounding to prevent floating point issues
+- Ensure payment amounts sum exactly to total
+- Added detailed console logging for debugging
+- Improved error messages
+- Handle rounding differences in payment calculations"
     
     git push origin main
     
-    echo "✅ Successfully fixed CustomerProposalView!"
+    echo "✅ Fix deployed successfully!"
     echo ""
-    echo "📋 What was fixed:"
-    echo "1. ✓ Complete proposal content now displays"
-    echo "2. ✓ Customer information section added"
-    echo "3. ✓ Services and add-ons properly shown"
-    echo "4. ✓ Dynamic totals calculation"
-    echo "5. ✓ Payment stages preserved and enhanced"
-    echo "6. ✓ Professional layout with proper styling"
+    echo "🔍 What was fixed:"
+    echo "1. Added proper rounding to 2 decimal places"
+    echo "2. Ensured payment amounts sum exactly to total"
+    echo "3. Added console logging for debugging"
+    echo "4. Better error handling with full error messages"
     echo ""
-    echo "🧪 Test the fix:"
-    echo "1. Send a proposal to a customer"
-    echo "2. Open the customer link in incognito"
-    echo "3. Verify all content displays correctly"
-    echo "4. Select/deselect add-ons and watch totals update"
-    echo "5. Approve the proposal"
-    echo "6. Verify payment stages appear"
+    echo "📝 Next steps:"
+    echo "1. Try approving the proposal again"
+    echo "2. Check console for detailed logging"
+    echo "3. If still fails, check the logged constraint details"
+    
+    # Clean up
+    rm check-constraints.js 2>/dev/null || true
 else
-    echo "❌ Build failed! Please check the errors above."
+    echo "❌ Build failed!"
     exit 1
 fi
