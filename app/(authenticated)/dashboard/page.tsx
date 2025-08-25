@@ -4,42 +4,22 @@ import DashboardContent from '@/app/DashboardContent'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
-  if (error || !user) {
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
     redirect('/auth/signin')
   }
 
-  // Get user profile
+  // Check user role
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  // Debug logging
-  console.log('Dashboard: User ID:', user.id)
-  console.log('Dashboard: Profile:', profile)
-
-  // If no profile exists, create one with admin role for now
-  if (!profile) {
-    console.log('No profile found, creating admin profile...')
-    await supabase
-      .from('profiles')
-      .insert({
-        id: user.id,
-        email: user.email,
-        role: 'admin'
-      })
-    
-    // Redirect to dashboard again to reload with profile
-    redirect('/dashboard')
-  }
-
   // Only allow admin to view dashboard
-  if (profile.role !== 'admin') {
-    console.log('Not admin, redirecting to home. Role:', profile.role)
+  if (!profile || profile.role !== 'admin') {
+    // Don't redirect to technician if not admin, redirect to home
     redirect('/')
   }
 
@@ -57,14 +37,8 @@ export default async function DashboardPage() {
       .order('created_at', { ascending: false }),
     
     supabase
-      .from('proposal_activities')
-      .select(`
-        *,
-        proposals (
-          proposal_number,
-          title
-        )
-      `)
+      .from('recent_activities')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(10)
   ])
@@ -94,11 +68,14 @@ export default async function DashboardPage() {
   const activeProposals = proposals.filter(p => p.status === 'sent' || p.status === 'viewed').length
   const completedJobs = proposals.filter(p => p.status === 'completed').length
 
-  return <DashboardContent 
-    revenue={Math.round(revenue)}
-    activeProposals={activeProposals}
-    completedJobs={completedJobs}
-    proposals={proposals}
-    activities={activities}
-  />
+  const dashboardData = {
+    revenue: Math.round(revenue),
+    activeProposals,
+    completedJobs,
+    proposals,
+    activities
+  }
+
+  // Pass as initialData prop
+  return <DashboardContent initialData={dashboardData} />
 }
