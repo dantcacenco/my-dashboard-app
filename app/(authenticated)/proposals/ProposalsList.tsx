@@ -18,7 +18,7 @@ interface ProposalListProps {
 export default function ProposalsList({ initialProposals }: ProposalListProps) {
   const router = useRouter();
   const [proposals, setProposals] = useState(initialProposals);
-  const [viewMode, setViewMode] = useState<string>('list');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const supabase = createClient();
 
   useEffect(() => {
@@ -106,7 +106,7 @@ export default function ProposalsList({ initialProposals }: ProposalListProps) {
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-2 rounded ${viewMode === 'list' ? 'bg-white shadow' : ''}`}
+                className={`p-2 rounded ${viewMode !== 'grid' ? 'bg-white shadow' : ''}`}
               >
                 <List className="h-4 w-4" />
               </button>
@@ -178,7 +178,7 @@ export default function ProposalsList({ initialProposals }: ProposalListProps) {
           <div className="flex bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-2 rounded ${viewMode === 'grid' ? 'bg-white shadow' : ''}`}
+              className={`p-2 rounded ${viewMode !== 'list' ? 'bg-white shadow' : ''}`}
             >
               <Grid3X3 className="h-4 w-4" />
             </button>
