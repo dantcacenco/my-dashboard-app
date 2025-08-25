@@ -64,5 +64,5 @@ export default async function TechnicianJobsPage() {
     assigned_at: aj.assigned_at
   })) || []
 
-  return <TechnicianJobsList jobs={jobs} technicianName={profile?.full_name || user.email || ''} />
+  return <TechnicianJobsList jobs={jobs} />
 }

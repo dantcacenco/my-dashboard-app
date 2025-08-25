@@ -94,13 +94,11 @@ export default async function DashboardPage() {
   const activeProposals = proposals.filter(p => p.status === 'sent' || p.status === 'viewed').length
   const completedJobs = proposals.filter(p => p.status === 'completed').length
 
-  const dashboardData = {
-    revenue: Math.round(revenue),
-    activeProposals,
-    completedJobs,
-    proposals,
-    activities
-  }
-
-  return <DashboardContent initialData={dashboardData} />
+  return <DashboardContent 
+    revenue={Math.round(revenue)}
+    activeProposals={activeProposals}
+    completedJobs={completedJobs}
+    proposals={proposals}
+    activities={activities}
+  />
 }
