@@ -1,294 +1,137 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-
-interface Customer {
-  id: string
-  name: string
-  email: string
-  phone: string
-  address: string
-}
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { X, Send } from 'lucide-react'
 
 interface SendProposalProps {
   proposalId: string
   proposalNumber: string
-  customer: Customer
+  customerEmail?: string
+  customerName?: string
   total: number
-  onSent: () => void
-  onCancel: () => void
+  onClose: () => void
+  onSuccess: () => void
 }
 
-export default function SendProposal({ 
-  proposalId, 
-  proposalNumber, 
-  customer, 
-  total, 
-  onSent, 
-  onCancel 
+export default function SendProposal({
+  proposalId,
+  proposalNumber,
+  customerEmail,
+  customerName,
+  total,
+  onClose,
+  onSuccess
 }: SendProposalProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [emailSubject, setEmailSubject] = useState(
-    `Proposal ${proposalNumber} from Service Pro`
+  const [email, setEmail] = useState(customerEmail || '')
+  const [message, setMessage] = useState(
+    `Please find attached your proposal #${proposalNumber} for HVAC services.\n\nTotal Amount: $${total?.toFixed(2) || '0.00'}\n\nYou can view and approve your proposal by clicking the link in the email.\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nYour HVAC Team`
   )
-  const [emailMessage, setEmailMessage] = useState(
-    `Dear ${customer?.name || 'Customer'},
-
-Please find attached your proposal for HVAC services. This proposal includes detailed pricing and service descriptions.
-
-Proposal Number: ${proposalNumber}
-Total Amount: $${total?.toFixed(2) || '0.00'}
-
-You can review and approve this proposal by clicking the link below. If you have any questions, please don't hesitate to contact us.
-
-Best regards,
-Service Pro Team
-
-Phone: (555) 123-4567
-Email: info@servicepro.com`
-  )
-  const [sendCopy, setSendCopy] = useState(true)
+  const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState('')
 
-  const supabase = createClient()
-
   const handleSend = async () => {
-    // Validate required fields
-    if (!proposalId) {
-      setError('Proposal ID is missing. Please refresh the page and try again.')
+    // Validate email
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address')
       return
     }
 
-    if (!customer?.email) {
-      setError('Customer email is required to send the proposal')
-      return
-    }
-
-    if (!emailSubject.trim() || !emailMessage.trim()) {
-      setError('Please fill in both subject and message')
-      return
-    }
-
-    setIsLoading(true)
+    setIsSending(true)
     setError('')
 
     try {
-      // Create unique proposal view token
-      const viewToken = crypto.randomUUID()
-      
-      console.log('Sending proposal with ID:', proposalId)
-      
-      // First check what columns exist in the proposals table
-      const { data: existingProposal } = await supabase
-        .from('proposals')
-        .select('*')
-        .eq('id', proposalId)
-        .single()
-      
-      console.log('Existing proposal:', existingProposal)
-      
-      // Update proposal with view token and status
-      // Use sent_at which seems to be the correct column
-      const updateData: any = {
-        status: 'sent',
-        customer_view_token: viewToken,
-        sent_at: new Date().toISOString()
-      }
-      
-      const { data: updatedProposal, error: updateError } = await supabase
-        .from('proposals')
-        .update(updateData)
-        .eq('id', proposalId)
-        .select()
-        .single()
-
-      if (updateError) {
-        console.error('Error updating proposal:', updateError)
-        throw new Error(`Failed to update proposal: ${updateError.message}`)
-      }
-
-      console.log('Updated proposal:', updatedProposal)
-
-      // Create the customer view URL
-      const customerViewUrl = `${window.location.origin}/proposal/view/${viewToken}`
-
-      // Prepare email data
-      const emailData = {
-        to: customer.email,
-        subject: emailSubject,
-        message: emailMessage.replace(
-          'by clicking the link below',
-          `by clicking this link: ${customerViewUrl}`
-        ),
-        customer_name: customer.name,
-        proposal_number: proposalNumber,
-        proposal_url: customerViewUrl,
-        proposal_id: proposalId,
-        total_amount: total,
-        send_copy: sendCopy
-      }
-
-      // Send email via API route
       const response = await fetch('/api/send-proposal', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(emailData)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposalId,
+          proposalNumber,
+          email,
+          customerName: customerName || 'Customer',
+          message,
+          total
+        })
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        const errorData = await response.json()
-        console.warn('Email sending failed:', errorData)
-        // Don't throw - proposal is already updated
+        throw new Error(data.error || 'Failed to send proposal')
       }
 
-      // Log the activity (optional - don't fail if this errors)
-      try {
-        await supabase
-          .from('proposal_activities')
-          .insert({
-            proposal_id: proposalId,
-            activity_type: 'email_sent',
-            description: `Proposal sent to ${customer.email}`,
-            metadata: {
-              email_subject: emailSubject,
-              customer_email: customer.email,
-              view_url: customerViewUrl,
-              sent_at: new Date().toISOString()
-            }
-          })
-      } catch (activityError) {
-        console.warn('Failed to log activity:', activityError)
-      }
-
-      // Success - call the onSent callback
-      onSent()
-      
-    } catch (error) {
-      console.error('Error sending proposal:', error)
-      setError(error instanceof Error ? error.message : 'Failed to send proposal')
+      onSuccess()
+      onClose()
+    } catch (err: any) {
+      console.error('Send error:', err)
+      setError(err.message || 'Failed to send proposal')
     } finally {
-      setIsLoading(false)
+      setIsSending(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div className="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
-        <div className="mt-3">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-medium text-gray-900">
-              Send Proposal to Customer
-            </h3>
-            <button
-              onClick={onCancel}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Send Proposal #{proposalNumber}</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
+            {error}
           </div>
+        )}
 
-          {/* Error Display */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-              <p className="text-sm">{error}</p>
-            </div>
-          )}
-
-          {/* Customer Info */}
-          <div className="bg-gray-50 p-4 rounded-lg mb-6">
-            <h4 className="font-medium text-gray-900 mb-2">Sending to:</h4>
-            <p className="text-sm text-gray-600">{customer?.name || 'No name'}</p>
-            <p className="text-sm text-gray-600">{customer?.email || 'No email'}</p>
-            {customer?.phone && <p className="text-sm text-gray-600">{customer.phone}</p>}
-          </div>
-
-          {/* Email Subject */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Subject *
-            </label>
-            <input
-              type="text"
-              value={emailSubject}
-              onChange={(e) => setEmailSubject(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter email subject"
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">To:</label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="customer@email.com"
+              required
             />
           </div>
 
-          {/* Email Message */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Message *
-            </label>
-            <textarea
-              value={emailMessage}
-              onChange={(e) => setEmailMessage(e.target.value)}
-              rows={10}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter your message"
+          <div>
+            <label className="block text-sm font-medium mb-1">Subject:</label>
+            <Input
+              value={`Your Proposal #${proposalNumber} is Ready`}
+              disabled
             />
-            <p className="text-xs text-gray-500 mt-1">
-              A secure link to view and approve the proposal will be automatically included.
-            </p>
           </div>
 
-          {/* Send Copy Checkbox */}
-          <div className="mb-6">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={sendCopy}
-                onChange={(e) => setSendCopy(e.target.checked)}
-                className="mr-2"
-              />
-              <span className="text-sm text-gray-700">Send a copy to myself</span>
-            </label>
+          <div>
+            <label className="block text-sm font-medium mb-1">Message:</label>
+            <Textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={8}
+            />
           </div>
+        </div>
 
-          {/* What Happens Next */}
-          <div className="bg-blue-50 p-4 rounded-lg mb-6">
-            <h4 className="font-medium text-blue-900 mb-2">What happens next?</h4>
-            <ul className="text-sm text-blue-700 space-y-1">
-              <li>• Customer receives email with secure proposal link</li>
-              <li>• They can view, download, and approve the proposal online</li>
-              <li>• You'll get notified when they view or approve it</li>
-              <li>• Proposal status will be updated automatically</li>
-            </ul>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-3">
-            <button
-              onClick={handleSend}
-              disabled={isLoading || !customer?.email}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Sending...
-                </div>
-              ) : (
-                'Send Proposal'
-              )}
-            </button>
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-          </div>
+        <div className="flex justify-end gap-2 mt-6">
+          <Button variant="outline" onClick={onClose} disabled={isSending}>
+            Cancel
+          </Button>
+          <Button onClick={handleSend} disabled={isSending}>
+            {isSending ? (
+              <>Sending...</>
+            ) : (
+              <>
+                <Send className="h-4 w-4 mr-2" />
+                Send
+              </>
+            )}
+          </Button>
         </div>
       </div>
     </div>

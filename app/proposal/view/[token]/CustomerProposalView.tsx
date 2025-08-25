@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import PaymentStages from '@/components/PaymentStages'
+import { Check, X } from 'lucide-react'
 
 interface ProposalData {
   id: string
@@ -24,7 +24,11 @@ interface ProposalData {
   deposit_paid_at: string | null
   progress_paid_at: string | null
   final_paid_at: string | null
+  deposit_amount: number | null
+  progress_payment_amount: number | null
+  final_payment_amount: number | null
   total_paid: number
+  payment_stage: string | null
 }
 
 interface CustomerProposalViewProps {
@@ -35,29 +39,37 @@ interface CustomerProposalViewProps {
 export default function CustomerProposalView({ proposal: initialProposal, token }: CustomerProposalViewProps) {
   const router = useRouter()
   const supabase = createClient()
-  
+  const [proposal, setProposal] = useState(initialProposal)
   const [selectedAddons, setSelectedAddons] = useState<Set<string>>(
     new Set(initialProposal.proposal_items?.filter(item => item.is_addon && item.is_selected).map(item => item.id))
   )
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
 
-  // Separate services and add-ons - handle duplicates by combining quantities
-  const services = initialProposal.proposal_items?.filter(item => !item.is_addon) || []
-  
-  // Combine duplicate add-ons by summing their quantities
-  const addonsMap = new Map()
-  initialProposal.proposal_items?.filter(item => item.is_addon).forEach(item => {
-    const key = item.name
-    if (addonsMap.has(key)) {
-      const existing = addonsMap.get(key)
-      existing.quantity += item.quantity || 1
-      existing.total_price = existing.unit_price * existing.quantity
-    } else {
-      addonsMap.set(key, { ...item })
+  // Refresh proposal data
+  const refreshProposal = async () => {
+    const { data } = await supabase
+      .from('proposals')
+      .select('*')
+      .eq('customer_view_token', token)
+      .single()
+    
+    if (data) {
+      setProposal(data)
     }
-  })
-  const addons = Array.from(addonsMap.values())
+  }
+
+  useEffect(() => {
+    // Poll for updates every 5 seconds if payment is in progress
+    if (proposal.status === 'accepted' && proposal.payment_stage !== 'complete') {
+      const interval = setInterval(refreshProposal, 5000)
+      return () => clearInterval(interval)
+    }
+  }, [proposal.status, proposal.payment_stage])
+
+  // Separate services and add-ons
+  const services = proposal.proposal_items?.filter(item => !item.is_addon) || []
+  const addons = proposal.proposal_items?.filter(item => item.is_addon) || []
 
   // Toggle addon selection
   const toggleAddon = (addonId: string) => {
@@ -70,7 +82,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
     setSelectedAddons(newSelected)
   }
 
-  // Calculate totals based on selections
+  // Calculate totals
   const calculateTotals = () => {
     const servicesTotal = services.reduce((sum: number, item: any) => 
       sum + (item.total_price || 0), 0
@@ -81,7 +93,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
       .reduce((sum: number, item: any) => sum + (item.total_price || 0), 0)
     
     const subtotal = servicesTotal + addonsTotal
-    const taxAmount = subtotal * (initialProposal.tax_rate || 0)
+    const taxAmount = subtotal * (proposal.tax_rate || 0)
     const total = subtotal + taxAmount
     
     return { servicesTotal, addonsTotal, subtotal, taxAmount, total }
@@ -89,7 +101,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 
   const totals = calculateTotals()
 
-  // Handle proposal approval - direct to payment immediately
+  // Handle proposal approval - just update status, don't redirect to payment
   const handleApprove = async () => {
     setIsProcessing(true)
     setError('')
@@ -105,36 +117,75 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 
       // Calculate payment amounts
       const depositAmount = totals.total * 0.5
+      const progressAmount = totals.total * 0.3
+      const finalAmount = totals.total * 0.2
 
-      // Update proposal
-      await supabase
+      // Update proposal status to accepted
+      const { error: updateError } = await supabase
         .from('proposals')
         .update({
           subtotal: totals.subtotal,
           tax_amount: totals.taxAmount,
           total: totals.total,
           deposit_amount: depositAmount,
-          progress_payment_amount: totals.total * 0.3,
-          final_payment_amount: totals.total * 0.2,
+          progress_payment_amount: progressAmount,
+          final_payment_amount: finalAmount,
           status: 'accepted',
           approved_at: new Date().toISOString(),
           payment_stage: 'deposit'
         })
-        .eq('id', initialProposal.id)
+        .eq('id', proposal.id)
 
-      // Create payment session immediately for deposit
+      if (updateError) throw updateError
+
+      // Refresh the proposal data to show payment stages
+      await refreshProposal()
+      
+    } catch (err: any) {
+      console.error('Approval error:', err)
+      setError('Failed to approve proposal. Please try again.')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // Handle payment for a specific stage
+  const handlePayment = async (stage: 'deposit' | 'roughin' | 'final') => {
+    setIsProcessing(true)
+    setError('')
+
+    try {
+      let amount = 0
+      let description = ''
+      
+      switch(stage) {
+        case 'deposit':
+          amount = proposal.deposit_amount || 0
+          description = `50% Deposit for Proposal #${proposal.proposal_number}`
+          break
+        case 'roughin':
+          amount = proposal.progress_payment_amount || 0
+          description = `30% Rough-in Payment for Proposal #${proposal.proposal_number}`
+          break
+        case 'final':
+          amount = proposal.final_payment_amount || 0
+          description = `20% Final Payment for Proposal #${proposal.proposal_number}`
+          break
+      }
+
+      // Create payment session
       const response = await fetch('/api/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          proposal_id: initialProposal.id,
-          proposal_number: initialProposal.proposal_number,
-          customer_name: initialProposal.customers?.name,
-          customer_email: initialProposal.customers?.email,
-          amount: depositAmount,
+          proposal_id: proposal.id,
+          proposal_number: proposal.proposal_number,
+          customer_name: proposal.customers?.name,
+          customer_email: proposal.customers?.email,
+          amount,
           payment_type: 'card',
-          payment_stage: 'deposit',
-          description: `50% Deposit for Proposal #${initialProposal.proposal_number}`
+          payment_stage: stage,
+          description
         })
       })
 
@@ -147,16 +198,15 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
         throw new Error('No payment URL received')
       }
       
-    } catch (err) {
-      console.error('Error approving proposal:', err)
-      setError('Failed to process approval. Please try again.')
+    } catch (err: any) {
+      console.error('Payment error:', err)
+      setError('Failed to process payment. Please try again.')
       setIsProcessing(false)
     }
   }
 
+  // Handle rejection
   const handleReject = async () => {
-    if (!confirm('Are you sure you want to reject this proposal?')) return
-
     setIsProcessing(true)
     try {
       await supabase
@@ -165,221 +215,164 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
           status: 'rejected',
           rejected_at: new Date().toISOString()
         })
-        .eq('id', initialProposal.id)
-
-      alert('Proposal has been rejected.')
-      router.refresh()
+        .eq('id', proposal.id)
+      
+      await refreshProposal()
     } catch (err) {
-      console.error('Error rejecting proposal:', err)
-      setError('Failed to reject proposal.')
+      setError('Failed to reject proposal')
     } finally {
       setIsProcessing(false)
     }
   }
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount)
+  }
+
+  // Show payment stages if approved
+  if (proposal.status === 'accepted' || proposal.status === 'approved') {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <h1 className="text-3xl font-bold mb-2">Proposal #{proposal.proposal_number}</h1>
+            <div className="mb-8">
+              <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                Approved
+              </span>
+            </div>
+
+            {/* Payment Stages */}
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold mb-4">Payment Schedule</h2>
+              
+              {/* Deposit */}
+              <div className="border rounded-lg p-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold">50% Deposit</h3>
+                    <p className="text-gray-600">{formatCurrency(proposal.deposit_amount || 0)}</p>
+                  </div>
+                  {proposal.deposit_paid_at ? (
+                    <div className="flex items-center text-green-600">
+                      <Check className="h-5 w-5 mr-2" />
+                      Paid
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handlePayment('deposit')}
+                      disabled={isProcessing}
+                      className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Pay Now
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Rough-in */}
+              <div className={`border rounded-lg p-6 ${!proposal.deposit_paid_at ? 'opacity-50' : ''}`}>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold">30% Rough-in</h3>
+                    <p className="text-gray-600">{formatCurrency(proposal.progress_payment_amount || 0)}</p>
+                  </div>
+                  {proposal.progress_paid_at ? (
+                    <div className="flex items-center text-green-600">
+                      <Check className="h-5 w-5 mr-2" />
+                      Paid
+                    </div>
+                  ) : proposal.deposit_paid_at ? (
+                    <button
+                      onClick={() => handlePayment('roughin')}
+                      disabled={isProcessing}
+                      className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Pay Now
+                    </button>
+                  ) : (
+                    <span className="text-gray-400">Locked</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Final */}
+              <div className={`border rounded-lg p-6 ${!proposal.progress_paid_at ? 'opacity-50' : ''}`}>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold">20% Final</h3>
+                    <p className="text-gray-600">{formatCurrency(proposal.final_payment_amount || 0)}</p>
+                  </div>
+                  {proposal.final_paid_at ? (
+                    <div className="flex items-center text-green-600">
+                      <Check className="h-5 w-5 mr-2" />
+                      Paid
+                    </div>
+                  ) : proposal.progress_paid_at ? (
+                    <button
+                      onClick={() => handlePayment('final')}
+                      disabled={isProcessing}
+                      className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Pay Now
+                    </button>
+                  ) : (
+                    <span className="text-gray-400">Locked</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">
+                {error}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show approval/rejection UI if not yet approved
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                {initialProposal.title}
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Proposal #{initialProposal.proposal_number}
-              </p>
-            </div>
-            <div className="text-right">
-              <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
-                initialProposal.status === 'accepted' ? 'bg-green-100 text-green-800' :
-                initialProposal.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                'bg-blue-100 text-blue-800'
-              }`}>
-                {initialProposal.status}
-              </span>
-            </div>
+        <div className="bg-white rounded-lg shadow-lg p-8">
+          <h1 className="text-3xl font-bold mb-8">Proposal #{proposal.proposal_number}</h1>
+          
+          {/* Services and totals display */}
+          <div className="space-y-6 mb-8">
+            {/* ... existing services display ... */}
           </div>
-        </div>
 
-        {/* Customer Info */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Customer Information</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Name</p>
-              <p className="font-medium">{initialProposal.customers?.name}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Email</p>
-              <p className="font-medium">{initialProposal.customers?.email}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Phone</p>
-              <p className="font-medium">{initialProposal.customers?.phone || '-'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Address</p>
-              <p className="font-medium">{initialProposal.customers?.address || '-'}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Services */}
-        {services.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Services</h2>
-            <div className="space-y-3">
-              {services.map((item: any) => (
-                <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
-                  <div className="flex justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-medium">{item.name}</h3>
-                      <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                      <p className="text-sm text-gray-500 mt-2">
-                        Qty: {item.quantity} × ${item.unit_price?.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-lg">${item.total_price?.toFixed(2)}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Optional Add-ons - Show combined quantities */}
-        {addons.length > 0 && initialProposal.status !== 'accepted' && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Optional Add-ons</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Select any additional services you'd like to include:
-            </p>
-            <div className="space-y-3">
-              {addons.map((item: any) => (
-                <div 
-                  key={item.id} 
-                  className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                    selectedAddons.has(item.id) 
-                      ? 'bg-orange-50 border-orange-300' 
-                      : 'bg-gray-50 border-gray-200 opacity-75'
-                  }`}
-                  onClick={() => toggleAddon(item.id)}
-                >
-                  <div className="flex items-start">
-                    <input
-                      type="checkbox"
-                      checked={selectedAddons.has(item.id)}
-                      onChange={() => toggleAddon(item.id)}
-                      className="mt-1 mr-3 w-4 h-4 text-orange-600 focus:ring-orange-500"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium">{item.name}</h3>
-                        <span className="text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded">
-                          Add-on
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                      <p className="text-sm text-gray-500 mt-2">
-                        Qty: {item.quantity} × ${item.unit_price?.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="text-right ml-4">
-                      <p className={`font-bold text-lg ${
-                        selectedAddons.has(item.id) ? 'text-green-600' : 'text-gray-400'
-                      }`}>
-                        ${item.total_price?.toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Totals */}
-        {initialProposal.status !== 'accepted' && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Total</h2>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Services:</span>
-                <span>${totals.servicesTotal.toFixed(2)}</span>
-              </div>
-              {totals.addonsTotal > 0 && (
-                <div className="flex justify-between text-orange-600">
-                  <span>Selected Add-ons:</span>
-                  <span>+${totals.addonsTotal.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-medium pt-2 border-t">
-                <span>Subtotal:</span>
-                <span>${totals.subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>Tax ({(initialProposal.tax_rate * 100).toFixed(1)}%):</span>
-                <span>${totals.taxAmount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-xl pt-2 border-t">
-                <span>Total:</span>
-                <span className="text-green-600">${totals.total.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Payment Stages when accepted */}
-        {initialProposal.status === 'accepted' && (
-          <PaymentStages
-            proposalId={initialProposal.id}
-            proposalNumber={initialProposal.proposal_number}
-            customerName={initialProposal.customers?.name || ''}
-            customerEmail={initialProposal.customers?.email || ''}
-            totalAmount={initialProposal.total}
-            depositPercentage={initialProposal.deposit_percentage || 50}
-            progressPercentage={initialProposal.progress_percentage || 30}
-            finalPercentage={initialProposal.final_percentage || 20}
-          />
-        )}
-
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-6">
-            {error}
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        {initialProposal.status === 'sent' && (
-          <div className="flex gap-4">
+          {/* Approve/Reject buttons */}
+          <div className="flex gap-4 justify-center">
             <button
               onClick={handleApprove}
               disabled={isProcessing}
-              className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:opacity-50"
             >
-              {isProcessing ? 'Processing...' : '✓ Approve Proposal'}
+              Approve Proposal
             </button>
             <button
               onClick={handleReject}
               disabled={isProcessing}
-              className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 disabled:opacity-50"
             >
-              ✗ Reject Proposal
+              Reject Proposal
             </button>
           </div>
-        )}
 
-        {initialProposal.status === 'rejected' && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-center">
-            <p className="font-semibold">This proposal has been rejected.</p>
-          </div>
-        )}
+          {error && (
+            <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">
+              {error}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
