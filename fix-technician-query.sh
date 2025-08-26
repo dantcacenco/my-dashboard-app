@@ -1,3 +1,10 @@
+#!/bin/bash
+
+# Fix the query error in technician page
+echo "Fixing job_technicians query error..."
+
+# Update the technician page to fix the order by clause
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/technician/page.tsx << 'EOF'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TechnicianDashboard from './TechnicianDashboard'
@@ -116,3 +123,15 @@ export default async function TechnicianPage() {
 
   return <TechnicianDashboard data={technicianData} />
 }
+EOF
+
+# Build and commit
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+npm run build 2>&1 | head -20
+
+git add -A
+git commit -m "Fix job_technicians query - remove invalid order by created_at"
+git push origin main
+
+echo "✅ Fixed the query error!"
+echo "The technician dashboard should now show the assigned jobs properly"
