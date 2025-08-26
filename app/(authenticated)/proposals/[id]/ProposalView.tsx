@@ -65,77 +65,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
   }
 
   // Show payment stages if proposal is approved
-  if (proposal.status === 'approved' || proposal.status === 'accepted') {
-    return (
-      <div className="mt-6">
-        <PaymentStages
-          depositPaidAt={proposal.deposit_paid_at}
-          progressPaidAt={proposal.progress_paid_at}
-          finalPaidAt={proposal.final_paid_at}
-          depositAmount={proposal.deposit_amount || 0}
-          progressPaymentAmount={proposal.progress_payment_amount || 0}
-          finalPaymentAmount={proposal.final_payment_amount || 0}
-          currentStage={proposal.payment_stage || 'deposit'}
-        />
-      </div>
-    )
-  }
-
-  // Print view
-  if (showPrintView) {
-    return (
-      <div className="fixed inset-0 bg-white z-50 overflow-auto">
-        <div className="max-w-4xl mx-auto p-8" ref={printRef}>
-          {/* Print content - simplified version */}
-          <h1 className="text-3xl font-bold mb-4">Proposal #{proposal.proposal_number}</h1>
-          <p className="text-gray-600 mb-8">{formatDate(proposal.created_at)}</p>
-          {/* Add more print content as needed */}
-        </div>
-      </div>
-    )
-  }
-
-  // Main view
-  return (
-    <div className="space-y-6">
-      {/* Header with buttons */}
-      <div className="flex justify-between items-start">
-        <div>
-          <Link href="/proposals" className="text-sm text-gray-500 hover:text-gray-700 mb-2 inline-flex items-center">
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Back to Proposals
-          </Link>
-          <h1 className="text-3xl font-bold">Proposal #{proposal.proposal_number}</h1>
-          <p className="text-gray-500 mt-1">Created {formatDate(proposal.created_at)}</p>
-        </div>
-        <div className="flex gap-2">
-          {(userRole === 'boss') && (
-            <>
-              {/* Send button - only show if not sent yet */}
-              {proposal.status === 'draft' && (
-                <Button onClick={() => setShowSendModal(true)} className="bg-green-600 hover:bg-green-700">
-                  <Send className="h-4 w-4 mr-2" />
-                  Send to Customer
-                </Button>
-              )}
-              
-              {/* Edit button */}
-              {(proposal.status === 'draft' || proposal.status === 'sent' || proposal.status === 'viewed') && (
-                <Link href={`/proposals/${proposal.id}/edit`}>
-                  <Button variant="outline">
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                </Link>
-              )}
-              
-              {/* Print button */}
-              <Button variant="outline" onClick={handlePrint}>
-                <Printer className="h-4 w-4 mr-2" />
-                Print
-              </Button>
-            </>
-          )}
+  
         </div>
       </div>
 
