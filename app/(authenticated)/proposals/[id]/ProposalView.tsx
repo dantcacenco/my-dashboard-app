@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Printer, Send, Edit, DollarSign, Calendar, Phone, Mail, MapPin, ChevronLeft, Plus } from 'lucide-react'
+import { Printer, Send, Edit, ChevronLeft, Plus } from 'lucide-react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import { PaymentStages } from './PaymentStages'
 import SendProposal from './SendProposal'
+import CreateJobModal from './CreateJobModal'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -21,8 +21,8 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
   const printRef = useRef<HTMLDivElement>(null)
   const [showPrintView, setShowPrintView] = useState(false)
   const [showSendModal, setShowSendModal] = useState(false)
+  const [showCreateJobModal, setShowCreateJobModal] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -64,33 +64,13 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
     router.refresh()
   }
 
-  const handleCreateJob = async () => {
-    try {
-      // Create a new job from this proposal
-      const { data: newJob, error } = await supabase
-        .from('jobs')
-        .insert({
-          customer_id: proposal.customer_id,
-          title: `Job from Proposal #${proposal.proposal_number}`,
-          description: proposal.notes || '',
-          status: 'not_scheduled',
-          total_amount: proposal.total,
-          payment_status: 'pending'
-        })
-        .select()
-        .single()
+  // Check if proposal is approved or has payments
+  const canCreateJob = proposal.status === 'approved' || 
+                      proposal.status === 'deposit_paid' || 
+                      proposal.status === 'progress_paid' || 
+                      proposal.status === 'final_paid'
 
-      if (error) throw error
-
-      toast.success('Job created successfully!')
-      router.push(`/jobs/${newJob.id}`)
-    } catch (error) {
-      console.error('Error creating job:', error)
-      toast.error('Failed to create job')
-    }
-  }
-
-  // Show payment stages if proposal is approved
+  // Show admin controls for boss or admin roles
   const isAdmin = userRole === 'admin' || userRole === 'boss'
   
   return (
@@ -118,11 +98,11 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
             </Button>
           </Link>
           <Button 
-            onClick={handleCreateJob} 
+            onClick={() => setShowCreateJobModal(true)} 
             variant="default" 
             size="sm"
-            disabled={proposal.status !== 'approved' && proposal.status !== 'deposit_paid' && 
-                     proposal.status !== 'progress_paid' && proposal.status !== 'final_paid'}
+            disabled={!canCreateJob}
+            title={!canCreateJob ? "Proposal must be approved before creating a job" : ""}
           >
             <Plus className="h-4 w-4 mr-1" />
             Create Job
@@ -274,6 +254,15 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
           total={proposal.total}
           onClose={() => setShowSendModal(false)}
           onSuccess={handleSendSuccess}
+        />
+      )}
+
+      {/* Create Job Modal */}
+      {showCreateJobModal && (
+        <CreateJobModal
+          proposal={proposal}
+          isOpen={showCreateJobModal}
+          onClose={() => setShowCreateJobModal(false)}
         />
       )}
     </div>
