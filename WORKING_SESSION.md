@@ -55,6 +55,13 @@
 - Technician assignment available
 - Navigates to job detail page after creation
 
+### Phase 12: Fixed Job Description Add-ons
+- Description now includes both services AND add-ons
+- Services listed under "SERVICES:" header
+- Add-ons listed under "ADD-ONS:" header
+- Clear separation between sections
+- Textarea increased to 6 rows for better visibility
+
 ## 📊 CURRENT WORKING STATE
 
 ### What's Working:
@@ -66,7 +73,8 @@
 ✅ Admin view - shows everything properly with action buttons
 ✅ UI spacing - professional and consistent
 ✅ Admin buttons - Send, Edit, Create Job all functional
-✅ Create Job modal - Pre-filled with proposal data
+✅ Create Job modal - Pre-filled with complete proposal data
+✅ Job description - Includes both services and add-ons
 
 ### Database Structure:
 - User role: 'boss' (not 'admin')
@@ -81,7 +89,18 @@
 3. Status progression: approved → deposit_paid → progress_paid → final_paid
 4. See PAYMENT_ROUTING.md for complete documentation
 
-## 🎯 POTENTIAL NEXT TASKS
+## 🎯 NEXT UP: TECHNICIAN PORTAL
+
+### Planned Features:
+1. **Technician Dashboard** - View assigned jobs
+2. **Job Details View** - See job information and tasks
+3. **Task Management** - Check off completed tasks
+4. **Photo Upload** - Attach photos to jobs/tasks
+5. **Time Tracking** - Clock in/out on jobs
+6. **Notes & Comments** - Add job progress notes
+7. **Status Updates** - Update job status
+
+## 🎯 OTHER POTENTIAL TASKS
 
 ### Consider implementing:
 1. **Email template improvements** - Better formatting for sent proposals
@@ -126,3 +145,5 @@
 - **Aug 26**: 
   - Restored missing admin buttons (Send, Edit, Create Job)
   - Enhanced Create Job with modal dialog and pre-filled data
+  - Fixed job description to include add-ons
+  - Next: Technician Portal development
