@@ -132,3 +132,4 @@
 ## ✅ BUILD STATUS
 
 All TypeScript errors resolved. Build passes successfully with only expected warnings about missing env vars during static generation.
+# Force deployment - Tue Aug 26 11:22:52 EDT 2025
