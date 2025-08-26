@@ -66,9 +66,8 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
 
   // Show payment stages if proposal is approved
   
-        </div>
-      </div>
-
+  return (
+    <div>
       {/* Status Badge */}
       <div>
         <Badge className={`${getStatusColor(proposal.status)} text-white`}>
@@ -178,6 +177,24 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
           </div>
         </CardContent>
       </Card>
+
+      {/* Payment Progress - Show for approved proposals */}
+      {(proposal.status === 'approved' || proposal.status === 'deposit_paid' || 
+        proposal.status === 'progress_paid' || proposal.status === 'final_paid') && (
+        <PaymentStages 
+          depositPaidAt={proposal.deposit_paid_at}
+          progressPaidAt={proposal.progress_paid_at}
+          finalPaidAt={proposal.final_paid_at}
+          depositAmount={proposal.deposit_amount || 0}
+          progressPaymentAmount={proposal.progress_payment_amount || 0}
+          finalPaymentAmount={proposal.final_payment_amount || 0}
+          currentStage={
+            proposal.final_paid_at ? 'complete' :
+            proposal.progress_paid_at ? 'final' :
+            proposal.deposit_paid_at ? 'roughin' : 'deposit'
+          }
+        />
+      )}
 
       {/* Send Proposal Modal */}
       {showSendModal && (
