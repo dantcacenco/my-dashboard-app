@@ -155,7 +155,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
         deposit_amount: depositAmount,
         progress_payment_amount: progressAmount,
         final_payment_amount: adjustedFinalAmount,
-        payment_stage: 'deposit',
+        // payment_stage removed - may not exist or have constraint
         approved_at: new Date().toISOString()
       }
 
