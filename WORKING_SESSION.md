@@ -67,9 +67,19 @@ The customer now sees:
 1. **Dynamic Status Labels**: Status updates based on payment progress
    - "Approved" → "Deposit Paid" → "Rough-in Paid" → "Final Paid"
 2. **Automatic Updates**: Status changes when Stripe payments complete
-3. **Manual Updates**: Admin can change status in proposal editor for cash payments
-4. **Status Selector**: Dropdown in edit form with all payment stages
+3. **Manual Updates**: Admin can change status in proposal editor
+4. **Status Selector**: Dropdown in edit form (limited to valid values)
 5. **Payment Routing Documented**: Created PAYMENT_ROUTING.md to protect the flow
+
+### ✅ Phase 6: Final Fixes - COMPLETE
+**Completed on:** August 26, 2025
+**Issues Fixed:**
+1. **Approved View Layout**: Now shows proposal details AND payment stages
+   - Payment schedule appears as additional section below content
+   - Not a replacement, but an addition to the full proposal view
+2. **Status Constraint**: Limited status dropdown to valid database values
+   - Removed payment status options that violate constraints
+   - Payment statuses are set automatically via payment processing
 
 ### ✅ MISSION ACCOMPLISHED! 🎉
 Still needs testing/fixing:
