@@ -67,7 +67,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
   // Show payment stages if proposal is approved
   
   return (
-    <div>
+    <div className="space-y-6">
       {/* Status Badge */}
       <div>
         <Badge className={`${getStatusColor(proposal.status)} text-white`}>
@@ -81,7 +81,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
       </div>
 
       {/* Customer Information */}
-      <Card>
+      <Card className="mb-6">
         <CardHeader>
           <CardTitle>Customer Information</CardTitle>
         </CardHeader>
@@ -108,7 +108,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
       </Card>
 
       {/* Services */}
-      <Card>
+      <Card className="mb-6">
         <CardHeader>
           <CardTitle>Services</CardTitle>
         </CardHeader>
@@ -132,7 +132,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
 
       {/* Optional Add-ons */}
       {proposal.proposal_items?.some((item: any) => item.is_addon) && (
-        <Card>
+        <Card className="mb-6">
           <CardHeader>
             <CardTitle>Optional Add-ons</CardTitle>
           </CardHeader>
@@ -156,7 +156,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
       )}
 
       {/* Totals */}
-      <Card>
+      <Card className="mb-6">
         <CardHeader>
           <CardTitle>Totals</CardTitle>
         </CardHeader>
@@ -181,7 +181,8 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
       {/* Payment Progress - Show for approved proposals */}
       {(proposal.status === 'approved' || proposal.status === 'deposit_paid' || 
         proposal.status === 'progress_paid' || proposal.status === 'final_paid') && (
-        <PaymentStages 
+        <div className="mt-6">
+          <PaymentStages 
           depositPaidAt={proposal.deposit_paid_at}
           progressPaidAt={proposal.progress_paid_at}
           finalPaidAt={proposal.final_paid_at}
@@ -194,6 +195,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
             proposal.deposit_paid_at ? 'roughin' : 'deposit'
           }
         />
+        </div>
       )}
 
       {/* Send Proposal Modal */}

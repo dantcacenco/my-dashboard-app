@@ -270,7 +270,7 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Customer Section */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
               <h2 className="text-lg font-medium text-gray-900 mb-4">Customer Information</h2>
               
               <div className="space-y-4">
@@ -305,7 +305,7 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
             </div>
 
             {/* Proposal Details */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
               <h2 className="text-lg font-medium text-gray-900 mb-4">Proposal Details</h2>
               
               <div className="space-y-4">
@@ -362,7 +362,7 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
             </div>
 
             {/* Services & Items */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-medium text-gray-900">Services & Items</h2>
                 <button
@@ -488,7 +488,7 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Totals */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
               <h3 className="font-medium text-gray-900 mb-4">Proposal Total</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
@@ -521,7 +521,7 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
             </div>
 
             {/* Actions */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
               <div className="space-y-3">
                 <button
                   onClick={updateProposal}
