@@ -29,10 +29,14 @@ The customer now sees:
 
 ### ✅ Phase 2: Fix Approval Flow - COMPLETE
 **Fixed on:** August 26, 2025
-**Issue:** Database constraint violation (error 23514) when approving
+**Issues Fixed:**
+1. **Database constraint violation (error 23514)** - Fixed rounding issues
+2. **payment_stage check constraint violation** - Removed payment_stage field
+
 **Solution:** 
 - Added proper rounding to 2 decimal places to prevent floating point issues
 - Ensured payment amounts sum exactly to total (handles rounding differences)
+- Removed payment_stage field from update (has strict constraint)
 - Added detailed console logging for debugging
 - Improved error handling with full error messages
 
@@ -43,6 +47,7 @@ The customer now sees:
 4. ✅ Payment amounts calculate correctly (50%, 30%, 20%)
 5. ✅ Console logging shows detailed calculation steps
 6. ✅ No unwanted redirects
+7. ✅ Approval saves without constraint violations
 
 ### ⏳ Phase 3: Test Payment Flow
 After approval verification:
