@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Check, X, Calendar, Mail, Phone, MapPin, Plus } from 'lucide-react'
 
@@ -40,6 +40,7 @@ interface CustomerProposalViewProps {
 
 export default function CustomerProposalView({ proposal: initialProposal, token }: CustomerProposalViewProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   const [proposal, setProposal] = useState(initialProposal)
   const [selectedAddons, setSelectedAddons] = useState<Set<string>>(
