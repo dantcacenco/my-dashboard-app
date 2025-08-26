@@ -61,15 +61,19 @@ The customer now sees:
 - Payment schedule below details
 - Button functionality unchanged
 
-### ⏳ Phase 4: Test Payment Flow
-After approval verification:
-1. Ensure 3 payment boxes display correctly
-2. First payment is active, others grayed out
-3. "Pay Now" → Stripe checkout works
-4. After payment → Returns to proposal view
-5. Next payment gets unlocked
+### ✅ Phase 4: Payment Success Handling - COMPLETE
+**Completed on:** August 26, 2025
+**Issue:** After Stripe payment, proposal view wasn't updating to show payment complete
+**Solution:**
+- Created payment-success API endpoint to handle Stripe callbacks
+- Updates payment timestamps (deposit_paid_at, etc.) in database
+- Calculates and updates total_paid amount
+- Logs payments to payments table
+- Redirects back to proposal view with success indicator
+- Auto-refreshes proposal data on return
+- Next payment stage automatically unlocks
 
-### ⏳ Phase 4: Fix Send Proposal
+### ⏳ Phase 5: Test End-to-End Flow
 Still needs testing/fixing:
 1. Generate token if missing
 2. Update status to 'sent'
@@ -90,11 +94,11 @@ Still needs testing/fixing:
 - [x] Payment stages appear after approval ✅ WITH FULL DETAILS
 
 ### Payment Flow:
-- [ ] Deposit payment works
-- [ ] Returns to proposal after payment
-- [ ] Progress payment unlocks after deposit
-- [ ] Final payment unlocks after progress
-- [ ] All payments recorded correctly
+- [x] Deposit payment works
+- [x] Returns to proposal after payment
+- [x] Progress payment unlocks after deposit
+- [ ] Final payment unlocks after progress (TEST NEEDED)
+- [ ] All payments recorded correctly (VERIFY IN DATABASE)
 
 ### Send Proposal:
 - [ ] Email sends successfully
