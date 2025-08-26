@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import CustomerSearch from '../../new/CustomerSearch'
@@ -65,7 +65,29 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
   const [proposalDescription, setProposalDescription] = useState(proposal.description || '')
   const [proposalStatus, setProposalStatus] = useState(proposal.status || 'draft')
   const [proposalItems, setProposalItems] = useState<ProposalItem[]>(proposal.proposal_items)
-  const [taxRate, setTaxRate] = useState(proposal.tax_rate)
+  const [taxRate, setTaxRate] = useState(proposal
+  // Calculate payment amounts when status changes to approved
+  useEffect(() => {
+    if (proposalStatus === 'approved' && proposal.status !== 'approved') {
+      // Calculate totals
+      const subtotal = proposalItems.reduce((sum, item) => sum + item.total_price, 0)
+      const taxAmount = subtotal * taxRate
+      const total = subtotal + taxAmount
+      
+      // Calculate payment splits (50%, 30%, 20%)
+      const depositAmount = Math.round(total * 0.5 * 100) / 100
+      const progressAmount = Math.round(total * 0.3 * 100) / 100
+      const finalAmount = Math.round(total * 0.2 * 100) / 100
+      
+      console.log('Payment calculations:', {
+        total,
+        deposit: depositAmount,
+        progress: progressAmount,
+        final: finalAmount
+      })
+    }
+  }, [proposalStatus, proposalItems, taxRate])
+.tax_rate)
   const [isLoading, setIsLoading] = useState(false)
   const [showAddItem, setShowAddItem] = useState(false)
   const [showAddNewPricing, setShowAddNewPricing] = useState(false)
