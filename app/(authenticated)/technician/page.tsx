@@ -52,14 +52,14 @@ export default async function TechnicianPage() {
     .order('created_at', { ascending: false })
 
   // Extract jobs from assignments (handle the nested structure)
-  const jobs = jobAssignments?.map(assignment => assignment.jobs).filter(Boolean) || []
+  const jobs = jobAssignments?.map(assignment => assignment.jobs).filter(Boolean).flat() || []
 
   // Calculate metrics for technician
   const totalJobs = jobs.length
-  const completedJobs = jobs.filter(j => j.status === 'completed').length
-  const inProgressJobs = jobs.filter(j => j.status === 'in_progress').length
-  const scheduledJobs = jobs.filter(j => j.status === 'scheduled').length
-  const todaysJobs = jobs.filter(j => {
+  const completedJobs = jobs.filter((j: any) => j.status === 'completed').length
+  const inProgressJobs = jobs.filter((j: any) => j.status === 'in_progress').length
+  const scheduledJobs = jobs.filter((j: any) => j.status === 'scheduled').length
+  const todaysJobs = jobs.filter((j: any) => {
     const today = new Date().toISOString().split('T')[0]
     return j.scheduled_date?.split('T')[0] === today
   }).length

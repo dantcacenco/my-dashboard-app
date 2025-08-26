@@ -1,41 +1,56 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import TechnicianJobDetailView from '../TechnicianJobDetailView'
+import { notFound, redirect } from 'next/navigation'
+import TechnicianJobView from './TechnicianJobView'
 
-export default async function TechnicianJobDetailPage({ 
-  params 
-}: { 
-  params: Promise<{ id: string }>
-}) {
+export default async function TechnicianJobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) redirect('/auth/signin')
 
-  // Get user profile
+  // Check if user is a technician
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  // Only technicians can access this
-  if (profile?.role !== 'technician') {
+  if (!profile || profile.role !== 'technician') {
     redirect('/')
   }
 
-  // Verify technician is assigned to this job
+  // Check if this technician is assigned to this job
   const { data: assignment } = await supabase
     .from('job_technicians')
-    .select('id')
+    .select('*')
     .eq('job_id', id)
     .eq('technician_id', user.id)
     .single()
 
   if (!assignment) {
-    redirect('/technician/jobs')
+    // Technician is not assigned to this job
+    redirect('/technician')
   }
 
-  return <TechnicianJobDetailView jobId={id} userId={user.id} />
+  // Get job details
+  const { data: job } = await supabase
+    .from('jobs')
+    .select(`
+      *,
+      customers (
+        name,
+        email,
+        phone,
+        address
+      )
+    `)
+    .eq('id', id)
+    .single()
+
+  if (!job) {
+    notFound()
+  }
+
+  return <TechnicianJobView job={job} userId={user.id} />
 }
