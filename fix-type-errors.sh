@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Add delete job functionality and fix job overview formatting
-echo "Adding delete job functionality and fixing overview formatting..."
+# Fix type errors in JobDetailView component
+echo "Fixing type errors in JobDetailView..."
 
-# Create the updated JobDetailView component
+# Fix the JobDetailView component
 cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx << 'EOF'
 'use client'
 
@@ -52,7 +52,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
   const [assignedTechnicians, setAssignedTechnicians] = useState<any[]>([])
   const [jobPhotos, setJobPhotos] = useState<any[]>([])
   const [jobFiles, setJobFiles] = useState<any[]>([])
-  const [currentUserId, setCurrentUserId] = useState(userId)
+  const [currentUserId, setCurrentUserId] = useState(userId || '')
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerItems, setViewerItems] = useState<any[]>([])
   const [viewerIndex, setViewerIndex] = useState(0)
@@ -383,11 +383,13 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <MediaUpload
-                jobId={job.id}
-                onUploadComplete={loadJobMedia}
-                existingMedia={jobPhotos}
-              />
+              {currentUserId && (
+                <MediaUpload
+                  jobId={job.id}
+                  userId={currentUserId}
+                  onUploadComplete={loadJobMedia}
+                />
+              )}
               
               {jobPhotos.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
@@ -427,11 +429,13 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <FileUpload
-                jobId={job.id}
-                onUploadComplete={loadJobFiles}
-                existingFiles={jobFiles}
-              />
+              {currentUserId && (
+                <FileUpload
+                  jobId={job.id}
+                  userId={currentUserId}
+                  onUploadComplete={loadJobFiles}
+                />
+              )}
               
               {jobFiles.length > 0 && (
                 <div className="space-y-2 mt-4">
@@ -695,15 +699,14 @@ if [ $? -eq 0 ]; then
   
   # Commit and push
   git add -A
-  git commit -m "Add delete job functionality with confirmation and fix job overview formatting"
+  git commit -m "Fix type errors in JobDetailView - remove invalid props from MediaUpload and FileUpload"
   git push origin main
   
-  echo "✅ Successfully added delete job functionality and fixed overview formatting!"
-  echo "- Added Delete button next to Edit Job (boss only)"
-  echo "- Delete confirmation modal with job details"
-  echo "- Properly formatted job overview with line breaks"
-  echo "- SERVICES and ADD-ONS sections clearly separated"
-  echo "- Handles deletion of related records (technicians, photos, files)"
+  echo "✅ Successfully fixed type errors!"
+  echo "- Removed existingMedia prop from MediaUpload"
+  echo "- Removed existingFiles prop from FileUpload"
+  echo "- Added proper userId prop to both upload components"
+  echo "- Set default empty string for currentUserId"
 else
   echo "❌ Build failed. Please check the errors above."
   exit 1

@@ -45,7 +45,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
   const [assignedTechnicians, setAssignedTechnicians] = useState<any[]>([])
   const [jobPhotos, setJobPhotos] = useState<any[]>([])
   const [jobFiles, setJobFiles] = useState<any[]>([])
-  const [currentUserId, setCurrentUserId] = useState(userId)
+  const [currentUserId, setCurrentUserId] = useState(userId || '')
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerItems, setViewerItems] = useState<any[]>([])
   const [viewerIndex, setViewerIndex] = useState(0)
@@ -376,11 +376,13 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <MediaUpload
-                jobId={job.id}
-                onUploadComplete={loadJobMedia}
-                existingMedia={jobPhotos}
-              />
+              {currentUserId && (
+                <MediaUpload
+                  jobId={job.id}
+                  userId={currentUserId}
+                  onUploadComplete={loadJobMedia}
+                />
+              )}
               
               {jobPhotos.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
@@ -420,11 +422,13 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <FileUpload
-                jobId={job.id}
-                onUploadComplete={loadJobFiles}
-                existingFiles={jobFiles}
-              />
+              {currentUserId && (
+                <FileUpload
+                  jobId={job.id}
+                  userId={currentUserId}
+                  onUploadComplete={loadJobFiles}
+                />
+              )}
               
               {jobFiles.length > 0 && (
                 <div className="space-y-2 mt-4">
