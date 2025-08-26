@@ -278,268 +278,6 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
     })
   }
 
-  // Show payment stages if approved
-  if (proposal.status === 'approved') {
-    return (
-      <div className="min-h-screen bg-gray-50 py-8">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold mb-2">{proposal.title}</h1>
-              <p className="text-gray-600">Proposal #{proposal.proposal_number}</p>
-              <div className="mt-4">
-                <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                  ✓ {proposal.status === 'approved' ? 'Approved' :
-                     proposal.status === 'deposit_paid' ? 'Deposit Paid' :
-                     proposal.status === 'progress_paid' ? 'Rough-in Paid' :
-                     proposal.status === 'final_paid' ? 'Final Paid' : 
-                     'Approved'}
-                </span>
-              </div>
-            </div>
-
-            {/* Services Included */}
-            {services.length > 0 && (
-              <div className="mb-8">
-                <h2 className="text-xl font-semibold mb-4">Services Included</h2>
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Service
-                        </th>
-                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Qty
-                        </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Unit Price
-                        </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Total
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {services.map((item: any) => (
-                        <tr key={item.id}>
-                          <td className="px-6 py-4">
-                            <div>
-                              <div className="font-medium">{item.name}</div>
-                              {item.description && (
-                                <div className="text-sm text-gray-600 mt-1">{item.description}</div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-center">{item.quantity}</td>
-                          <td className="px-6 py-4 text-right">{formatCurrency(item.unit_price)}</td>
-                          <td className="px-6 py-4 text-right font-medium">
-                            {formatCurrency(item.total_price)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Selected Add-ons */}
-            {addons.filter(item => selectedAddons.has(item.id)).length > 0 && (
-              <div className="mb-8">
-                <h2 className="text-xl font-semibold mb-4">Selected Add-ons</h2>
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Add-on
-                        </th>
-                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Qty
-                        </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Unit Price
-                        </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Total
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {addons.filter(item => selectedAddons.has(item.id)).map((addon: any) => (
-                        <tr key={addon.id}>
-                          <td className="px-6 py-4">
-                            <div>
-                              <div className="font-medium">{addon.name}</div>
-                              {addon.description && (
-                                <div className="text-sm text-gray-600 mt-1">{addon.description}</div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-center">{addon.quantity}</td>
-                          <td className="px-6 py-4 text-right">{formatCurrency(addon.unit_price)}</td>
-                          <td className="px-6 py-4 text-right font-medium">
-                            {formatCurrency(addon.total_price)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Approved Total */}
-            <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-8">
-              <div className="space-y-3">
-                {services.length > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Services Total</span>
-                    <span className="font-medium">{formatCurrency(totals.servicesTotal)}</span>
-                  </div>
-                )}
-                {totals.addonsTotal > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Selected Add-ons</span>
-                    <span className="font-medium">{formatCurrency(totals.addonsTotal)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-700">Subtotal</span>
-                  <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-700">Tax ({(proposal.tax_rate * 100).toFixed(1)}%)</span>
-                  <span className="font-medium">{formatCurrency(totals.taxAmount)}</span>
-                </div>
-                <div className="pt-3 border-t border-green-300">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-semibold text-green-900">Approved Total</span>
-                    <span className="text-2xl font-bold text-green-900">{formatCurrency(proposal.total)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Schedule */}
-            <div className="space-y-6">
-              <h2 className="text-xl font-semibold mb-4">Payment Schedule</h2>
-              
-              {/* Deposit */}
-              <div className="border rounded-lg p-6">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold">50% Deposit</h3>
-                    <p className="text-gray-600 text-sm mt-1">Due upon approval</p>
-                    <p className="text-2xl font-bold mt-2">{formatCurrency(proposal.deposit_amount || 0)}</p>
-                  </div>
-                  {proposal.deposit_paid_at ? (
-                    <div className="flex items-center text-green-600">
-                      <Check className="h-5 w-5 mr-2" />
-                      <span className="font-medium">Paid</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handlePayment('deposit')}
-                      disabled={isProcessing}
-                      className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-                    >
-                      Pay Now
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Rough-in */}
-              <div className={`border rounded-lg p-6 ${!proposal.deposit_paid_at ? 'opacity-50' : ''}`}>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold">30% Rough-in Payment</h3>
-                    <p className="text-gray-600 text-sm mt-1">Due after rough-in inspection</p>
-                    <p className="text-2xl font-bold mt-2">{formatCurrency(proposal.progress_payment_amount || 0)}</p>
-                  </div>
-                  {proposal.progress_paid_at ? (
-                    <div className="flex items-center text-green-600">
-                      <Check className="h-5 w-5 mr-2" />
-                      <span className="font-medium">Paid</span>
-                    </div>
-                  ) : proposal.deposit_paid_at ? (
-                    <button
-                      onClick={() => handlePayment('roughin')}
-                      disabled={isProcessing}
-                      className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-                    >
-                      Pay Now
-                    </button>
-                  ) : (
-                    <span className="text-gray-400 font-medium">Locked</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Final */}
-              <div className={`border rounded-lg p-6 ${!proposal.progress_paid_at ? 'opacity-50' : ''}`}>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold">20% Final Payment</h3>
-                    <p className="text-gray-600 text-sm mt-1">Due upon completion</p>
-                    <p className="text-2xl font-bold mt-2">{formatCurrency(proposal.final_payment_amount || 0)}</p>
-                  </div>
-                  {proposal.final_paid_at ? (
-                    <div className="flex items-center text-green-600">
-                      <Check className="h-5 w-5 mr-2" />
-                      <span className="font-medium">Paid</span>
-                    </div>
-                  ) : proposal.progress_paid_at ? (
-                    <button
-                      onClick={() => handlePayment('final')}
-                      disabled={isProcessing}
-                      className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-                    >
-                      Pay Now
-                    </button>
-                  ) : (
-                    <span className="text-gray-400 font-medium">Locked</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Progress */}
-            <div className="mt-8 bg-gray-50 rounded-lg p-6">
-              <h3 className="font-semibold mb-3">Payment Progress</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Project Cost</span>
-                  <span className="font-semibold">{formatCurrency(proposal.total)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Paid</span>
-                  <span className="font-semibold text-green-600">
-                    {formatCurrency(proposal.total_paid || 0)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Remaining Balance</span>
-                  <span className="font-semibold">
-                    {formatCurrency(proposal.total - (proposal.total_paid || 0))}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {error && (
-              <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">
-                {error}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   // Show full proposal with approval/rejection UI if not yet approved
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -758,25 +496,140 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
               </div>
             </div>
 
-            {/* Approve/Reject buttons */}
-            <div className="flex gap-4 justify-center pt-4">
-              <button
-                onClick={handleApprove}
-                disabled={isProcessing}
-                className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold flex items-center"
-              >
-                <Check className="h-5 w-5 mr-2" />
-                Approve Proposal
-              </button>
-              <button
-                onClick={handleReject}
-                disabled={isProcessing}
-                className="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 disabled:opacity-50 font-semibold flex items-center"
-              >
-                <X className="h-5 w-5 mr-2" />
-                Reject Proposal
-              </button>
-            </div>
+            {/* Approval/Payment Section */}
+            {(proposal.status === 'approved' || proposal.status === 'deposit_paid' || 
+              proposal.status === 'progress_paid' || proposal.status === 'final_paid') ? (
+              <>
+                {/* Payment Schedule */}
+                <div className="space-y-6">
+                  <h2 className="text-xl font-semibold mb-4">Payment Schedule</h2>
+                  
+                  {/* Deposit */}
+                  <div className="border rounded-lg p-6">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="font-semibold">50% Deposit</h3>
+                        <p className="text-gray-600 text-sm mt-1">Due upon approval</p>
+                        <p className="text-2xl font-bold mt-2">{formatCurrency(proposal.deposit_amount || 0)}</p>
+                      </div>
+                      {proposal.deposit_paid_at ? (
+                        <div className="flex items-center text-green-600">
+                          <Check className="h-5 w-5 mr-2" />
+                          <span className="font-medium">Paid</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handlePayment('deposit')}
+                          disabled={isProcessing}
+                          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                        >
+                          Pay Now
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Rough-in */}
+                  <div className={`border rounded-lg p-6 ${!proposal.deposit_paid_at ? 'opacity-50' : ''}`}>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="font-semibold">30% Rough-in Payment</h3>
+                        <p className="text-gray-600 text-sm mt-1">Due after rough-in inspection</p>
+                        <p className="text-2xl font-bold mt-2">{formatCurrency(proposal.progress_payment_amount || 0)}</p>
+                      </div>
+                      {proposal.progress_paid_at ? (
+                        <div className="flex items-center text-green-600">
+                          <Check className="h-5 w-5 mr-2" />
+                          <span className="font-medium">Paid</span>
+                        </div>
+                      ) : proposal.deposit_paid_at ? (
+                        <button
+                          onClick={() => handlePayment('roughin')}
+                          disabled={isProcessing}
+                          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                        >
+                          Pay Now
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 font-medium">Locked</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Final */}
+                  <div className={`border rounded-lg p-6 ${!proposal.progress_paid_at ? 'opacity-50' : ''}`}>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="font-semibold">20% Final Payment</h3>
+                        <p className="text-gray-600 text-sm mt-1">Due upon completion</p>
+                        <p className="text-2xl font-bold mt-2">{formatCurrency(proposal.final_payment_amount || 0)}</p>
+                      </div>
+                      {proposal.final_paid_at ? (
+                        <div className="flex items-center text-green-600">
+                          <Check className="h-5 w-5 mr-2" />
+                          <span className="font-medium">Paid</span>
+                        </div>
+                      ) : proposal.progress_paid_at ? (
+                        <button
+                          onClick={() => handlePayment('final')}
+                          disabled={isProcessing}
+                          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                        >
+                          Pay Now
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 font-medium">Locked</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment Progress */}
+                <div className="mt-8 bg-gray-50 rounded-lg p-6">
+                  <h3 className="font-semibold mb-3">Payment Progress</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Total Project Cost</span>
+                      <span className="font-semibold">{formatCurrency(proposal.total)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Total Paid</span>
+                      <span className="font-semibold text-green-600">
+                        {formatCurrency(proposal.total_paid || 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Remaining Balance</span>
+                      <span className="font-semibold">
+                        {formatCurrency(proposal.total - (proposal.total_paid || 0))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Approve/Reject buttons */}
+                <div className="flex gap-4 justify-center pt-4">
+                  <button
+                    onClick={handleApprove}
+                    disabled={isProcessing}
+                    className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold flex items-center"
+                  >
+                    <Check className="h-5 w-5 mr-2" />
+                    {isProcessing ? 'Processing...' : 'Approve Proposal'}
+                  </button>
+                  <button
+                    onClick={handleReject}
+                    disabled={isProcessing}
+                    className="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 disabled:opacity-50 font-semibold flex items-center"
+                  >
+                    <X className="h-5 w-5 mr-2" />
+                    Reject Proposal
+                  </button>
+                </div>
+              </>
+            )}
 
             {error && (
               <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">

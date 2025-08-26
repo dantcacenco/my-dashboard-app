@@ -316,13 +316,10 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
                     <option value="sent">Sent</option>
                     <option value="viewed">Viewed</option>
                     <option value="approved">Approved</option>
-                    <option value="deposit_paid">Deposit Paid (50%)</option>
-                    <option value="progress_paid">Rough-in Paid (30%)</option>
-                    <option value="final_paid">Final Paid (Complete)</option>
                     <option value="rejected">Rejected</option>
                   </select>
                   <p className="mt-1 text-sm text-gray-500">
-                    Update this when customer pays cash or check
+                    Note: Payment statuses are set automatically when payments are processed
                   </p>
                 </div>
               </div>
