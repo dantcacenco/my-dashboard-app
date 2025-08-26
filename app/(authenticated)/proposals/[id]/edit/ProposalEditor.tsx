@@ -48,6 +48,9 @@ interface ProposalData {
   customer_id: string
   customers: Customer
   proposal_items: ProposalItem[]
+  deposit_amount: number | null
+  progress_payment_amount: number | null
+  final_payment_amount: number | null
 }
 
 interface ProposalEditorProps {
@@ -65,7 +68,8 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
   const [proposalDescription, setProposalDescription] = useState(proposal.description || '')
   const [proposalStatus, setProposalStatus] = useState(proposal.status || 'draft')
   const [proposalItems, setProposalItems] = useState<ProposalItem[]>(proposal.proposal_items)
-  const [taxRate, setTaxRate] = useState(proposal
+  const [taxRate, setTaxRate] = useState(proposal.tax_rate)
+  
   // Calculate payment amounts when status changes to approved
   useEffect(() => {
     if (proposalStatus === 'approved' && proposal.status !== 'approved') {
@@ -87,7 +91,7 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
       })
     }
   }, [proposalStatus, proposalItems, taxRate])
-.tax_rate)
+  
   const [isLoading, setIsLoading] = useState(false)
   const [showAddItem, setShowAddItem] = useState(false)
   const [showAddNewPricing, setShowAddNewPricing] = useState(false)
@@ -183,6 +187,16 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
           tax_rate: taxRate,
           tax_amount: taxAmount,
           total,
+          // Calculate payment amounts if approving
+          deposit_amount: proposalStatus === 'approved' && proposal.status !== 'approved' 
+            ? Math.round(total * 0.5 * 100) / 100 
+            : (proposal.deposit_amount || 0),
+          progress_payment_amount: proposalStatus === 'approved' && proposal.status !== 'approved' 
+            ? Math.round(total * 0.3 * 100) / 100 
+            : (proposal.progress_payment_amount || 0),
+          final_payment_amount: proposalStatus === 'approved' && proposal.status !== 'approved' 
+            ? Math.round(total * 0.2 * 100) / 100 
+            : (proposal.final_payment_amount || 0),
           updated_at: new Date().toISOString()
         })
         .eq('id', proposal.id)
