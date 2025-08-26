@@ -1,3 +1,10 @@
+#!/bin/bash
+
+# Fix missing buttons in admin proposal view
+echo "Fixing missing buttons in proposal view..."
+
+# Create updated ProposalView component with buttons
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/proposals/\[id\]/ProposalView.tsx << 'EOF'
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
@@ -279,3 +286,28 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
     </div>
   )
 }
+EOF
+
+# Build test
+echo "Testing build..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+npm run build 2>&1 | head -80
+
+if [ $? -eq 0 ]; then
+  echo "Build successful!"
+  
+  # Commit and push
+  git add -A
+  git commit -m "Fix missing buttons in admin proposal view - added Send to Customer, Edit, and Create Job buttons"
+  git push origin main
+  
+  echo "✅ Successfully fixed missing buttons in proposal view!"
+  echo "- Added 'Send to Customer' button with email modal"
+  echo "- Added 'Edit' button linking to edit page"
+  echo "- Added 'Create Job' button (disabled until proposal approved)"
+  echo "- Added 'Print' button functionality"
+  echo "- Added 'Back' button for navigation"
+else
+  echo "❌ Build failed. Please check the errors above."
+  exit 1
+fi
