@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
+import TechnicianDashboard from './TechnicianDashboard'
 
 export default async function TechnicianPage() {
   const supabase = await createClient()
@@ -10,63 +10,75 @@ export default async function TechnicianPage() {
     redirect('/auth/signin')
   }
 
-  // Check user role
+  // Get user profile
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, full_name')
     .eq('id', user.id)
     .single()
 
-  // IMPORTANT: Technician stays here, admin goes to dashboard
-  if (profile?.role === 'boss') {
-    redirect('/dashboard')
-  }
-
-  // Non-technicians go to home
-  if (profile?.role !== 'technician') {
+  // Check if user is a technician
+  if (!profile || profile.role !== 'technician') {
     redirect('/')
   }
 
-  // Get technician's stats
-  const { data: jobs } = await supabase
-    .from('jobs')
-    .select('*')
-    .eq('assigned_technician_id', user.id)
+  // Get jobs assigned to this technician
+  const { data: jobAssignments } = await supabase
+    .from('job_technicians')
+    .select(`
+      job_id,
+      jobs (
+        id,
+        job_number,
+        title,
+        description,
+        job_type,
+        status,
+        scheduled_date,
+        scheduled_time,
+        service_address,
+        notes,
+        created_at,
+        customer_id,
+        customers (
+          name,
+          email,
+          phone,
+          address
+        )
+      )
+    `)
+    .eq('technician_id', user.id)
+    .order('created_at', { ascending: false })
 
-  const activeJobs = jobs?.filter(j => j.status === 'in_progress').length || 0
-  const completedJobs = jobs?.filter(j => j.status === 'completed').length || 0
-  const scheduledJobs = jobs?.filter(j => j.status === 'scheduled').length || 0
+  // Extract jobs from assignments (handle the nested structure)
+  const jobs = jobAssignments?.map(assignment => assignment.jobs).filter(Boolean) || []
 
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Technician Dashboard</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500">Active Jobs</h3>
-          <p className="text-2xl font-bold mt-2">{activeJobs}</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500">Scheduled</h3>
-          <p className="text-2xl font-bold mt-2">{scheduledJobs}</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500">Completed</h3>
-          <p className="text-2xl font-bold mt-2">{completedJobs}</p>
-        </div>
-      </div>
+  // Calculate metrics for technician
+  const totalJobs = jobs.length
+  const completedJobs = jobs.filter(j => j.status === 'completed').length
+  const inProgressJobs = jobs.filter(j => j.status === 'in_progress').length
+  const scheduledJobs = jobs.filter(j => j.status === 'scheduled').length
+  const todaysJobs = jobs.filter(j => {
+    const today = new Date().toISOString().split('T')[0]
+    return j.scheduled_date?.split('T')[0] === today
+  }).length
 
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-        <div className="space-y-2">
-          <Link href="/technician/jobs" className="block p-3 bg-blue-50 rounded hover:bg-blue-100">
-            View My Jobs →
-          </Link>
-          <Link href="/technician/schedule" className="block p-3 bg-green-50 rounded hover:bg-green-100">
-            My Schedule →
-          </Link>
-        </div>
-      </div>
-    </div>
-  )
+  const technicianData = {
+    profile: {
+      name: profile.full_name || user.email || 'Technician',
+      email: user.email || '',
+      role: profile.role
+    },
+    metrics: {
+      totalJobs,
+      completedJobs,
+      inProgressJobs,
+      scheduledJobs,
+      todaysJobs
+    },
+    jobs
+  }
+
+  return <TechnicianDashboard data={technicianData} />
 }
