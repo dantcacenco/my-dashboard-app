@@ -63,6 +63,7 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer>(proposal.customers)
   const [proposalTitle, setProposalTitle] = useState(proposal.title)
   const [proposalDescription, setProposalDescription] = useState(proposal.description || '')
+  const [proposalStatus, setProposalStatus] = useState(proposal.status || 'draft')
   const [proposalItems, setProposalItems] = useState<ProposalItem[]>(proposal.proposal_items)
   const [taxRate, setTaxRate] = useState(proposal.tax_rate)
   const [isLoading, setIsLoading] = useState(false)
@@ -155,6 +156,7 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
           customer_id: selectedCustomer.id,
           title: proposalTitle.trim(),
           description: proposalDescription.trim(),
+          status: proposalStatus,
           subtotal,
           tax_rate: taxRate,
           tax_amount: taxAmount,
@@ -297,6 +299,31 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Additional details about the proposal..."
                   />
+                </div>
+
+                {/* Payment Status - For manual updates */}
+                <div>
+                  <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                    Payment Status
+                  </label>
+                  <select
+                    id="status"
+                    value={proposalStatus}
+                    onChange={(e) => setProposalStatus(e.target.value)}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="sent">Sent</option>
+                    <option value="viewed">Viewed</option>
+                    <option value="approved">Approved</option>
+                    <option value="deposit_paid">Deposit Paid (50%)</option>
+                    <option value="progress_paid">Rough-in Paid (30%)</option>
+                    <option value="final_paid">Final Paid (Complete)</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Update this when customer pays cash or check
+                  </p>
                 </div>
               </div>
             </div>
