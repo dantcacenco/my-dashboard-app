@@ -32,11 +32,13 @@ The customer now sees:
 **Issues Fixed:**
 1. **Database constraint violation (error 23514)** - Fixed rounding issues
 2. **payment_stage check constraint violation** - Removed payment_stage field
+3. **proposals_status_check constraint violation** - Changed status to 'approved'
 
 **Solution:** 
 - Added proper rounding to 2 decimal places to prevent floating point issues
 - Ensured payment amounts sum exactly to total (handles rounding differences)
 - Removed payment_stage field from update (has strict constraint)
+- Changed status from 'accepted' to 'approved' (correct value per constraint)
 - Added detailed console logging for debugging
 - Improved error handling with full error messages
 
@@ -48,6 +50,7 @@ The customer now sees:
 5. ✅ Console logging shows detailed calculation steps
 6. ✅ No unwanted redirects
 7. ✅ Approval saves without constraint violations
+8. ✅ Correct status value used ('approved')
 
 ### ⏳ Phase 3: Test Payment Flow
 After approval verification:
@@ -74,7 +77,7 @@ Still needs testing/fixing:
 - [x] Services table shows correctly
 - [x] Add-ons are selectable
 - [x] Totals calculate dynamically
-- [x] Approval works without errors ✅ FIXED
+- [x] Approval works without errors ✅ FIXED (3 constraints resolved)
 - [ ] Payment stages appear after approval (TEST NEEDED)
 
 ### Payment Flow:
