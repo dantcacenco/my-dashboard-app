@@ -393,7 +393,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                       onClick={() => openMediaViewer(jobPhotos, index)}
                     >
                       {photo.media_type === 'video' ? (
-                        <VideoThumbnail url={photo.url} />
+                        <VideoThumbnail videoUrl={photo.url} onClick={() => openMediaViewer(jobPhotos, index)} />
                       ) : (
                         <img
                           src={photo.url}
