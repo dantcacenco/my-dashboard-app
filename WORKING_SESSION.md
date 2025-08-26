@@ -52,7 +52,16 @@ The customer now sees:
 7. ✅ Approval saves without constraint violations
 8. ✅ Correct status value used ('approved')
 
-### ⏳ Phase 3: Test Payment Flow
+### ✅ Phase 3: Enhanced Approved View - COMPLETE
+**Completed on:** August 26, 2025
+**Enhancement:** Added full proposal details to approved view
+- Services table with quantities and prices
+- Selected add-ons displayed
+- Complete cost breakdown
+- Payment schedule below details
+- Button functionality unchanged
+
+### ⏳ Phase 4: Test Payment Flow
 After approval verification:
 1. Ensure 3 payment boxes display correctly
 2. First payment is active, others grayed out
@@ -78,7 +87,7 @@ Still needs testing/fixing:
 - [x] Add-ons are selectable
 - [x] Totals calculate dynamically
 - [x] Approval works without errors ✅ FIXED (3 constraints resolved)
-- [ ] Payment stages appear after approval (TEST NEEDED)
+- [x] Payment stages appear after approval ✅ WITH FULL DETAILS
 
 ### Payment Flow:
 - [ ] Deposit payment works
