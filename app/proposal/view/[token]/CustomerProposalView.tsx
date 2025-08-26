@@ -68,7 +68,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 
   useEffect(() => {
     // Poll for updates every 5 seconds if payment is in progress
-    if (proposal.status === 'approved') {
+    if (proposal.status === 'approved' || proposal.status === 'deposit_paid' || proposal.status === 'progress_paid' || proposal.status === 'final_paid') {
       const interval = setInterval(refreshProposal, 5000)
       return () => clearInterval(interval)
     }
@@ -289,7 +289,11 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
               <p className="text-gray-600">Proposal #{proposal.proposal_number}</p>
               <div className="mt-4">
                 <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                  ✓ Approved
+                  ✓ {proposal.status === 'approved' ? 'Approved' :
+                     proposal.status === 'deposit_paid' ? 'Deposit Paid' :
+                     proposal.status === 'progress_paid' ? 'Rough-in Paid' :
+                     proposal.status === 'final_paid' ? 'Final Paid' : 
+                     'Approved'}
                 </span>
               </div>
             </div>

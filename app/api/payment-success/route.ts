@@ -33,14 +33,17 @@ export async function GET(request: NextRequest) {
       case 'deposit':
         updateData.deposit_paid_at = now
         updateData.total_paid = proposal.deposit_amount || 0
+        updateData.status = 'deposit_paid'  // Update status
         break
       case 'roughin':
         updateData.progress_paid_at = now
         updateData.total_paid = (proposal.deposit_amount || 0) + (proposal.progress_payment_amount || 0)
+        updateData.status = 'progress_paid'  // Update status
         break
       case 'final':
         updateData.final_paid_at = now
         updateData.total_paid = proposal.total
+        updateData.status = 'final_paid'  // Update status
         break
     }
     
