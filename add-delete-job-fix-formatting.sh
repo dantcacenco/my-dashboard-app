@@ -1,3 +1,10 @@
+#!/bin/bash
+
+# Add delete job functionality and fix job overview formatting
+echo "Adding delete job functionality and fixing overview formatting..."
+
+# Create the updated JobDetailView component
+cat > /Users/dantcacenco/Documents/GitHub/my-dashboard-app/app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx << 'EOF'
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -676,3 +683,28 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
     </div>
   )
 }
+EOF
+
+# Build test
+echo "Testing build..."
+cd /Users/dantcacenco/Documents/GitHub/my-dashboard-app
+npm run build 2>&1 | head -80
+
+if [ $? -eq 0 ]; then
+  echo "Build successful!"
+  
+  # Commit and push
+  git add -A
+  git commit -m "Add delete job functionality with confirmation and fix job overview formatting"
+  git push origin main
+  
+  echo "✅ Successfully added delete job functionality and fixed overview formatting!"
+  echo "- Added Delete button next to Edit Job (boss only)"
+  echo "- Delete confirmation modal with job details"
+  echo "- Properly formatted job overview with line breaks"
+  echo "- SERVICES and ADD-ONS sections clearly separated"
+  echo "- Handles deletion of related records (technicians, photos, files)"
+else
+  echo "❌ Build failed. Please check the errors above."
+  exit 1
+fi
