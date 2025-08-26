@@ -81,7 +81,19 @@ The customer now sees:
    - Removed payment status options that violate constraints
    - Payment statuses are set automatically via payment processing
 
-### ✅ MISSION ACCOMPLISHED! 🎉
+### ✅ Phase 7: Admin View & Payment Calculations - COMPLETE
+**Completed on:** August 26, 2025
+**Final Fixes:**
+1. **Admin View Fixed**: Shows full proposal details AND payment progress box
+   - Not just payment box alone, but complete proposal information
+   - Payment progress appears alongside proposal content
+2. **Payment Calculations Fixed**: 50/30/20 split now works correctly
+   - Deposit: 50% of total
+   - Rough-in: 30% of total  
+   - Final: 20% of total
+   - Calculates automatically when status changes to approved
+
+### 🎉 ALL PAYMENT FEATURES COMPLETE AND WORKING!
 Still needs testing/fixing:
 1. Generate token if missing
 2. Update status to 'sent'
