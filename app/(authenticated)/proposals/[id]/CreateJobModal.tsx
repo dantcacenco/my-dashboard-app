@@ -69,14 +69,29 @@ export default function CreateJobModal({ proposal, isOpen, onClose }: CreateJobM
   // Pre-populate form when proposal changes or modal opens
   useEffect(() => {
     if (proposal && isOpen) {
-      // Extract items for description
-      const selectedItems = proposal.proposal_items?.filter((item: any) => 
-        !item.is_addon || item.is_selected === true
-      ) || []
+      // Separate services and add-ons
+      const services = proposal.proposal_items?.filter((item: any) => !item.is_addon) || []
+      const addons = proposal.proposal_items?.filter((item: any) => item.is_addon) || []
       
-      const description = selectedItems.map((item: any) => 
-        `${item.quantity}x ${item.name}${item.description ? ': ' + item.description : ''}`
-      ).join('\n')
+      // Build description with both services and add-ons
+      let description = ''
+      
+      // Add services section
+      if (services.length > 0) {
+        description += 'SERVICES:\n'
+        description += services.map((item: any) => 
+          `${item.quantity}x ${item.name}${item.description ? ': ' + item.description : ''}`
+        ).join('\n')
+      }
+      
+      // Add add-ons section if any exist
+      if (addons.length > 0) {
+        if (description) description += '\n\n'
+        description += 'ADD-ONS:\n'
+        description += addons.map((item: any) => 
+          `${item.quantity}x ${item.name}${item.description ? ': ' + item.description : ''}`
+        ).join('\n')
+      }
 
       // Determine job type based on proposal content
       let jobType = 'installation'
@@ -279,7 +294,7 @@ export default function CreateJobModal({ proposal, isOpen, onClose }: CreateJobM
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={4}
+              rows={6}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
               placeholder="Describe the work to be done..."
             />
