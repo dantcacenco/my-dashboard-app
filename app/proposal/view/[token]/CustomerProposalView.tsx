@@ -67,7 +67,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 
   useEffect(() => {
     // Poll for updates every 5 seconds if payment is in progress
-    if (proposal.status === 'accepted' && proposal.payment_stage !== 'complete') {
+    if (proposal.status === 'approved') {
       const interval = setInterval(refreshProposal, 5000)
       return () => clearInterval(interval)
     }
@@ -148,7 +148,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 
       // Update proposal status to accepted
       const updateData = {
-        status: 'accepted',
+        status: 'approved',
         subtotal: Math.round(totals.subtotal * 100) / 100,
         tax_amount: Math.round(totals.taxAmount * 100) / 100,
         total: total,
@@ -278,7 +278,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
   }
 
   // Show payment stages if approved
-  if (proposal.status === 'accepted' || proposal.status === 'approved') {
+  if (proposal.status === 'approved') {
     return (
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-4xl mx-auto px-4">
