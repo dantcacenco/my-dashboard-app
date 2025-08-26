@@ -22,8 +22,17 @@ export default async function TechnicianPage() {
     redirect('/')
   }
 
-  // Get jobs assigned to this technician
-  const { data: jobAssignments } = await supabase
+  // Debug: Get ALL job_technicians entries for this user
+  const { data: allAssignments, error: assignError } = await supabase
+    .from('job_technicians')
+    .select('*')
+    .eq('technician_id', user.id)
+
+  console.log('Debug - All assignments for technician:', user.id, allAssignments)
+  console.log('Debug - Assignment error:', assignError)
+
+  // Get jobs assigned to this technician with full details
+  const { data: jobAssignments, error: jobError } = await supabase
     .from('job_technicians')
     .select(`
       job_id,
@@ -51,8 +60,13 @@ export default async function TechnicianPage() {
     .eq('technician_id', user.id)
     .order('created_at', { ascending: false })
 
+  console.log('Debug - Job assignments query result:', jobAssignments)
+  console.log('Debug - Job assignments error:', jobError)
+
   // Extract jobs from assignments (handle the nested structure)
   const jobs = jobAssignments?.map(assignment => assignment.jobs).filter(Boolean).flat() || []
+
+  console.log('Debug - Extracted jobs:', jobs)
 
   // Calculate metrics for technician
   const totalJobs = jobs.length
@@ -77,7 +91,18 @@ export default async function TechnicianPage() {
       scheduledJobs,
       todaysJobs
     },
-    jobs
+    jobs,
+    // Add debug info to be displayed
+    debug: {
+      userId: user.id,
+      userEmail: user.email,
+      role: profile?.role,
+      allAssignments: allAssignments || [],
+      jobAssignments: jobAssignments || [],
+      assignmentError: assignError?.message,
+      jobError: jobError?.message,
+      extractedJobsCount: jobs.length
+    }
   }
 
   return <TechnicianDashboard data={technicianData} />
