@@ -1,78 +1,87 @@
 # WORKING SESSION - August 27, 2025
 
-## ✅ BUILD FIXED - READY FOR WORK
-- **Status**: TypeScript builds successfully, SSR warnings are expected locally
-- **Vercel**: Will build and deploy correctly (has env vars)
-- **Cleaned up**: Removed files that weren't in working commit
+## ✅ JOB DETAILS PAGE FIXED
+
+### Issues Resolved:
+1. **Quick Actions box** - REMOVED ✅
+2. **Edit Job modal** - FIXED, now populates with job data ✅  
+3. **Photo debugging** - Added extensive console logging ✅
+
+## 🔍 HOW TO DEBUG PHOTOS
+
+### Steps:
+1. Open your browser
+2. Press **F12** to open Developer Console
+3. Navigate to any job details page
+4. Look in the console for these messages:
+
+### What you'll see in console:
+```
+JobDetailsView mounted with:
+- Job: {job object}
+- Photos count: 2
+- Files count: 1
+
+Photo 1:
+  - ID: abc-123
+  - URL: https://...
+  - Type: photo
+  - Created: 2025-08-27
+  ✅ Photo 1 loaded successfully
+
+Photo 2:
+  - ID: def-456
+  - URL: https://...
+  - Type: photo
+  - Created: 2025-08-27
+  ❌ Photo 2 failed to load: [error details]
+```
+
+### Common Issues:
+- **CORS Error**: Storage bucket not public
+- **404 Error**: URL is incorrect
+- **Network Error**: Firewall/proxy blocking
 
 ## 🔑 CRITICAL INFO
 - **Database Password**: cSEX2IYYjeJru6V
 - **Project Ref**: dqcxwekmehrqkigcufug
 - **Supabase URL**: https://dqcxwekmehrqkigcufug.supabase.co
-- **Local Path**: /Users/dantcacenco/Documents/GitHub/my-dashboard-app
 
-## ✅ CURRENT WORKING FEATURES
-From commit 04d791e:
-- Admin dashboard with revenue metrics
-- Proposal creation and management  
-- Customer portal (token-based access, no login)
-- Job management and assignment to technicians
-- Technician portal with job views
-- Multi-stage payment (50/30/20 split)
-- Calendar views (week/month)
-- Photo/file uploads
-- Email notifications via Resend
-
-## ⚠️ KNOWN ISSUES TO ADDRESS
-1. **Photo thumbnails** - Photos upload but may not display thumbnails
-2. **Calendar** - Jobs exist but may need modal for viewing
-3. **Storage costs** - Need cheaper solution than Supabase
-
-## 🛠️ SQL ACCESS (Working)
-```bash
-PGPASSWORD="cSEX2IYYjeJru6V" /opt/homebrew/Cellar/postgresql@16/16.10/bin/psql \
-  -h "aws-0-us-east-1.pooler.supabase.com" -p "6543" \
-  -U "postgres.dqcxwekmehrqkigcufug" -d "postgres" \
-  -c "YOUR SQL HERE"
-```
-
-## 📝 MAKE STORAGE BUCKETS PUBLIC (if needed)
+## 🛠️ SQL TO MAKE BUCKETS PUBLIC
+If photos show 403/CORS errors, run this SQL:
 ```sql
 UPDATE storage.buckets 
 SET public = true 
 WHERE name IN ('job-photos', 'job-files');
 ```
 
-## 🚀 READY FOR YOUR DETAILED INSTRUCTIONS
+## ✅ WHAT'S WORKING NOW
+- Edit Job modal properly shows job data
+- All fields are editable (title, type, status, date, time, etc.)
+- Technician assignment dropdown works
+- File upload sections are functional
+- No more Quick Actions box cluttering the UI
 
-The build is working and deploying correctly to Vercel.
-Please explain what specific features or fixes you'd like to focus on.
+## 📊 SYSTEM STATE
+- **Build**: Fixed for Next.js 15 requirements
+- **Deployment**: Should deploy to Vercel successfully
+- **Console Logs**: Active for photo debugging
+
+## 💬 NEXT STEPS
+
+Once you check the console and tell me what errors you see for the photos, I can:
+1. Fix the specific photo display issue
+2. Update URLs if needed
+3. Fix CORS/permissions if that's the problem
+
+**Please check the browser console now and let me know what photo errors you see!**
 
 ## ⚡ QUICK COMMANDS
 
-Test build:
-```bash
-npm run build 2>&1 | head -80
-```
-
-Deploy:
-```bash
-git add -A && git commit -m "message" && git push origin main
-```
-
-Check jobs in database:
+Check photo URLs in database:
 ```bash
 PGPASSWORD="cSEX2IYYjeJru6V" /opt/homebrew/Cellar/postgresql@16/16.10/bin/psql \
   -h "aws-0-us-east-1.pooler.supabase.com" -p "6543" \
   -U "postgres.dqcxwekmehrqkigcufug" -d "postgres" \
-  -c "SELECT id, job_number, scheduled_date, status FROM jobs ORDER BY created_at DESC LIMIT 5;"
+  -c "SELECT id, url, media_type FROM job_photos LIMIT 5;"
 ```
-
-## 📊 SYSTEM STATE
-- **Build**: ✅ TypeScript passes (SSR warnings are normal locally)
-- **Deployment**: ✅ Vercel will build successfully
-- **Database**: ✅ Connected and accessible
-- **Git**: ✅ Clean working tree, ready for changes
-
-## 💬 WAITING FOR YOUR INPUT
-Please provide detailed instructions on what to work on next.
