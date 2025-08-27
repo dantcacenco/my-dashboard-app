@@ -2,8 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import JobDetailsView from './JobDetailsView'
 
-export default async function JobDetailsPage({ params }: { params: { id: string } }) {
-  const supabase = createClient()
+export default async function JobDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const supabase = await createClient()
 
   // Check authentication
   const { data: { user } } = await supabase.auth.getUser()
@@ -46,7 +47,7 @@ export default async function JobDetailsPage({ params }: { params: { id: string 
         email
       )
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (error || !job) {
@@ -57,14 +58,14 @@ export default async function JobDetailsPage({ params }: { params: { id: string 
   const { data: jobPhotos } = await supabase
     .from('job_photos')
     .select('*')
-    .eq('job_id', params.id)
+    .eq('job_id', id)
     .order('created_at', { ascending: true })
 
   // Fetch job files
   const { data: jobFiles } = await supabase
     .from('job_files')
     .select('*')
-    .eq('job_id', params.id)
+    .eq('job_id', id)
     .order('created_at', { ascending: false })
 
   // Log for debugging
