@@ -1,8 +1,8 @@
 # Service Pro - HVAC Field Service Management System
 ## Comprehensive Project Scope Document
 
-**Last Updated**: January 2025  
-**Version**: 2.0  
+**Last Updated**: August 27, 2025  
+**Version**: 2.1  
 **Tech Stack**: Next.js 15.4.3, Supabase, Stripe, Vercel, Resend  
 
 ---
@@ -17,6 +17,199 @@ Service Pro is a multi-tenant SaaS application for HVAC field service businesses
 3. **Customer** reviews, selects add-ons, approves/rejects proposal
 4. **Upon approval**, customer pays in 3 stages (50% deposit, 30% rough-in, 20% final)
 5. **System** tracks payments, creates jobs, generates invoices
+
+---
+
+## 💾 STORAGE ARCHITECTURE & MIGRATION PLAN
+
+### Current Problem
+- **Supabase Storage**: $35/mo for only 100GB - completely insufficient
+- **HVAC Requirements**: 5-10 year photo/video retention for warranties
+- **Estimated Need**: 1-5TB within first year, 10-20TB over 5 years
+- **Current Cost Projection**: $350-700/mo with Supabase (unsustainable)
+
+### Recommended Hybrid Architecture
+
+#### Keep in Supabase (Fast, Small Data)
+- **Database**: All relational data (jobs, customers, proposals)
+- **Authentication**: User accounts and sessions
+- **Real-time**: Live updates for technicians
+- **Small Files**: Profile photos, company logos
+- **Temporary Files**: Recent uploads (last 30 days)
+
+#### Migrate to IDrive e2 (Massive Storage)
+- **Job Photos/Videos**: All field documentation
+- **Project Files**: PDFs, manuals, warranties
+- **Historical Data**: Archived jobs older than 30 days
+- **Backup Archives**: Weekly backup snapshots
+
+### Storage Cost Comparison (Monthly)
+| Storage | Supabase | IDrive e2 | Cloudflare R2 | Backblaze B2 | AWS S3 |
+|---------|----------|-----------|---------------|--------------|--------|
+| 100GB | $35 | $0.40 | $1.50 | $0.60 | $2.30 |
+| 500GB | $175 | $2.00 | $7.50 | $3.00 | $11.50 |
+| 1TB | $350 | $4.00 | $15.00 | $6.00 | $23.00 |
+| 5TB | N/A | $20.00 | $75.00 | $30.00 | $115.00 |
+| 10TB | N/A | $40.00 | $150.00 | $60.00 | $230.00 |
+
+### Why IDrive e2?
+- **Ultra-Low Cost**: $0.004/GB/month (87% cheaper than R2, 99% cheaper than Supabase)
+- **S3 Compatible**: Works with existing S3 SDKs and tools
+- **No Vendor Lock-in**: Standard S3 API means easy migration if needed
+- **Good Performance**: CDN integration available if needed
+- **No Egress Fees**: First 3x storage free egress monthly
+
+### Migration Implementation Plan
+
+#### Phase 1: Setup (Week 1)
+```javascript
+// Install AWS SDK (works with IDrive e2)
+npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+
+// Environment variables to add
+IDRIVE_E2_ENDPOINT=https://[endpoint].idrivee2.com
+IDRIVE_E2_ACCESS_KEY=xxx
+IDRIVE_E2_SECRET_KEY=xxx
+IDRIVE_E2_BUCKET=service-pro-media
+IDRIVE_E2_REGION=us-east-1
+```
+
+#### Phase 2: Dual Upload (Week 2-3)
+- Continue uploading to Supabase (for immediate access)
+- Simultaneously upload to IDrive e2 (for long-term storage)
+- Keep last 30 days in Supabase for fast access
+
+#### Phase 3: Migration Script (Week 4)
+- Migrate all existing Supabase files to IDrive e2
+- Update database URLs to point to IDrive e2
+- Implement CDN for frequently accessed files
+
+#### Phase 4: Cleanup (Week 5)
+- Remove old files from Supabase (keep only recent)
+- Reduce Supabase plan to save costs
+- Monitor performance and adjust CDN settings
+
+---
+
+## 🔐 AUTOMATED BACKUP SYSTEM
+
+### Requirements
+- **Frequency**: Weekly automated backups (every Sunday night)
+- **Scope**: All jobs, photos, files, and database exports
+- **Storage**: Local download to office Windows computer
+- **Redundancy**: Keep last 12 weeks of backups
+- **Notification**: Email report after each backup
+
+### Backup Architecture
+
+#### What Gets Backed Up
+1. **Database Export**: Full PostgreSQL dump
+2. **Job Data**: All job records as JSON
+3. **Media Files**: Photos/videos from IDrive e2
+4. **Documents**: Proposals, invoices, reports
+5. **Customer Data**: Encrypted customer records
+
+#### Backup Process Flow
+```mermaid
+1. GitHub Actions / Node Schedule (Sunday 2 AM)
+2. Export database to SQL dump
+3. Download media from IDrive e2
+4. Create timestamped ZIP archive
+5. Upload to backup location
+6. Send email report via Resend
+7. Clean up old backups (>12 weeks)
+```
+
+#### Implementation Components
+
+##### 1. Backup Script (runs on server/cloud function)
+```javascript
+// backup-service.js
+async function weeklyBackup() {
+  const timestamp = new Date().toISOString()
+  const backupId = `backup_${timestamp}`
+  
+  try {
+    // 1. Export database
+    await exportDatabase(backupId)
+    
+    // 2. Download media files
+    await downloadMediaFiles(backupId)
+    
+    // 3. Create ZIP archive
+    await createArchive(backupId)
+    
+    // 4. Upload to Windows share or FTP
+    await uploadToOfficePC(backupId)
+    
+    // 5. Send success email
+    await sendBackupReport({
+      status: 'success',
+      backupId,
+      size: getBackupSize(backupId),
+      timestamp
+    })
+    
+  } catch (error) {
+    // Send failure email
+    await sendBackupReport({
+      status: 'failure',
+      error: error.message,
+      timestamp
+    })
+  }
+}
+```
+
+##### 2. Email Report Template
+```html
+Subject: [Service Pro] Weekly Backup Report - {DATE}
+
+Status: ✅ Successfully Backed Up / ❌ Backup Failed
+
+Backup Details:
+- Backup ID: {BACKUP_ID}
+- Date: {DATE}
+- Total Size: {SIZE}
+- Jobs Backed Up: {JOB_COUNT}
+- Photos/Videos: {MEDIA_COUNT}
+- Location: \\OFFICE-PC\Backups\{BACKUP_ID}
+
+Next Backup: {NEXT_DATE}
+
+Action Required: {ACTION_IF_FAILED}
+```
+
+##### 3. Windows Integration Options
+
+**Option A: Network Share**
+- Set up SMB share on office Windows PC
+- Backup script uploads via SMB protocol
+- Requires VPN for remote access
+
+**Option B: OneDrive Business**
+- Use OneDrive API for uploads
+- Automatic sync to Windows PC
+- Built-in versioning and recovery
+
+**Option C: FTP Server**
+- Run FTP server on Windows PC
+- Secure FTPS for encrypted transfer
+- Schedule Windows Task to organize files
+
+### Backup Restoration Process
+1. Locate backup file by date
+2. Extract ZIP archive
+3. Restore database from SQL dump
+4. Re-upload media files to IDrive e2
+5. Update URLs in database if needed
+6. Verify data integrity
+
+### Monitoring & Alerts
+- **Success**: Green checkmark email every Sunday
+- **Warning**: Yellow alert if backup is smaller than expected
+- **Failure**: Red alert with immediate retry
+- **Missing**: Alert if no backup for 10 days
 
 ---
 
@@ -93,6 +286,7 @@ Critical columns with naming inconsistencies (BOTH exist):
 │   ├── create-payment/    # Stripe checkout session creation
 │   ├── proposal-approval/ # Handle approval/rejection
 │   ├── send-proposal/     # Email proposal to customer
+│   ├── backup/            # Backup automation endpoints
 │   └── stripe/
 │       └── webhook/       # Process Stripe events
 │
@@ -173,6 +367,13 @@ RESEND_API_KEY
 EMAIL_FROM=onboarding@resend.dev
 BUSINESS_EMAIL=dantcacenco@gmail.com
 
+# IDrive e2 (To be added)
+IDRIVE_E2_ENDPOINT
+IDRIVE_E2_ACCESS_KEY
+IDRIVE_E2_SECRET_KEY
+IDRIVE_E2_BUCKET
+IDRIVE_E2_REGION
+
 # Optional but recommended
 NEXT_PUBLIC_BASE_URL
 ```
@@ -210,17 +411,19 @@ NEXT_PUBLIC_BASE_URL
 ## 🎯 CURRENT PRIORITIES
 
 ### Immediate Issues to Fix
-1. **Consolidate payment flow** - Single implementation in CustomerProposalView
-2. **Update all role checks** to use 'admin' consistently
-3. **Fix column name inconsistencies** throughout codebase
-4. **Ensure public routes** work without authentication
+1. **Photo display issue** - Debug why thumbnails don't show in technician portal
+2. **Consolidate payment flow** - Single implementation in CustomerProposalView
+3. **Update all role checks** to use 'admin' consistently
+4. **Fix column name inconsistencies** throughout codebase
 
 ### Next Phase Features
-1. Job creation from approved proposals
-2. Invoice generation from completed jobs
-3. Technician assignment and scheduling
-4. Email notifications for payment reminders
-5. Migration to Bill.com for payment processing
+1. **IDrive e2 Storage Migration** - Implement dual upload system
+2. **Automated Weekly Backups** - Set up backup service with email reports
+3. Job creation from approved proposals
+4. Invoice generation from completed jobs
+5. Technician assignment and scheduling
+6. Email notifications for payment reminders
+7. Migration to Bill.com for payment processing
 
 ---
 
@@ -232,6 +435,7 @@ NEXT_PUBLIC_BASE_URL
 - Test builds before committing
 - Clear, descriptive commit messages
 - Always push to main branch
+- Minimize Vercel deployments (100/day limit on free plan)
 
 ### Testing Protocol
 1. Run TypeScript check: `npx tsc --noEmit`
@@ -244,7 +448,7 @@ NEXT_PUBLIC_BASE_URL
 - Replace entire files to avoid conflicts
 - Keep backups of working versions
 - Test after every major change
-- Commit frequently with clear messages
+- Batch commits to preserve Vercel deployment limit
 - **DELETE temporary scripts immediately after use**
 
 ### 🧹 Project Hygiene Rules
@@ -268,6 +472,9 @@ find . -name "*.bak" -type f -delete
 ---
 
 ## 🔄 KNOWN ISSUES & SOLUTIONS
+
+### Issue: Photos not showing thumbnails
+**Solution**: Check browser console for CORS errors, verify URLs are properly formatted
 
 ### Issue: Payment stages not displaying
 **Solution**: Ensure `payment_stages` table is populated after proposal approval
@@ -301,6 +508,11 @@ LIMIT 1;
 SELECT * FROM payment_stages 
 WHERE proposal_id = '[PROPOSAL_ID]'
 ORDER BY stage;
+
+-- Check photo URLs
+SELECT url, media_type 
+FROM job_photos 
+WHERE job_id = '[JOB_ID]';
 ```
 
 ---
