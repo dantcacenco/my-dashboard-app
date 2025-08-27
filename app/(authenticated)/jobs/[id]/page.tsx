@@ -1,82 +1,85 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import JobDetailsView from './JobDetailsView'
+import JobDetailView from './JobDetailView'
+import JobDiagnostic from './diagnostic'
 
-export default async function JobDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function JobDetailPage({ 
+  params,
+  searchParams 
+}: { 
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ debug?: string }>
+}) {
   const { id } = await params
-  const supabase = await createClient()
-
-  // Check authentication
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/auth/login')
+  const { debug } = await searchParams
+  
+  // Show diagnostic if ?debug=true
+  if (debug === 'true') {
+    return <JobDiagnostic />
   }
+  
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
 
-  // Check if user is admin/boss
+  // Get user role
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
+  
+  const userRole = profile?.role || 'technician'
 
-  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
-    redirect('/')
-  }
-
-  // Fetch job details with related data
+  // Fetch job with customer info
   const { data: job, error } = await supabase
     .from('jobs')
     .select(`
       *,
-      customers (
-        id,
+      customers!customer_id (
         name,
         email,
         phone,
         address
-      ),
-      proposals (
-        id,
-        proposal_number,
-        status,
-        total
-      ),
-      profiles:technician_id (
-        id,
-        full_name,
-        email
       )
     `)
     .eq('id', id)
     .single()
 
-  if (error || !job) {
-    redirect('/jobs')
+  // If job has a proposal_id, fetch it separately
+  if (job && job.proposal_id) {
+    const { data: proposal } = await supabase
+      .from('proposals')
+      .select('proposal_number, title, total')
+      .eq('id', job.proposal_id)
+      .single()
+    
+    if (proposal) {
+      job.proposals = [proposal]
+    }
   }
 
-  // Fetch job photos with debug logging
-  const { data: jobPhotos } = await supabase
-    .from('job_photos')
-    .select('*')
-    .eq('job_id', id)
-    .order('created_at', { ascending: true })
+  if (error || !job) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4 text-red-600">Job Not Found</h1>
+        <div className="bg-red-50 p-4 rounded-lg">
+          <p className="mb-2">Job ID: <code>{id}</code></p>
+          <p className="mb-2">Error: {error?.message || 'Job does not exist'}</p>
+          <p className="text-sm text-gray-600 mt-4">
+            Try adding <code>?debug=true</code> to the URL for diagnostic info
+          </p>
+          <a 
+            href={`/jobs/${id}?debug=true`}
+            className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Run Diagnostic
+          </a>
+        </div>
+      </div>
+    )
+  }
 
-  // Fetch job files
-  const { data: jobFiles } = await supabase
-    .from('job_files')
-    .select('*')
-    .eq('job_id', id)
-    .order('created_at', { ascending: false })
-
-  // Log for debugging
-  console.log('[Server] Job photos fetched:', jobPhotos?.length || 0, 'photos')
-  console.log('[Server] Job files fetched:', jobFiles?.length || 0, 'files')
-
-  return (
-    <JobDetailsView 
-      job={job}
-      jobPhotos={jobPhotos || []}
-      jobFiles={jobFiles || []}
-    />
-  )
+  return <JobDetailView job={job} userRole={userRole} userId={user.id} />
 }
