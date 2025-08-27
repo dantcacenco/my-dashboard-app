@@ -10,22 +10,20 @@ export default async function DashboardPage() {
     redirect('/auth/signin')
   }
 
-  // Check user role - handle missing profile
+  // Check user role
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  // If no profile exists, create a default admin profile for this user
   if (!profile) {
     console.log('No profile found for user, treating as admin')
   } else if (profile.role !== 'boss' && profile.role !== 'admin') {
-    // Not an admin or boss
     redirect('/')
   }
 
-  // Fetch proposals with customer data (continue even without profile)
+  // Fetch proposals with customer data
   const { data: proposals } = await supabase
     .from('proposals')
     .select(`
@@ -39,26 +37,25 @@ export default async function DashboardPage() {
 
   const proposalList = proposals || []
 
-  // Fetch jobs for the calendar
-  const today = new Date()
-  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-  const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-  
-  const { data: jobs } = await supabase
+  // Fetch ALL jobs for the calendar (not just this month)
+  const { data: allJobs } = await supabase
     .from('jobs')
     .select(`
       *,
       customers (name, address)
     `)
-    .gte('scheduled_date', startOfMonth.toISOString())
-    .lte('scheduled_date', endOfMonth.toISOString())
     .order('scheduled_date', { ascending: true })
 
-  // Count today's jobs
+  // Count today's jobs correctly
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
   const todayStr = today.toISOString().split('T')[0]
-  const todaysJobsCount = jobs?.filter(j => 
-    j.scheduled_date && j.scheduled_date.split('T')[0] === todayStr
-  ).length || 0
+  
+  const todaysJobsCount = allJobs?.filter(j => {
+    if (!j.scheduled_date) return false
+    const jobDateStr = j.scheduled_date.split('T')[0]
+    return jobDateStr === todayStr
+  }).length || 0
 
   // Calculate metrics
   const totalRevenue = proposalList.reduce((total, proposal) => {
@@ -155,7 +152,7 @@ export default async function DashboardPage() {
     recentProposals,
     recentActivities,
     todaysJobsCount,
-    monthlyJobs: jobs || []
+    allJobs: allJobs || []
   }
 
   return <DashboardContent data={dashboardData} />
