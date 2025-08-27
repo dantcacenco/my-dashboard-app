@@ -41,32 +41,12 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
   }, [job.id])
 
   const loadJobMedia = async () => {
-    console.log('Loading job media for job:', job.id)
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('job_photos')
       .select('*')
       .eq('job_id', job.id)
       .order('created_at', { ascending: true })
 
-    if (error) {
-      console.error('Error loading job photos:', error)
-    } else {
-      console.log('Loaded job photos:', data)
-      // Log each photo URL to debug
-      data?.forEach((photo, index) => {
-        console.log(`Photo ${index + 1} URL:`, photo.url)
-        console.log(`Photo ${index + 1} type:`, photo.media_type)
-        
-        // Test if URL is accessible
-        if (photo.media_type === 'photo' || !photo.media_type) {
-          const img = new Image()
-          img.onload = () => console.log(`Photo ${index + 1} loaded successfully`)
-          img.onerror = (e) => console.error(`Photo ${index + 1} failed to load:`, e)
-          img.src = photo.url
-        }
-      })
-    }
-    
     setJobPhotos(data || [])
   }
 
@@ -122,17 +102,18 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
         .from('jobs')
         .update({ notes: newNote })
         .eq('id', job.id)
-      
+
       if (error) throw error
-      
+
       setJob({ ...job, notes: newNote })
       setNotes('')
-      toast.success('Notes saved successfully')
+      toast.success('Note added successfully')
     } catch (error) {
-      console.error('Error saving notes:', error)
-      toast.error('Failed to save notes')
+      console.error('Error saving note:', error)
+      toast.error('Failed to save note')
+    } finally {
+      setIsSavingNotes(false)
     }
-    setIsSavingNotes(false)
   }
 
   const openMediaViewer = (items: any[], index: number) => {
@@ -141,64 +122,83 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
     setViewerOpen(true)
   }
 
+  const formatJobOverview = (description: string | null | undefined) => {
+    if (!description) return 'No overview available'
+    
+    return description.split('\n').map((line, index) => {
+      if (line.includes('SERVICES:') || line.includes('ADD-ONS:')) {
+        return (
+          <div key={index} className="font-semibold mt-2 mb-1">
+            {line}
+          </div>
+        )
+      }
+      if (line.trim()) {
+        return (
+          <div key={index} className="ml-2">
+            {line}
+          </div>
+        )
+      }
+      return <div key={index} className="h-2" />
+    })
+  }
+
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div className="max-w-7xl mx-auto p-4 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex justify-between items-start">
+        <div className="flex items-start gap-4">
           <Link href="/technician">
             <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
+              <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
           <div>
             <h1 className="text-2xl font-bold">Job {job.job_number}</h1>
             <p className="text-muted-foreground">{job.title}</p>
           </div>
+          <Badge className={getStatusColor(job.status)}>
+            {job.status.replace('_', ' ').toUpperCase()}
+          </Badge>
         </div>
-        <Badge className={`${getStatusColor(job.status)} text-white`}>
-          {job.status?.toUpperCase().replace('_', ' ')}
-        </Badge>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      {/* Quick Status Update Buttons */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Update Job Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            {job.status !== 'in_progress' && (
+              <Button
+                onClick={() => updateJobStatus('in_progress')}
+                variant="outline"
+                size="sm"
+              >
+                <AlertCircle className="h-4 w-4 mr-2" />
+                Start Job
+              </Button>
+            )}
+            {job.status === 'in_progress' && (
+              <Button
+                onClick={() => updateJobStatus('completed')}
+                variant="default"
+                size="sm"
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Complete Job
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Content - Left Side */}
         <div className="lg:col-span-2 space-y-6">
-          
-          {/* Update Job Status Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Update Job Status</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {job.status === 'scheduled' && (
-                <Button
-                  onClick={() => updateJobStatus('in_progress')}
-                  className="w-full"
-                  variant="default"
-                >
-                  <Clock className="h-4 w-4 mr-2" />
-                  Start Job
-                </Button>
-              )}
-              {job.status === 'in_progress' && (
-                <Button
-                  onClick={() => updateJobStatus('completed')}
-                  className="w-full"
-                  variant="default"
-                >
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Complete Job
-                </Button>
-              )}
-              {job.status === 'completed' && (
-                <div className="flex items-center justify-center text-green-600">
-                  <CheckCircle className="h-5 w-5 mr-2" />
-                  Job Completed
-                </div>
-              )}
-            </CardContent>
-          </Card>
           
           {/* Photos & Videos Card */}
           <Card>
@@ -217,42 +217,31 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
               
               {jobPhotos.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-                  {jobPhotos.map((photo, index) => {
-                    // Debug log for each photo
-                    console.log(`Rendering photo ${index}:`, photo.url, 'Type:', photo.media_type)
-                    
-                    return (
-                      <div
-                        key={photo.id}
-                        className="relative group cursor-pointer"
-                        onClick={() => openMediaViewer(jobPhotos, index)}
-                      >
-                        {photo.media_type === 'video' ? (
-                          <VideoThumbnail 
-                            videoUrl={photo.url} 
-                            onClick={() => openMediaViewer(jobPhotos, index)}
-                          />
-                        ) : (
-                          <img
-                            src={photo.url}
-                            alt={photo.caption || 'Job photo'}
-                            className="w-full h-32 object-cover rounded hover:opacity-90 transition"
-                            onError={(e) => {
-                              console.error('Image failed to load:', photo.url)
-                              // Fallback to placeholder
-                              const target = e.target as HTMLImageElement
-                              target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTVlN2ViIi8+CiAgPHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyMCIgZmlsbD0iIzZiNzI4MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+SW1hZ2UgTm90IEZvdW5kPC90ZXh0Pgo8L3N2Zz4='
-                            }}
-                          />
-                        )}
-                        {photo.caption && (
-                          <p className="text-xs mt-1 text-muted-foreground truncate">
-                            {photo.caption}
-                          </p>
-                        )}
-                      </div>
-                    )
-                  })}
+                  {jobPhotos.map((photo, index) => (
+                    <div
+                      key={photo.id}
+                      className="relative group cursor-pointer"
+                      onClick={() => openMediaViewer(jobPhotos, index)}
+                    >
+                      {photo.media_type === 'video' ? (
+                        <VideoThumbnail 
+                          videoUrl={photo.url} 
+                          onClick={() => openMediaViewer(jobPhotos, index)}
+                        />
+                      ) : (
+                        <img
+                          src={photo.url}
+                          alt={photo.caption || 'Job photo'}
+                          className="w-full h-32 object-cover rounded hover:opacity-90 transition"
+                        />
+                      )}
+                      {photo.caption && (
+                        <p className="text-xs mt-1 text-muted-foreground truncate">
+                          {photo.caption}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -313,90 +302,107 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add notes about this job..."
+                placeholder="Add notes about the job..."
                 className="w-full p-3 border rounded-md min-h-[100px]"
               />
               <Button
                 onClick={saveNotes}
                 disabled={!notes.trim() || isSavingNotes}
-                className="mt-2 w-full"
+                className="mt-2"
               >
                 <Save className="h-4 w-4 mr-2" />
-                {isSavingNotes ? 'Saving...' : 'Save Notes'}
+                {isSavingNotes ? 'Saving...' : 'Save Note'}
               </Button>
               
+              {/* Display existing notes */}
               {job.notes && (
                 <div className="mt-4 p-3 bg-gray-50 rounded-md">
-                  <h4 className="font-semibold mb-2">Previous Notes:</h4>
-                  <pre className="whitespace-pre-wrap text-sm">{job.notes}</pre>
+                  <p className="text-sm font-medium mb-2">Previous Notes:</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{job.notes}</p>
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Sidebar - Job Details */}
-        <div>
+        {/* Right Sidebar */}
+        <div className="space-y-6">
+          {/* Job Details Card */}
           <Card>
             <CardHeader>
               <CardTitle>Job Details</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Customer</p>
-                <p className="font-medium">{job.customers?.name || 'N/A'}</p>
-                {job.customers?.phone && (
-                  <a href={`tel:${job.customers.phone}`} className="text-blue-500 text-sm flex items-center gap-1 mt-1">
-                    <Phone className="h-3 w-3" />
-                    {job.customers.phone}
-                  </a>
-                )}
-                {job.customers?.email && (
-                  <a href={`mailto:${job.customers.email}`} className="text-blue-500 text-sm flex items-center gap-1 mt-1">
-                    <Mail className="h-3 w-3" />
-                    {job.customers.email}
-                  </a>
-                )}
-              </div>
-              
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Job Type</p>
-                <p className="font-medium">{job.job_type || 'N/A'}</p>
-              </div>
-              
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Job Overview</p>
-                <p className="text-sm">{job.description || 'No description provided'}</p>
-              </div>
-              
-              {job.scheduled_date && (
+            <CardContent>
+              <div className="space-y-4">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Scheduled Date</p>
+                  <p className="text-sm text-muted-foreground">Customer</p>
+                  <p className="font-medium">{job.customers?.name || 'N/A'}</p>
+                  {job.customers?.phone && (
+                    <a href={`tel:${job.customers.phone}`} className="text-sm text-blue-600 flex items-center mt-1">
+                      <Phone className="h-3 w-3 mr-1" />
+                      {job.customers.phone}
+                    </a>
+                  )}
+                  {job.customers?.email && (
+                    <a href={`mailto:${job.customers.email}`} className="text-sm text-blue-600 flex items-center mt-1">
+                      <Mail className="h-3 w-3 mr-1" />
+                      {job.customers.email}
+                    </a>
+                  )}
+                </div>
+                
+                <div>
+                  <p className="text-sm text-muted-foreground">Job Type</p>
+                  <p className="font-medium">{job.job_type}</p>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-muted-foreground">Job Overview</p>
+                  <div className="font-medium">
+                    {formatJobOverview(job.description)}
+                  </div>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-muted-foreground">Scheduled Date</p>
                   <p className="font-medium">
-                    {new Date(job.scheduled_date).toLocaleDateString()}
+                    {job.scheduled_date ? new Date(job.scheduled_date).toLocaleDateString() : 'Not scheduled'}
                   </p>
                 </div>
-              )}
-              
-              {job.scheduled_time && (
+                
+                {job.scheduled_time && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Scheduled Time</p>
+                    <p className="font-medium">
+                      {job.scheduled_time}
+                    </p>
+                  </div>
+                )}
+                
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Scheduled Time</p>
-                  <p className="font-medium">{job.scheduled_time}</p>
+                  <p className="text-sm text-muted-foreground">Service Address</p>
+                  <p className="font-medium">
+                    {job.service_address || 'No address specified'}
+                  </p>
+                  {job.service_address && (
+                    <a
+                      href={`https://maps.google.com/?q=${encodeURIComponent(job.service_address)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 flex items-center mt-1"
+                    >
+                      <MapPin className="h-3 w-3 mr-1" />
+                      Get Directions
+                    </a>
+                  )}
                 </div>
-              )}
-              
-              {job.address && (
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Location</p>
-                  <p className="text-sm">{job.address}</p>
-                </div>
-              )}
+              </div>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Media Viewer Modal */}
+      {/* Media Viewer */}
       {viewerOpen && (
         <MediaViewer
           items={viewerItems}

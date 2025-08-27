@@ -1,349 +1,391 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import JobDetailModal from '@/components/JobDetailModal'
-
-interface Job {
-  id: string
-  job_number: string
-  title: string
-  scheduled_date: string
-  scheduled_time: string | null
-  status: string
-  customers?: {
-    name: string
-  }
-}
+import { ChevronLeft, ChevronRight, Calendar, Plus } from 'lucide-react'
+import Link from 'next/link'
 
 interface CalendarViewProps {
-  jobs: Job[]
-  onRefresh?: () => void
+  isExpanded: boolean
+  onToggle: () => void
+  todaysJobsCount?: number
+  monthlyJobs?: any[]
 }
 
-export default function CalendarView({ jobs, onRefresh }: CalendarViewProps) {
+export default function CalendarView({ isExpanded, onToggle, todaysJobsCount = 0, monthlyJobs = [] }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [view, setView] = useState<'week' | 'month'>('week')
-  const [selectedJob, setSelectedJob] = useState<string | null>(null)
-  const [modalOpen, setModalOpen] = useState(false)
+  const [jobs, setJobs] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [viewMode, setViewMode] = useState<'month' | 'week'>('month')
+  const supabase = createClient()
 
-  const getStatusColor = (status: string) => {
-    // Unified status colors for both proposals and jobs
-    const colors: Record<string, string> = {
-      // Proposal statuses
-      'draft': 'bg-gray-500',
-      'sent': 'bg-blue-500',
-      'viewed': 'bg-purple-500',
-      'approved': 'bg-green-500',
-      'rejected': 'bg-red-500',
-      // Job statuses
-      'not_scheduled': 'bg-gray-500',
-      'scheduled': 'bg-blue-500',
-      'in_progress': 'bg-yellow-500',
-      'completed': 'bg-green-500',
-      'cancelled': 'bg-red-500'
+  useEffect(() => {
+    if (isExpanded) {
+      loadJobs()
     }
-    return colors[status] || 'bg-gray-500'
+  }, [currentDate, isExpanded, viewMode])
+
+  const loadJobs = async () => {
+    setLoading(true)
+    
+    let startDate: Date
+    let endDate: Date
+    
+    if (viewMode === 'month') {
+      startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
+      endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
+    } else {
+      // Week view
+      const dayOfWeek = currentDate.getDay()
+      startDate = new Date(currentDate)
+      startDate.setDate(currentDate.getDate() - dayOfWeek)
+      startDate.setHours(0, 0, 0, 0)
+      
+      endDate = new Date(startDate)
+      endDate.setDate(startDate.getDate() + 6)
+      endDate.setHours(23, 59, 59, 999)
+    }
+
+    const { data } = await supabase
+      .from('jobs')
+      .select(`
+        *,
+        customers (name, address),
+        job_technicians (
+          technician_id,
+          profiles (full_name, email)
+        )
+      `)
+      .gte('scheduled_date', startDate.toISOString())
+      .lte('scheduled_date', endDate.toISOString())
+      .order('scheduled_date', { ascending: true })
+
+    setJobs(data || [])
+    setLoading(false)
   }
 
-  const getWeekDates = (date: Date) => {
-    const week = []
-    const startOfWeek = new Date(date)
-    const day = startOfWeek.getDay()
-    const diff = startOfWeek.getDate() - day
-    startOfWeek.setDate(diff)
+  const getDaysInMonth = () => {
+    const year = currentDate.getFullYear()
+    const month = currentDate.getMonth()
+    const firstDay = new Date(year, month, 1)
+    const lastDay = new Date(year, month + 1, 0)
+    const daysInMonth = lastDay.getDate()
+    const startingDayOfWeek = firstDay.getDay()
 
+    const days = []
+    
+    // Add empty cells for days before month starts
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null)
+    }
+    
+    // Add all days of the month
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(i)
+    }
+    
+    return days
+  }
+
+  const getWeekDays = () => {
+    const days = []
+    const startOfWeek = new Date(currentDate)
+    const dayOfWeek = startOfWeek.getDay()
+    startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek)
+    
     for (let i = 0; i < 7; i++) {
       const day = new Date(startOfWeek)
       day.setDate(startOfWeek.getDate() + i)
-      week.push(day)
-    }
-    return week
-  }
-
-  const getMonthDates = (date: Date) => {
-    const year = date.getFullYear()
-    const month = date.getMonth()
-    const firstDay = new Date(year, month, 1)
-    const lastDay = new Date(year, month + 1, 0)
-    const startDate = new Date(firstDay)
-    startDate.setDate(startDate.getDate() - startDate.getDay())
-    
-    const dates = []
-    const current = new Date(startDate)
-    
-    while (current <= lastDay || current.getDay() !== 0) {
-      dates.push(new Date(current))
-      current.setDate(current.getDate() + 1)
+      days.push(day)
     }
     
-    return dates
+    return days
   }
 
-  const getJobsForDate = (date: Date) => {
+  const getJobsForDay = (date: Date | number) => {
+    let targetDate: Date
+    
+    if (typeof date === 'number') {
+      targetDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), date)
+    } else {
+      targetDate = date
+    }
+    
+    const dateStr = targetDate.toISOString().split('T')[0]
     return jobs.filter(job => {
-      if (!job.scheduled_date) return false
-      const jobDate = new Date(job.scheduled_date)
-      return (
-        jobDate.getDate() === date.getDate() &&
-        jobDate.getMonth() === date.getMonth() &&
-        jobDate.getFullYear() === date.getFullYear()
-      )
+      const jobDate = job.scheduled_date?.split('T')[0]
+      return jobDate === dateStr
     })
   }
 
-  const handleJobClick = (jobId: string) => {
-    setSelectedJob(jobId)
-    setModalOpen(true)
-  }
-
-  const handleModalClose = () => {
-    setModalOpen(false)
-    setSelectedJob(null)
-  }
-
-  const handleJobUpdate = () => {
-    if (onRefresh) onRefresh()
-  }
-
-  const navigatePrevious = () => {
-    const newDate = new Date(currentDate)
-    if (view === 'week') {
-      newDate.setDate(newDate.getDate() - 7)
-    } else {
-      newDate.setMonth(newDate.getMonth() - 1)
+  const getJobStatusColor = (status: string) => {
+    switch (status) {
+      case 'not_scheduled': return 'bg-gray-500'
+      case 'scheduled': return 'bg-blue-500'
+      case 'in_progress': return 'bg-yellow-500'
+      case 'completed': return 'bg-green-500'
+      case 'cancelled': return 'bg-red-500'
+      default: return 'bg-gray-400'
     }
-    setCurrentDate(newDate)
   }
 
-  const navigateNext = () => {
-    const newDate = new Date(currentDate)
-    if (view === 'week') {
-      newDate.setDate(newDate.getDate() + 7)
+  const navigate = (direction: number) => {
+    if (viewMode === 'month') {
+      setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + direction, 1))
     } else {
-      newDate.setMonth(newDate.getMonth() + 1)
+      const newDate = new Date(currentDate)
+      newDate.setDate(currentDate.getDate() + (direction * 7))
+      setCurrentDate(newDate)
     }
-    setCurrentDate(newDate)
   }
 
-  const formatTimeRange = (job: Job) => {
-    if (!job.scheduled_time) return ''
-    const [hours, minutes] = job.scheduled_time.split(':')
+  const formatTime = (time: string | null) => {
+    if (!time) return ''
+    const [hours, minutes] = time.split(':')
     const hour = parseInt(hours)
     const ampm = hour >= 12 ? 'PM' : 'AM'
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour
+    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
     return `${displayHour}:${minutes} ${ampm}`
   }
 
-  const renderWeekView = () => {
-    const weekDates = getWeekDates(currentDate)
-    const timeSlots = Array.from({ length: 14 }, (_, i) => i + 6) // 6 AM to 7 PM
-
+  if (!isExpanded) {
     return (
-      <div className="overflow-x-auto">
-        <div className="min-w-[800px]">
-          <div className="grid grid-cols-8 border-b">
-            <div className="p-2 font-semibold text-sm">Time</div>
-            {weekDates.map((date, index) => (
-              <div key={index} className="p-2 text-center border-l">
-                <div className="font-semibold text-sm">
-                  {date.toLocaleDateString('en-US', { weekday: 'short' })}
-                </div>
-                <div className={cn(
-                  "text-lg",
-                  date.toDateString() === new Date().toDateString() && "font-bold text-primary"
-                )}>
-                  {date.getDate()}
-                </div>
-              </div>
-            ))}
+      <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={onToggle}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center">
+              <Calendar className="h-5 w-5 mr-2" />
+              Calendar
+            </CardTitle>
+            <span className="text-sm text-gray-500">Click to expand</span>
           </div>
-          
-          {timeSlots.map((hour) => (
-            <div key={hour} className="grid grid-cols-8 border-b min-h-[60px]">
-              <div className="p-2 text-sm text-muted-foreground">
-                {hour > 12 ? `${hour - 12} PM` : hour === 12 ? '12 PM' : `${hour} AM`}
-              </div>
-              {weekDates.map((date, index) => {
-                const dayJobs = getJobsForDate(date)
-                const hourJobs = dayJobs.filter(job => {
-                  if (!job.scheduled_time) return hour === 12 // Show unscheduled at noon
-                  const [jobHour] = job.scheduled_time.split(':')
-                  return parseInt(jobHour) === hour
-                })
-                
-                return (
-                  <div key={index} className="border-l p-1">
-                    {hourJobs.map((job) => (
-                      <button
-                        key={job.id}
-                        onClick={() => handleJobClick(job.id)}
-                        className={cn(
-                          "w-full text-left p-1 rounded text-xs text-white mb-1 hover:opacity-90 transition-opacity",
-                          getStatusColor(job.status)
-                        )}
-                      >
-                        <div className="font-semibold truncate">{job.job_number}</div>
-                        <div className="truncate">{job.customers?.name}</div>
-                      </button>
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  const renderMonthView = () => {
-    const monthDates = getMonthDates(currentDate)
-    const weeks = []
-    for (let i = 0; i < monthDates.length; i += 7) {
-      weeks.push(monthDates.slice(i, i + 7))
-    }
-
-    return (
-      <div>
-        <div className="grid grid-cols-7 gap-px bg-muted">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-            <div key={day} className="bg-background p-2 text-center font-semibold text-sm">
-              {day}
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-px bg-muted">
-          {monthDates.map((date, index) => {
-            const dayJobs = getJobsForDate(date)
-            const isToday = date.toDateString() === new Date().toDateString()
-            const isCurrentMonth = date.getMonth() === currentDate.getMonth()
-            
-            return (
-              <div
-                key={index}
-                className={cn(
-                  "bg-background p-2 min-h-[100px]",
-                  !isCurrentMonth && "text-muted-foreground"
-                )}
-              >
-                <div className={cn(
-                  "font-semibold text-sm mb-1",
-                  isToday && "text-primary"
-                )}>
-                  {date.getDate()}
-                </div>
-                <div className="space-y-1">
-                  {dayJobs.slice(0, 3).map((job) => (
-                    <button
-                      key={job.id}
-                      onClick={() => handleJobClick(job.id)}
-                      className={cn(
-                        "w-full text-left p-1 rounded text-xs text-white hover:opacity-90 transition-opacity",
-                        getStatusColor(job.status)
-                      )}
-                    >
-                      <div className="truncate">
-                        {formatTimeRange(job)} {job.job_number}
-                      </div>
-                    </button>
-                  ))}
-                  {dayJobs.length > 3 && (
-                    <div className="text-xs text-muted-foreground">
-                      +{dayJobs.length - 3} more
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-gray-600">
+            {todaysJobsCount} job{todaysJobsCount !== 1 ? 's' : ''} scheduled today
+          </p>
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <Card>
+    <Card className="col-span-full">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Job Calendar
+          <CardTitle className="flex items-center">
+            <Calendar className="h-5 w-5 mr-2" />
+            Calendar - {viewMode === 'month' 
+              ? currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })
+              : `Week of ${currentDate.toLocaleDateString()}`
+            }
           </CardTitle>
           <div className="flex items-center gap-2">
-            <div className="flex gap-1">
+            <div className="flex rounded-md shadow-sm" role="group">
               <Button
-                variant={view === 'week' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setView('week')}
+                variant={viewMode === 'week' ? 'default' : 'outline'}
+                onClick={() => setViewMode('week')}
+                className="rounded-r-none"
               >
                 Week
               </Button>
               <Button
-                variant={view === 'month' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setView('month')}
+                variant={viewMode === 'month' ? 'default' : 'outline'}
+                onClick={() => setViewMode('month')}
+                className="rounded-l-none"
               >
                 Month
               </Button>
             </div>
-            <div className="flex gap-1">
-              <Button variant="outline" size="icon" onClick={navigatePrevious}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="icon" onClick={navigateNext}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
             <Button
-              variant="outline"
               size="sm"
+              variant="outline"
+              onClick={() => navigate(-1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => setCurrentDate(new Date())}
             >
               Today
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate(1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onToggle}
+            >
+              Collapse
             </Button>
           </div>
         </div>
       </CardHeader>
       <CardContent>
-        {view === 'week' ? renderWeekView() : renderMonthView()}
+        {loading ? (
+          <div className="text-center py-8">Loading jobs...</div>
+        ) : viewMode === 'month' ? (
+          <div>
+            {/* Month View - Calendar Grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {/* Day headers */}
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                <div key={day} className="text-center text-sm font-medium text-gray-700 py-2">
+                  {day}
+                </div>
+              ))}
+              
+              {/* Calendar days */}
+              {getDaysInMonth().map((day, index) => {
+                const dayJobs = day ? getJobsForDay(day) : []
+                const isToday = day === new Date().getDate() && 
+                               currentDate.getMonth() === new Date().getMonth() &&
+                               currentDate.getFullYear() === new Date().getFullYear()
+                
+                return (
+                  <div
+                    key={index}
+                    className={`
+                      min-h-[100px] p-1 border rounded
+                      ${!day ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'}
+                      ${isToday ? 'border-blue-500 border-2' : 'border-gray-200'}
+                    `}
+                  >
+                    {day && (
+                      <>
+                        <div className="text-sm font-medium mb-1">{day}</div>
+                        <div className="space-y-1">
+                          {dayJobs.slice(0, 3).map((job) => (
+                            <Link
+                              key={job.id}
+                              href={`/jobs/${job.id}`}
+                              className={`
+                                block text-xs p-1 rounded truncate
+                                ${getJobStatusColor(job.status)} text-white
+                                hover:opacity-80
+                              `}
+                              title={`${job.job_number} - ${job.title || 'No title'} - ${job.customers?.name || 'No customer'}`}
+                            >
+                              {job.scheduled_time && formatTime(job.scheduled_time).slice(0, -3)} {job.job_number}
+                            </Link>
+                          ))}
+                          {dayJobs.length > 3 && (
+                            <div className="text-xs text-gray-500 text-center">
+                              +{dayJobs.length - 3} more
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div>
+            {/* Week View - Time Grid */}
+            <div className="grid grid-cols-8 gap-0 border-l border-t">
+              {/* Time column header */}
+              <div className="text-center text-sm font-medium text-gray-700 p-2 border-r border-b">
+                Time
+              </div>
+              
+              {/* Day headers for week view */}
+              {getWeekDays().map((day, idx) => {
+                const isToday = day.toDateString() === new Date().toDateString()
+                return (
+                  <div 
+                    key={idx} 
+                    className={`text-center text-sm font-medium p-2 border-r border-b ${
+                      isToday ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    <div>{day.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                    <div className="text-lg">{day.getDate()}</div>
+                  </div>
+                )
+              })}
+              
+              {/* Time slots */}
+              {Array.from({ length: 13 }, (_, i) => i + 6).map(hour => (
+                <>
+                  {/* Time label */}
+                  <div key={`time-${hour}`} className="text-xs text-gray-500 p-2 border-r border-b">
+                    {hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
+                  </div>
+                  
+                  {/* Day cells for this hour */}
+                  {getWeekDays().map((day, dayIdx) => {
+                    const dayJobs = getJobsForDay(day)
+                    const hourJobs = dayJobs.filter(job => {
+                      if (!job.scheduled_time) return false
+                      const jobHour = parseInt(job.scheduled_time.split(':')[0])
+                      return jobHour === hour
+                    })
+                    
+                    return (
+                      <div 
+                        key={`${hour}-${dayIdx}`} 
+                        className="min-h-[60px] p-1 border-r border-b bg-white hover:bg-gray-50"
+                      >
+                        {hourJobs.map(job => (
+                          <Link
+                            key={job.id}
+                            href={`/jobs/${job.id}`}
+                            className={`
+                              block text-xs p-1 mb-1 rounded truncate
+                              ${getJobStatusColor(job.status)} text-white
+                              hover:opacity-80
+                            `}
+                            title={`${job.job_number} - ${job.title || 'No title'}`}
+                          >
+                            {formatTime(job.scheduled_time)} {job.job_number}
+                          </Link>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </>
+              ))}
+            </div>
+          </div>
+        )}
         
-        {/* Status Legend */}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <div className="flex items-center gap-1">
-            <div className={cn("w-3 h-3 rounded", getStatusColor('not_scheduled'))} />
-            <span className="text-xs">Not Scheduled</span>
+        {/* Job Status Legend */}
+        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-gray-500 rounded mr-1" />
+            Not Scheduled
           </div>
-          <div className="flex items-center gap-1">
-            <div className={cn("w-3 h-3 rounded", getStatusColor('scheduled'))} />
-            <span className="text-xs">Scheduled</span>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-blue-500 rounded mr-1" />
+            Scheduled
           </div>
-          <div className="flex items-center gap-1">
-            <div className={cn("w-3 h-3 rounded", getStatusColor('in_progress'))} />
-            <span className="text-xs">In Progress</span>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-yellow-500 rounded mr-1" />
+            In Progress
           </div>
-          <div className="flex items-center gap-1">
-            <div className={cn("w-3 h-3 rounded", getStatusColor('completed'))} />
-            <span className="text-xs">Completed</span>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-green-500 rounded mr-1" />
+            Completed
           </div>
-          <div className="flex items-center gap-1">
-            <div className={cn("w-3 h-3 rounded", getStatusColor('cancelled'))} />
-            <span className="text-xs">Cancelled</span>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-red-500 rounded mr-1" />
+            Cancelled
           </div>
         </div>
-
-        {/* Job Detail Modal */}
-        {selectedJob && (
-          <JobDetailModal
-            jobId={selectedJob}
-            isOpen={modalOpen}
-            onClose={handleModalClose}
-            onUpdate={handleJobUpdate}
-          />
-        )}
       </CardContent>
     </Card>
   )

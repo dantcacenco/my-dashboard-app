@@ -44,7 +44,7 @@ interface DashboardData {
     proposals: Array<{ proposal_number: string; title: string }> | null
   }>
   todaysJobsCount?: number
-  allJobs?: any[]
+  monthlyJobs?: any[]
 }
 
 interface DashboardContentProps {
@@ -53,7 +53,7 @@ interface DashboardContentProps {
 
 export default function DashboardContent({ data }: DashboardContentProps) {
   const [calendarExpanded, setCalendarExpanded] = useState(false)
-  const { metrics, monthlyRevenue, statusCounts, recentProposals, recentActivities, todaysJobsCount = 0, allJobs = [] } = data
+  const { metrics, monthlyRevenue, statusCounts, recentProposals, recentActivities, todaysJobsCount = 0, monthlyJobs = [] } = data
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -111,6 +111,7 @@ export default function DashboardContent({ data }: DashboardContentProps) {
 
   const COLORS = ['#94a3b8', '#3b82f6', '#a855f7', '#10b981', '#ef4444', '#10b981']
 
+  // Custom label function with proper typing
   const renderLabel = (entry: any) => {
     const percent = entry.percent || 0
     return `${entry.name} ${(percent * 100).toFixed(0)}%`
@@ -166,13 +167,12 @@ export default function DashboardContent({ data }: DashboardContentProps) {
         </Card>
       </div>
 
-      {/* Calendar View - Pass all jobs */}
+      {/* Calendar View - Pass jobs data */}
       <CalendarView 
-        jobs={allJobs}
-        onRefresh={async () => {
-          // Refresh jobs data if needed
-          window.location.reload()
-        }}
+        isExpanded={calendarExpanded} 
+        onToggle={() => setCalendarExpanded(!calendarExpanded)}
+        todaysJobsCount={todaysJobsCount}
+        monthlyJobs={monthlyJobs}
       />
 
       {/* Charts Row */}

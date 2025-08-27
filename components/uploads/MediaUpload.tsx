@@ -54,16 +54,14 @@ export default function MediaUpload({ jobId, userId, onUploadComplete }: MediaUp
         
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('job-photos')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          })
+          .upload(filePath, file)
         
         if (uploadError) throw uploadError
         
-        // Construct public URL directly for public buckets
-        // Format: https://[project-ref].supabase.co/storage/v1/object/public/[bucket]/[path]
-        const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/job-photos/${filePath}`
+        // Get public URL - ensure proper URL format
+        const { data: { publicUrl } } = supabase.storage
+          .from('job-photos')
+          .getPublicUrl(filePath)
         
         // Save to database
         const { error: dbError } = await supabase
