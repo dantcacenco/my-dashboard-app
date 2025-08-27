@@ -518,3 +518,230 @@ WHERE job_id = '[JOB_ID]';
 ---
 
 This document represents the authoritative source for project understanding. Any conflicting information in other documents should defer to this scope.
+---
+
+## 🗄️ STORAGE SOLUTION STRATEGY (NEW)
+
+### Current Issue
+- Supabase storage is too expensive for HVAC photo requirements
+- Need 5-10 year retention for warranty documentation
+- Estimated 1-5TB storage needed within first year
+
+### Approved Solution: Hybrid Architecture
+**Database & Auth**: Supabase ($25/mo Pro plan)
+- User authentication
+- All database tables
+- Real-time subscriptions
+- Small files (<1MB)
+
+**File Storage**: IDrive e2 ($4/TB/mo)
+- All job photos and videos
+- Customer documents
+- PDF invoices and proposals
+- Long-term archives
+
+### Migration Timeline
+- **Week 1**: Set up IDrive e2 account and buckets
+- **Week 2**: Update upload code to use IDrive
+- **Week 3**: Migrate existing files
+- **Week 4**: Implement CDN for faster delivery
+
+### Expected Savings
+- Current: $350/mo for 1TB (Supabase)
+- New: $29/mo for 1TB (Hybrid)
+- **Savings: $321/mo (92%)**
+
+See `storage_comparison.md` for detailed analysis.
+
+---
+
+## 🔄 AUTOMATED BACKUP SYSTEM (NEW)
+
+### Requirements
+Automated weekly backup of all job data to local Windows office computer with email status reports.
+
+### Backup Scope
+1. **Database Backup** (Weekly)
+   - All job records
+   - Customer data
+   - Proposal/Invoice history
+   - Payment records
+   - Export format: PostgreSQL dump + CSV
+
+2. **File Backup** (Weekly)
+   - Job photos and videos
+   - Documents and PDFs
+   - Organized by job number and date
+   - Compressed archives
+
+3. **Incremental Backups**
+   - Only new/modified files since last backup
+   - Reduces bandwidth and storage
+   - Maintains version history
+
+### Implementation Architecture
+
+#### Backup Service Components
+```typescript
+// Scheduled via cron job or Windows Task Scheduler
+// Runs every Sunday at 2 AM
+
+1. Database Export Service
+   - Connect to Supabase
+   - Export tables to CSV/JSON
+   - Create PostgreSQL dump
+   
+2. File Sync Service  
+   - Connect to IDrive e2
+   - Download new files since last backup
+   - Organize by job/date structure
+   
+3. Compression Service
+   - ZIP archives by week
+   - Password protection
+   - Checksums for integrity
+   
+4. Local Storage Service
+   - Save to: C:\ServicePro\Backups\[YYYY-MM-DD]
+   - Maintain 90-day retention
+   - Auto-cleanup old backups
+   
+5. Email Report Service
+   - Send to: dantcacenco@gmail.com
+   - Subject: "Service Pro Backup - [Date] - [Status]"
+   - Include: Files backed up, size, errors
+```
+
+### Backup Email Report Format
+```
+Subject: Service Pro Weekly Backup - SUCCESS - 2025-08-27
+
+Backup Summary:
+- Status: ✅ Successfully Completed
+- Date: August 27, 2025 02:00 AM
+- Duration: 12 minutes
+
+Database Backup:
+- Records Backed Up: 1,247
+- New Jobs: 23
+- New Customers: 8
+- Size: 45 MB
+
+File Backup:
+- New Photos: 342
+- New Documents: 18
+- Total Size: 2.3 GB
+- Location: C:\ServicePro\Backups\2025-08-27\
+
+Next Scheduled Backup: September 3, 2025
+
+---
+Automated by Service Pro Backup System
+```
+
+### Failure Handling
+```
+Subject: Service Pro Weekly Backup - FAILED - URGENT
+
+Backup Failed:
+- Status: ❌ UNSUCCESSFUL - NEEDS ATTENTION
+- Date: August 27, 2025 02:00 AM
+- Error: Connection timeout to IDrive e2
+
+Failed Components:
+- Database: ✅ Successful
+- Files: ❌ Failed at 34%
+
+Action Required:
+1. Check internet connection
+2. Verify IDrive credentials
+3. Run manual backup
+4. Contact support if needed
+
+Manual Backup Command:
+C:\ServicePro\backup.exe --manual --verbose
+
+---
+URGENT: Please address immediately to prevent data loss
+```
+
+### Windows Implementation
+
+#### Option 1: Node.js Script + Task Scheduler
+```javascript
+// backup-service.js
+const { execSync } = require('child_process');
+const nodemailer = require('nodemailer');
+const AWS = require('@aws-sdk/client-s3');
+
+// Runs weekly via Windows Task Scheduler
+async function weeklyBackup() {
+  // Implementation details...
+}
+```
+
+#### Option 2: PowerShell Script
+```powershell
+# ServicePro-Backup.ps1
+# Schedule in Task Scheduler for weekly execution
+$backupPath = "C:\ServicePro\Backups\$(Get-Date -Format 'yyyy-MM-dd')"
+# Implementation details...
+```
+
+#### Option 3: Desktop Companion App
+- Electron app running in system tray
+- Visual backup status
+- Manual backup trigger
+- Settings configuration
+- Log viewer
+
+### Backup Configuration
+```env
+# Backup Settings
+BACKUP_ENABLED=true
+BACKUP_SCHEDULE=0 2 * * 0  # Every Sunday at 2 AM
+BACKUP_RETENTION_DAYS=90
+BACKUP_PATH=C:\ServicePro\Backups
+BACKUP_EMAIL=dantcacenco@gmail.com
+BACKUP_PASSWORD=encrypted_password_here
+```
+
+### Disaster Recovery Plan
+1. **Local Backups**: Weekly on office computer
+2. **Cloud Backups**: Daily in IDrive e2
+3. **Database Replication**: Real-time in Supabase
+4. **Recovery Time Objective (RTO)**: 4 hours
+5. **Recovery Point Objective (RPO)**: 24 hours
+
+---
+
+## 📅 UPDATED DEVELOPMENT PHASES
+
+### Phase 1: Current Implementation ✅
+- Core proposal → payment flow
+- Job management system
+- Technician portal
+- Calendar views
+
+### Phase 2: Storage Migration (Next Priority)
+- Set up IDrive e2 account
+- Implement dual storage system
+- Migrate existing files
+- Update upload/download code
+
+### Phase 3: Backup System
+- Create backup service
+- Windows scheduled task setup
+- Email reporting system
+- Disaster recovery testing
+
+### Phase 4: Advanced Features
+- QuickBooks integration
+- Inventory management
+- Recurring service contracts
+- Advanced analytics
+
+---
+
+*Last Updated: August 27, 2025*
+*Storage and Backup sections added*
