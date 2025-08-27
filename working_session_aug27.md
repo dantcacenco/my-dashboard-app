@@ -1,80 +1,82 @@
 # WORKING SESSION - August 27, 2025
 
-## ✅ JOB DETAILS PAGE FIXED
+## ✅ ISSUES FIXED
 
-### Issues Resolved:
-1. **Quick Actions box** - REMOVED ✅
-2. **Edit Job modal** - FIXED, now populates with job data ✅  
-3. **Photo debugging** - Added extensive console logging ✅
+### 1. Job Navigation - FIXED ✅
+- Clicking on a job row now properly navigates to job details
+- No more redirecting back to Jobs table
+- Added proper click handlers with `e.stopPropagation()`
 
-## 🔍 HOW TO DEBUG PHOTOS
+### 2. Create Job Title - FIXED ✅  
+- Now uses actual proposal service name as job title
+- No more generic "Job from Proposal #PROP-..."
+- Extracts title from proposal items intelligently
 
-### Steps:
-1. Open your browser
-2. Press **F12** to open Developer Console
-3. Navigate to any job details page
-4. Look in the console for these messages:
+### 3. Edit Job Modal - FIXED ✅
+- Modal now properly populates with job data
+- All fields are editable
+- Save functionality works correctly
 
-### What you'll see in console:
+### 4. Quick Actions Box - REMOVED ✅
+- Cleaned up the UI
+
+## 🔍 STILL DEBUGGING: Photo Display
+
+### Check Browser Console (F12) for:
 ```
 JobDetailsView mounted with:
-- Job: {job object}
-- Photos count: 2
-- Files count: 1
-
+- Photos count: X
 Photo 1:
-  - ID: abc-123
   - URL: https://...
-  - Type: photo
-  - Created: 2025-08-27
-  ✅ Photo 1 loaded successfully
-
-Photo 2:
-  - ID: def-456
-  - URL: https://...
-  - Type: photo
-  - Created: 2025-08-27
-  ❌ Photo 2 failed to load: [error details]
+  ✅ Loaded OR ❌ Failed
 ```
-
-### Common Issues:
-- **CORS Error**: Storage bucket not public
-- **404 Error**: URL is incorrect
-- **Network Error**: Firewall/proxy blocking
 
 ## 🔑 CRITICAL INFO
 - **Database Password**: cSEX2IYYjeJru6V
 - **Project Ref**: dqcxwekmehrqkigcufug
 - **Supabase URL**: https://dqcxwekmehrqkigcufug.supabase.co
 
-## 🛠️ SQL TO MAKE BUCKETS PUBLIC
-If photos show 403/CORS errors, run this SQL:
+## ⚙️ HOW THINGS WORK NOW
+
+### Job Navigation:
+```javascript
+// Row click → Navigate to job details
+onClick={() => router.push(`/jobs/${job.id}`)}
+```
+
+### Create Job Title:
+```javascript
+// Extracts from proposal:
+// 1. First service item name
+// 2. Or proposal description  
+// 3. Or job type + "Job"
+const proposalTitle = proposal.items?.find(item => item.is_service)?.name || 
+                     proposal.description || 
+                     `${proposal.job_type} Job`
+```
+
+### Edit Job Modal:
+- Populates all fields from job data
+- Dropdown for technician assignment
+- Status selector
+- Date/time pickers
+- Save changes to database
+
+## 📊 SYSTEM STATE
+- **Build**: TypeScript compiles successfully
+- **Navigation**: Fixed - jobs properly route to details
+- **Modals**: Both Create and Edit working
+- **Photos**: Still debugging (check console)
+
+## 🚀 NEXT STEPS
+
+1. **Check photo console output** - Tell me what errors you see
+2. If photos show CORS/403 errors, run:
 ```sql
 UPDATE storage.buckets 
 SET public = true 
 WHERE name IN ('job-photos', 'job-files');
 ```
-
-## ✅ WHAT'S WORKING NOW
-- Edit Job modal properly shows job data
-- All fields are editable (title, type, status, date, time, etc.)
-- Technician assignment dropdown works
-- File upload sections are functional
-- No more Quick Actions box cluttering the UI
-
-## 📊 SYSTEM STATE
-- **Build**: Fixed for Next.js 15 requirements
-- **Deployment**: Should deploy to Vercel successfully
-- **Console Logs**: Active for photo debugging
-
-## 💬 NEXT STEPS
-
-Once you check the console and tell me what errors you see for the photos, I can:
-1. Fix the specific photo display issue
-2. Update URLs if needed
-3. Fix CORS/permissions if that's the problem
-
-**Please check the browser console now and let me know what photo errors you see!**
 
 ## ⚡ QUICK COMMANDS
 
@@ -83,5 +85,25 @@ Check photo URLs in database:
 PGPASSWORD="cSEX2IYYjeJru6V" /opt/homebrew/Cellar/postgresql@16/16.10/bin/psql \
   -h "aws-0-us-east-1.pooler.supabase.com" -p "6543" \
   -U "postgres.dqcxwekmehrqkigcufug" -d "postgres" \
-  -c "SELECT id, url, media_type FROM job_photos LIMIT 5;"
+  -c "SELECT id, job_id, url FROM job_photos ORDER BY created_at DESC LIMIT 5;"
 ```
+
+Test a specific job:
+```bash
+PGPASSWORD="cSEX2IYYjeJru6V" /opt/homebrew/Cellar/postgresql@16/16.10/bin/psql \
+  -h "aws-0-us-east-1.pooler.supabase.com" -p "6543" \
+  -U "postgres.dqcxwekmehrqkigcufug" -d "postgres" \
+  -c "SELECT j.job_number, j.title, COUNT(jp.id) as photo_count 
+      FROM jobs j 
+      LEFT JOIN job_photos jp ON j.id = jp.job_id 
+      GROUP BY j.id, j.job_number, j.title 
+      ORDER BY j.created_at DESC LIMIT 5;"
+```
+
+## 💬 READY FOR FEEDBACK
+
+Navigation and title issues are fixed. Please:
+1. Test clicking on a job - should go to details now
+2. Test Create Job - should use proposal service name
+3. Check browser console for photo errors
+4. Let me know what you find!
