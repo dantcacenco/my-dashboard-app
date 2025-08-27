@@ -168,10 +168,11 @@ export default function DashboardContent({ data }: DashboardContentProps) {
 
       {/* Calendar View - Pass all jobs */}
       <CalendarView 
-        isExpanded={calendarExpanded} 
-        onToggle={() => setCalendarExpanded(!calendarExpanded)}
-        todaysJobsCount={todaysJobsCount}
-        allJobs={allJobs}
+        jobs={allJobs}
+        onRefresh={async () => {
+          // Refresh jobs data if needed
+          window.location.reload()
+        }}
       />
 
       {/* Charts Row */}
