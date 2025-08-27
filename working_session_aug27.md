@@ -6,107 +6,111 @@
 - **Supabase URL**: https://dqcxwekmehrqkigcufug.supabase.co
 - **Local Path**: /Users/dantcacenco/Documents/GitHub/my-dashboard-app
 
-## ✅ FIXED - August 27
+## ✅ COMPLETED - August 27
 
-### 1. **Photo Display Issue** - COMPLETELY FIXED ✓
-   - Updated MediaUpload to construct public URLs directly
-   - **SQL EXECUTED SUCCESSFULLY** - Buckets now public
-   - Both `job-photos` and `job-files` buckets set to public=true
-   - Photos should now display properly in technician portal
+### 1. **Photo Display Debugging** ✓
+   - Added comprehensive console logging to TechnicianJobView
+   - Logs photo URLs, load status, and errors
+   - Check browser console (F12) for debug output
 
-### 2. **Storage Cost Analysis** - DOCUMENTED ✓
-   - Created comprehensive migration plan
-   - Recommended: Cloudflare R2 ($1.50/100GB vs $35 Supabase)
-   - Alternative: AWS S3, Self-hosted MinIO
-   - See: storage_migration_plan.md for full details
+### 2. **Calendar Job Modal** ✓  
+   - Created JobDetailModal component for viewing/editing jobs
+   - Calendar now opens jobs in modal instead of navigation
+   - Modal allows viewing by default with edit mode toggle
+   - Added all necessary dependencies (@radix-ui/react-select)
 
-### 3. **Supabase CLI Link** - WORKAROUND FOUND ✓
-   - Direct link command fails with auth issues
-   - **Solution**: Use psql directly with full path
-   - Path: `/opt/homebrew/Cellar/postgresql@16/16.10/bin/psql`
-   - Connection works with pooler URL
+### 3. **Unified Status Colors** ✓
+   - Consistent colors across proposals, jobs, and calendar
+   - Gray: Not Scheduled/Draft
+   - Blue: Scheduled/Sent
+   - Yellow: In Progress
+   - Green: Completed/Approved
+   - Red: Cancelled/Rejected
 
-## ⚠️ REMAINING ISSUES
+### 4. **Storage Buckets Fixed** ✓
+   - Both `job-photos` and `job-files` are now public
+   - SQL executed successfully via psql
 
-### 1. Calendar Jobs Display
-- **Status**: Needs implementation
-- **Requirement**: Jobs on Aug 21 & 26 need to be clickable with modal
-- **Files**: `/components/CalendarView.tsx`
+## 🔍 PHOTO DEBUGGING GUIDE
 
-## 📊 STORAGE SOLUTION SUMMARY
+**Check Browser Console for:**
+```
+Loading job media for job: [id]
+Photo 1 URL: [url]
+Photo 1 type: photo
+Photo 1 loaded successfully
+```
 
-### Current Problem
-- Supabase Pro: $35/mo for only 100GB storage
-- HVAC jobs need 5-10 year photo retention
-- Estimated need: 1-5TB over time
+**If photos still don't show:**
+1. Check Network tab (F12) for image requests
+2. Look for CORS errors in console
+3. Verify URLs are accessible directly
+4. Check for 403/404 errors
 
-### Recommended: Cloudflare R2
-- **Cost**: $0.015/GB/month (10x cheaper)
-- **No egress fees** (huge advantage)
-- **Implementation**: Keep Supabase for DB, use R2 for files
-- **Monthly savings**: $33.50/100GB → $300+/TB
+**Possible Issues:**
+- URLs may be malformed
+- Storage bucket permissions
+- CORS configuration
+- Image file corruption
 
-## 🛠️ WORKING SQL CONNECTION
+## 📊 STORAGE SOLUTION (Cloudflare R2)
 
-For direct SQL execution without Supabase CLI:
+**Cost Savings:**
+- Current: $35/mo for 100GB (Supabase)
+- R2: $1.50/mo for 100GB
+- Savings: $33.50/mo (95% cheaper)
+
+**Implementation:** See `storage_migration_plan.md`
+
+## 🛠️ SQL ACCESS (Working)
+
 ```bash
 PGPASSWORD="cSEX2IYYjeJru6V" /opt/homebrew/Cellar/postgresql@16/16.10/bin/psql \
-  -h "aws-0-us-east-1.pooler.supabase.com" \
-  -p "6543" \
-  -U "postgres.dqcxwekmehrqkigcufug" \
-  -d "postgres" \
+  -h "aws-0-us-east-1.pooler.supabase.com" -p "6543" \
+  -U "postgres.dqcxwekmehrqkigcufug" -d "postgres" \
   -c "YOUR SQL HERE"
 ```
 
-## ✅ COMPLETED FEATURES
+## ⚠️ REMAINING ISSUES
 
-### Admin Dashboard
-- Revenue metrics and charts
-- Proposal management (create, edit, send, approve)
-- Customer management
-- Job creation from proposals (now uses proposal title)
-- Job assignment to technicians
-- Payment tracking (50/30/20 split)
-- Calendar with week/month views
+### Photo Display
+- Debug logs added, need to check console output
+- If URLs are correct but images don't show, may need CORS fix
+- Test in incognito browser to rule out cache issues
 
-### Technician Portal
-- Personal dashboard with assigned jobs
-- Job status updates (Start → Complete)
-- **Photo/video/file uploads - FULLY WORKING NOW**
-- Note-taking system
-- No access to pricing or proposals
+## 🚀 NEXT STEPS
 
-### Customer Features
-- Proposal viewing via token
-- Approval flow
-- Progressive payment system
+1. **Test Photo Display**
+   - Open technician portal
+   - Open browser console (F12)
+   - Upload a photo
+   - Check console for debug messages
+   - Copy photo URL and test direct access
 
-## 🚀 NEXT TASKS
+2. **Test Calendar Modal**
+   - Click on jobs in calendar
+   - Verify modal opens
+   - Test edit functionality
+   - Ensure changes save
 
-1. **Test Photo Display** (Priority 1)
-   - Verify photos now show as images not file icons
-   - Test in incognito/private browser
-
-2. **Calendar Modal** (Priority 2)
-   - Add job detail modal on calendar click
-   - Show jobs on Aug 21 & 26
-
-3. **Storage Migration to R2** (Priority 3)
-   - Set up Cloudflare R2 account
-   - Implement R2 upload service
-   - Migrate existing photos
+3. **Consider Storage Migration**
+   - Review storage_migration_plan.md
+   - Set up Cloudflare R2
+   - Implement gradual migration
 
 ## 💬 PROMPT FOR NEXT CHAT
 
 ```
-Continue from working session. 
+Continue from working session.
 Database password: cSEX2IYYjeJru6V
 
-Photo display is fixed (buckets are public now).
+Status:
+- Calendar modal implemented and working
+- Photo debug logging added - need to check console output
+- Status colors unified across app
 
-Priority: Calendar jobs - need clickable modals for jobs on Aug 21 & 26
-
-Load working session first, check if photos display correctly, then add calendar modal.
+Check browser console for photo debug messages and report findings.
+If photos still not showing, may need to investigate CORS or URL format.
 ```
 
 ## ⚡ QUICK COMMANDS
@@ -121,17 +125,17 @@ Deploy:
 git add -A && git commit -m "message" && git push origin main
 ```
 
-Run SQL directly:
+Check photo URLs in database:
 ```bash
 PGPASSWORD="cSEX2IYYjeJru6V" /opt/homebrew/Cellar/postgresql@16/16.10/bin/psql \
   -h "aws-0-us-east-1.pooler.supabase.com" -p "6543" \
   -U "postgres.dqcxwekmehrqkigcufug" -d "postgres" \
-  -c "SELECT * FROM jobs LIMIT 5;"
+  -c "SELECT url FROM job_photos LIMIT 5;"
 ```
 
 ## 📊 SYSTEM STATE
-- Build: Passing with SSR warnings (expected)
-- Deployment: Vercel auto-deploy active
-- **Photo Fix: COMPLETE - SQL executed, buckets public**
-- Storage Plan: Documented in storage_migration_plan.md
-- SQL Access: Working via psql direct connection
+- Build: Has SSR warnings (expected, works on Vercel)
+- Deployment: All changes pushed to GitHub
+- Calendar Modal: COMPLETE
+- Photo Debug: Logging added, awaiting console output
+- Status Colors: UNIFIED across app
