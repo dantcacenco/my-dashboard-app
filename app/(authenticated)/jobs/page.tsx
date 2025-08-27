@@ -13,6 +13,7 @@ export default async function JobsPage({
   const params = await searchParams
   const supabase = await createClient()
   
+  // Check authentication
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     redirect('/auth/login')
@@ -54,6 +55,11 @@ export default async function JobsPage({
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to)
+
+  // Debug logging
+  console.log('Jobs page - fetched jobs:', jobs?.length || 0)
+  console.log('Jobs page - error:', error)
+  console.log('Jobs page - total count:', count)
 
   if (error) {
     console.error('Error fetching jobs:', error)
