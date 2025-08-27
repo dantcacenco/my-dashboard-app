@@ -1,86 +1,82 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import JobsList from './JobsList'
-import JobsListHeader from './JobsListHeader'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { Plus } from 'lucide-react'
+import JobsTable from './JobsTable'
 
-export default async function JobsPage() {
+export default async function JobsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
+  const params = await searchParams
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) {
+    redirect('/auth/login')
+  }
 
+  // Check if user is admin/boss
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  const userRole = profile?.role || 'technician'
-  
-  console.log('JobsPage - User role:', userRole, 'User ID:', user.id)
+  if (profile?.role !== 'admin' && profile?.role !== 'boss') {
+    redirect('/')
+  }
 
-  let jobs = []
+  // Pagination
+  const page = parseInt(params?.page || '1')
+  const pageSize = 10
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
 
-  if (userRole === 'technician') {
-    // First, get job IDs assigned to this technician
-    const { data: assignments, error: assignmentError } = await supabase
-      .from('job_technicians')
-      .select('job_id')
-      .eq('technician_id', user.id)
-    
-    console.log('Technician assignments:', assignments, 'Error:', assignmentError)
-    
-    if (assignments && assignments.length > 0) {
-      const jobIds = assignments.map(a => a.job_id)
-      
-      // Then fetch those jobs with customer info
-      const { data: techJobs, error: jobsError } = await supabase
-        .from('jobs')
-        .select(`
-          *,
-          customers!customer_id (
-            name,
-            email,
-            phone,
-            address
-          )
-        `)
-        .in('id', jobIds)
-        .order('created_at', { ascending: false })
-      
-      console.log('Technician jobs:', techJobs?.length, 'Error:', jobsError)
-      jobs = techJobs || []
-    }
-  } else {
-    // Boss/admin sees all jobs
-    const { data: allJobs, error } = await supabase
-      .from('jobs')
-      .select(`
-        *,
-        customers!customer_id (
-          name,
-          email,
-          phone,
-          address
-        )
-      `)
-      .order('created_at', { ascending: false })
-    
-    console.log('All jobs for boss/admin:', allJobs?.length, 'Error:', error)
-    jobs = allJobs || []
+  // Fetch jobs with related data
+  const { data: jobs, error, count } = await supabase
+    .from('jobs')
+    .select(`
+      *,
+      customers (
+        id,
+        name,
+        email,
+        phone
+      ),
+      profiles:technician_id (
+        id,
+        full_name,
+        email
+      )
+    `, { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(from, to)
+
+  if (error) {
+    console.error('Error fetching jobs:', error)
   }
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <JobsListHeader userRole={userRole} />
-      {userRole === 'technician' && jobs.length === 0 ? (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-yellow-800">No jobs assigned to you yet.</p>
-          <p className="text-sm text-yellow-600 mt-1">Jobs will appear here once your supervisor assigns them to you.</p>
-        </div>
-      ) : (
-        <JobsList jobs={jobs} userRole={userRole} />
-      )}
+    <div className="max-w-7xl mx-auto p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Jobs</h1>
+        <Link href="/jobs/new">
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            New Job
+          </Button>
+        </Link>
+      </div>
+
+      <JobsTable 
+        jobs={jobs || []} 
+        totalCount={count || 0}
+        currentPage={page}
+        pageSize={pageSize}
+      />
     </div>
   )
 }
