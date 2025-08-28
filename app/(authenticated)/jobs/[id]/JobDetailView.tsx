@@ -180,23 +180,34 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
 
         if (error) throw error
         
-        setAssignedTechnicians(assignedTechnicians.filter(t => t.id !== techId))
+        // Reload assigned technicians from database
+        await loadAssignedTechnicians()
         toast.success('Technician removed')
       } else {
-        // Add technician
-        const { error } = await supabase
+        // Add technician - first check if already exists
+        const { data: existing } = await supabase
           .from('job_technicians')
-          .insert({
-            job_id: job.id,
-            technician_id: techId
-          })
-
-        if (error) throw error
+          .select('id')
+          .eq('job_id', job.id)
+          .eq('technician_id', techId)
+          .single()
         
-        const tech = technicians.find(t => t.id === techId)
-        if (tech) {
-          setAssignedTechnicians([...assignedTechnicians, tech])
+        if (!existing) {
+          // Only insert if doesn't exist
+          const { error } = await supabase
+            .from('job_technicians')
+            .insert({
+              job_id: job.id,
+              technician_id: techId
+            })
+
+          if (error) throw error
+          
+          // Reload assigned technicians from database
+          await loadAssignedTechnicians()
           toast.success('Technician assigned')
+        } else {
+          toast.info('Technician already assigned')
         }
       }
     } catch (error) {
@@ -588,33 +599,6 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
               </div>
             </CardContent>
           </Card>
-
-          {/* Quick Actions Card */}
-          {userRole === 'boss' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <Button
-                    className="w-full justify-start"
-                    variant="outline"
-                    onClick={() => setShowEditModal(true)}
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Job Details
-                  </Button>
-                  <Link href={`/invoices/new?job_id=${job.id}`}>
-                    <Button className="w-full justify-start" variant="outline">
-                      <FileText className="h-4 w-4 mr-2" />
-                      Create Invoice
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
       </div>
 

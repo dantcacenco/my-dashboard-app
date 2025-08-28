@@ -45,9 +45,19 @@ export default function MediaUpload({ jobId, userId, onUploadComplete }: MediaUp
     setUploading(true)
     let successCount = 0
     
+    // Pre-upload debugging
+    console.log('=== PHOTO UPLOAD DEBUG START ===')
+    console.log('Component props:', { jobId, userId, selectedFilesCount: selectedFiles.length })
+    console.log('Supabase client status:', { client: !!supabase })
+    
+    // Check user authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    console.log('User auth status:', { user: user?.id, authError })
+    
     for (const file of selectedFiles) {
       try {
         // Debug logging
+        console.log('--- File Upload Start ---')
         console.log('Upload attempt:', {
           userId,
           jobId,
@@ -64,13 +74,20 @@ export default function MediaUpload({ jobId, userId, onUploadComplete }: MediaUp
         
         console.log('Full upload path:', filePath)
         
+        // Check storage bucket access first
+        const { data: buckets, error: bucketError } = await supabase.storage.listBuckets()
+        console.log('Available buckets:', { buckets: buckets?.map(b => b.name), bucketError })
+        
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('job-photos')
           .upload(filePath, file)
         
         console.log('Storage response:', { uploadData, uploadError })
         
-        if (uploadError) throw uploadError
+        if (uploadError) {
+          console.error('Storage upload failed:', uploadError)
+          throw uploadError
+        }
         
         // Get public URL - ensure proper URL format
         const { data: { publicUrl } } = supabase.storage
@@ -79,27 +96,49 @@ export default function MediaUpload({ jobId, userId, onUploadComplete }: MediaUp
         
         console.log('Generated public URL:', publicUrl)
         
-        // Save to database
-        const { error: dbError } = await supabase
+        // Check if job_photos table exists and structure
+        const { data: tableInfo, error: tableError } = await supabase
           .from('job_photos')
-          .insert({
-            job_id: jobId,
-            url: publicUrl,
-            caption: caption || null,
-            media_type: file.type.startsWith('video/') ? 'video' : 'photo',
-            uploaded_by: userId
-          })
+          .select('*')
+          .limit(0)
+        console.log('Table structure check:', { tableError })
         
-        console.log('Database insert error:', dbError)
+        // Save to database
+        const dbInsert = {
+          job_id: jobId,
+          url: publicUrl,
+          caption: caption || null,
+          media_type: file.type.startsWith('video/') ? 'video' : 'photo',
+          uploaded_by: userId
+        }
+        console.log('Database insert payload:', dbInsert)
         
-        if (dbError) throw dbError
+        const { data: insertData, error: dbError } = await supabase
+          .from('job_photos')
+          .insert(dbInsert)
+          .select()
         
+        console.log('Database insert result:', { insertData, dbError })
+        
+        if (dbError) {
+          console.error('Database insert failed:', dbError)
+          throw dbError
+        }
+        
+        console.log('--- File Upload SUCCESS ---')
         successCount++
-      } catch (error) {
-        console.error('Upload error details:', error)
-        toast.error(`Failed to upload ${file.name}`)
+      } catch (error: any) {
+        console.error('=== UPLOAD ERROR DETAILS ===', error)
+        console.error('Error type:', typeof error)
+        console.error('Error message:', error?.message)
+        console.error('Error code:', error?.code)
+        console.error('Full error object:', JSON.stringify(error, null, 2))
+        toast.error(`Failed to upload ${file.name}: ${error?.message || 'Unknown error'}`)
       }
     }
+    
+    console.log('=== PHOTO UPLOAD DEBUG END ===')
+    console.log(`Upload summary: ${successCount}/${selectedFiles.length} successful`)
     
     if (successCount > 0) {
       toast.success(`Uploaded ${successCount} file(s)`)
