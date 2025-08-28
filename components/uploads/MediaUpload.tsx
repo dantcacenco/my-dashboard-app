@@ -106,9 +106,9 @@ export default function MediaUpload({ jobId, userId, onUploadComplete }: MediaUp
         // Save to database
         const dbInsert = {
           job_id: jobId,
-          url: publicUrl,
+          photo_url: publicUrl,
           caption: caption || null,
-          media_type: file.type.startsWith('video/') ? 'video' : 'photo',
+          mime_type: file.type,
           uploaded_by: userId
         }
         console.log('Database insert payload:', dbInsert)
