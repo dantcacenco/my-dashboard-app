@@ -324,18 +324,6 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
                 ))}
               </select>
             </CardContent>
-                  onChange={(e) => e.target.value && assignTechnician(e.target.value)}
-                  defaultValue=""
-                >
-                  <option value="">Add a technician...</option>
-                  {technicians.map((tech) => (
-                    <option key={tech.id} value={tech.id}>
-                      {tech.full_name || tech.email}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </CardContent>
           </Card>
 
           {/* Photos & Videos */}
@@ -570,7 +558,7 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
                 <Label>Scheduled Date</Label>
                 <Input
                   type="date"
-                  value={editedJob.scheduled_date || ''}
+                  value={editedJob.scheduled_date ? editedJob.scheduled_date.split('T')[0] : ''}
                   onChange={(e) => setEditedJob({...editedJob, scheduled_date: e.target.value})}
                 />
               </div>

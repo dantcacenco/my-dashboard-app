@@ -237,7 +237,17 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
             <p className="text-muted-foreground">{job.title}</p>
           </div>
           <Badge className={`${getStatusColor(job.scheduled_date ? 'scheduled' : job.status)} text-white`}>
-            {job.scheduled_date ? 'SCHEDULED' : (job.status?.toUpperCase().replace('_', ' ') || 'NOT SCHEDULED')}
+            {(() => {
+              // Check payment status first for payment-related statuses
+              if (job.payment_status === 'paid' || job.status === 'completed') return 'COMPLETED'
+              if (job.payment_status === 'final_paid') return 'FINAL PAID'
+              if (job.payment_status === 'roughin_paid') return 'ROUGH IN PAID'
+              if (job.payment_status === 'deposit_paid') return 'DEPOSIT PAID'
+              // Then check if scheduled
+              if (job.scheduled_date) return 'SCHEDULED'
+              // Otherwise use the job status
+              return job.status?.toUpperCase().replace('_', ' ') || 'NOT SCHEDULED'
+            })()}
           </Badge>
         </div>
         <div className="flex gap-2">
@@ -261,10 +271,12 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {assignedTechs.length > 0 || job.profiles ? (
+              {/* Show assigned technicians if any */}
+              {job.technician_id && technicians.length > 0 ? (
                 <div className="space-y-2">
-                  {assignedTechs.length > 0 ? (
-                    assignedTechs.map((tech: any) => (
+                  {technicians
+                    .filter(t => t.id === job.technician_id)
+                    .map((tech) => (
                       <div key={tech.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
                         <div>
                           <p className="font-medium">{tech.full_name || tech.email}</p>
@@ -278,26 +290,40 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
                           Remove
                         </Button>
                       </div>
-                    ))
-                  ) : job.profiles ? (
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                      <div>
-                        <p className="font-medium">{job.profiles.full_name}</p>
-                        <p className="text-sm text-muted-foreground">{job.profiles.email}</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => assignTechnician('')}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ) : null}
+                    ))}
+                </div>
+              ) : job.profiles ? (
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                  <div>
+                    <p className="font-medium">{job.profiles.full_name || job.profiles.email}</p>
+                    <p className="text-sm text-muted-foreground">{job.profiles.email}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => assignTechnician('')}
+                  >
+                    Remove
+                  </Button>
                 </div>
               ) : (
-                <select
-                  className="w-full p-2 border rounded"
+                <p className="text-muted-foreground text-sm">No technicians assigned</p>
+              )}
+              
+              {/* Add technician dropdown */}
+              <select
+                className="w-full p-2 border rounded mt-4"
+                onChange={(e) => e.target.value && assignTechnician(e.target.value)}
+                value=""
+              >
+                <option value="">Add a technician...</option>
+                {technicians.map((tech) => (
+                  <option key={tech.id} value={tech.id}>
+                    {tech.full_name || tech.email}
+                  </option>
+                ))}
+              </select>
+            </CardContent>
                   onChange={(e) => e.target.value && assignTechnician(e.target.value)}
                   defaultValue=""
                 >
