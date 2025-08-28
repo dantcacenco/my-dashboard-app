@@ -241,10 +241,6 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
           </Badge>
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleEditClick}>
-            <Edit className="h-4 w-4 mr-2" />
-            Edit Job
-          </Button>
           <Button variant="destructive" onClick={handleDelete}>
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
