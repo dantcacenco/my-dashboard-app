@@ -256,7 +256,17 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
     }
   }
 
-  const openMediaViewer = (items: any[], index: number) => {
+  const openMediaViewer = (photos: any[], index: number) => {
+    // Format photos for MediaViewer component
+    const items = photos.map(photo => ({
+      id: photo.id,
+      url: photo.photo_url,
+      name: photo.caption || 'Job Photo',
+      caption: photo.caption,
+      type: photo.mime_type?.startsWith('video/') ? 'file' : 'photo',
+      mime_type: photo.mime_type
+    }))
+    
     setViewerItems(items)
     setViewerIndex(index)
     setViewerOpen(true)
