@@ -61,38 +61,41 @@ export function getProposalStatusFromJob(jobStatus: string): string {
  * Gets the display status that should be shown to users
  */
 export function getUnifiedDisplayStatus(jobStatus: string, proposalStatus: string): string {
-  // Priority: Use the most advanced status between job and proposal
-  
-  if (jobStatus === JOB_STATUSES.COMPLETED || proposalStatus === PROPOSAL_STATUSES.COMPLETED) {
-    return 'Completed'
+  // If there's a proposal, prioritize its payment statuses for better visibility
+  if (proposalStatus) {
+    // Payment-specific statuses from proposal take priority
+    switch (proposalStatus) {
+      case PROPOSAL_STATUSES.COMPLETED:
+        return 'Completed'
+      case PROPOSAL_STATUSES.FINAL_PAID:
+        return 'Final Payment Complete'
+      case PROPOSAL_STATUSES.ROUGH_IN_PAID:
+        return 'Rough-In Paid'
+      case PROPOSAL_STATUSES.DEPOSIT_PAID:
+        return 'Deposit Paid'
+      case PROPOSAL_STATUSES.APPROVED:
+        return 'Approved'
+      case PROPOSAL_STATUSES.REJECTED:
+        return 'Rejected'
+      case PROPOSAL_STATUSES.SENT:
+        return 'Sent'
+      case PROPOSAL_STATUSES.DRAFT:
+        return 'Draft'
+    }
   }
   
-  if (jobStatus === JOB_STATUSES.CANCELLED || proposalStatus === PROPOSAL_STATUSES.REJECTED) {
-    return 'Cancelled'
-  }
-  
-  if (proposalStatus === PROPOSAL_STATUSES.FINAL_PAID) {
-    return 'Final Payment Complete'
-  }
-  
-  if (proposalStatus === PROPOSAL_STATUSES.ROUGH_IN_PAID || jobStatus === JOB_STATUSES.IN_PROGRESS) {
-    return 'In Progress'
-  }
-  
-  if (proposalStatus === PROPOSAL_STATUSES.DEPOSIT_PAID) {
-    return 'Deposit Paid'
-  }
-  
-  if (proposalStatus === PROPOSAL_STATUSES.APPROVED || jobStatus === JOB_STATUSES.SCHEDULED) {
-    return 'Approved'
-  }
-  
-  // Pre-work statuses
-  switch (proposalStatus) {
-    case PROPOSAL_STATUSES.DRAFT:
-      return 'Draft'
-    case PROPOSAL_STATUSES.SENT:
-      return 'Sent'
+  // Fall back to job status if no proposal or unrecognized proposal status
+  switch (jobStatus) {
+    case JOB_STATUSES.COMPLETED:
+      return 'Completed'
+    case JOB_STATUSES.IN_PROGRESS:
+      return 'In Progress'
+    case JOB_STATUSES.SCHEDULED:
+      return 'Scheduled'
+    case JOB_STATUSES.CANCELLED:
+      return 'Cancelled'
+    case JOB_STATUSES.NOT_SCHEDULED:
+      return 'Not Scheduled'
     default:
       return jobStatus.charAt(0).toUpperCase() + jobStatus.slice(1).replace('_', ' ')
   }
