@@ -158,7 +158,7 @@ export default function CalendarView({
       >
         <div className="font-semibold text-sm mb-1">{day}</div>
         {dayJobs.slice(0, 2).map(job => {
-          const displayStatus = getUnifiedDisplayStatus(job.status, job.proposals?.status)
+          const displayStatus = getUnifiedDisplayStatus(job.status, job.proposal_id?.status)
           return (
             <div 
               key={job.id} 

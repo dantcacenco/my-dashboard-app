@@ -49,7 +49,7 @@ export default async function DashboardPage() {
     .select(`
       *,
       customers (name, address),
-      proposals (
+      proposals:proposal_id (
         id,
         status,
         total,

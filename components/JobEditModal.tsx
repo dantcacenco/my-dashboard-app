@@ -39,7 +39,7 @@ export default function JobEditModal({ job, isOpen, onClose, onUpdate }: JobEdit
       }
 
       // Only update job status if there's no proposal
-      if (!editedJob.proposals) {
+      if (!editedJob.proposal_id) {
         jobUpdateData.status = editedJob.status
       }
 
@@ -52,13 +52,13 @@ export default function JobEditModal({ job, isOpen, onClose, onUpdate }: JobEdit
       if (jobError) throw jobError
 
       // If there's a proposal, update its status (DB triggers will sync to job)
-      if (editedJob.proposals && editedJob.proposals.id) {
+      if (editedJob.proposal_id && editedJob.proposal_id.id) {
         const { error: proposalError } = await supabase
           .from('proposals')
           .update({
-            status: editedJob.proposals.status
+            status: editedJob.proposal_id.status
           })
-          .eq('id', editedJob.proposals.id)
+          .eq('id', editedJob.proposal_id.id)
 
         if (proposalError) throw proposalError
       }
@@ -113,7 +113,7 @@ export default function JobEditModal({ job, isOpen, onClose, onUpdate }: JobEdit
 
   if (!job) return null
 
-  const displayStatus = getUnifiedDisplayStatus(job.status, job.proposals?.status)
+  const displayStatus = getUnifiedDisplayStatus(job.status, job.proposal_id?.status)
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -203,15 +203,15 @@ export default function JobEditModal({ job, isOpen, onClose, onUpdate }: JobEdit
 
             <div>
               <Label htmlFor="status">Status</Label>
-              {editedJob.proposals ? (
+              {editedJob.proposal_id ? (
                 // If job has a proposal, use proposal statuses
                 <select
                   id="status"
                   className="w-full px-3 py-2 border rounded-md"
-                  value={editedJob.proposals.status}
+                  value={editedJob.proposal_id.status}
                   onChange={(e) => setEditedJob({ 
                     ...editedJob, 
-                    proposals: { ...editedJob.proposals, status: e.target.value }
+                    proposal_id: { ...editedJob.proposal_id, status: e.target.value }
                   })}
                 >
                   <option value="draft">Draft</option>
@@ -242,18 +242,18 @@ export default function JobEditModal({ job, isOpen, onClose, onUpdate }: JobEdit
           </div>
 
           {/* Financial Info - Only show if proposal exists */}
-          {job.proposals && job.proposals.total && (
+          {job.proposal_id && job.proposal_id.total && (
             <div className="bg-blue-50 p-4 rounded-lg">
               <h3 className="font-semibold mb-2">Financial Information</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <span className="text-gray-600">Total Amount:</span>
-                  <p className="font-semibold">{formatCurrency(job.proposals.total)}</p>
+                  <p className="font-semibold">{formatCurrency(job.proposal_id.total)}</p>
                 </div>
-                {job.proposals.deposit_amount && (
+                {job.proposal_id.deposit_amount && (
                   <div>
                     <span className="text-gray-600">Deposit (50%):</span>
-                    <p className="font-semibold">{formatCurrency(job.proposals.deposit_amount)}</p>
+                    <p className="font-semibold">{formatCurrency(job.proposal_id.deposit_amount)}</p>
                   </div>
                 )}
               </div>
