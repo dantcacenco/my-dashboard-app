@@ -52,7 +52,15 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
       const fileExt = file.name.split('.').pop()
       const fileName = `${jobId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
 
-      console.log(`Uploading ${file.name} (${file.type || 'unknown type'}) to job-files bucket`)
+      console.log('File upload attempt:', {
+        userId,
+        jobId,
+        originalFileName: file.name,
+        fileType: file.type || 'unknown',
+        fileSize: file.size,
+        bucketName: 'job-files',
+        fullPath: fileName
+      })
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('job-files')
@@ -62,11 +70,15 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
           contentType: file.type || 'application/octet-stream'
         })
 
+      console.log('Storage response:', { uploadData, uploadError })
+
       if (uploadError) throw uploadError
 
       const { data: { publicUrl } } = supabase.storage
         .from('job-files')
         .getPublicUrl(fileName)
+
+      console.log('Generated public URL:', publicUrl)
 
       const { error: dbError } = await supabase
         .from('job_files')
@@ -79,11 +91,13 @@ export default function FileUpload({ jobId, userId, onUploadComplete }: FileUplo
           mime_type: file.type || 'application/octet-stream'
         })
 
+      console.log('Database insert error:', dbError)
+
       if (dbError) throw dbError
 
       return { success: true, url: publicUrl }
     } catch (error) {
-      console.error('Upload error:', error)
+      console.error('Upload error details:', error)
       return { success: false, error }
     }
   }

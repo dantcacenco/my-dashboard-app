@@ -17,6 +17,7 @@ import MediaUpload from '@/components/uploads/MediaUpload'
 import FileUpload from '@/components/uploads/FileUpload'
 import MediaViewer from '@/components/MediaViewer'
 import VideoThumbnail from '@/components/VideoThumbnail'
+import { EditJobModal } from './EditJobModal'
 import {
   Dialog,
   DialogContent,
@@ -677,6 +678,41 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
           onClose={() => setViewerOpen(false)}
         />
       )}
+
+      {/* Edit Job Modal */}
+      <EditJobModal
+        job={job}
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onJobUpdated={async () => {
+          // Refresh job data
+          const { data } = await supabase
+            .from('jobs')
+            .select(`
+              *,
+              customers!inner (
+                id,
+                name,
+                email,
+                phone,
+                address
+              ),
+              proposals (
+                id,
+                status,
+                total_amount
+              )
+            `)
+            .eq('id', job.id)
+            .single()
+          
+          if (data) {
+            setJob(data)
+          }
+          setShowEditModal(false)
+          toast.success('Job updated successfully')
+        }}
+      />
     </div>
   )
 }

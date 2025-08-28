@@ -1,85 +1,142 @@
 # WORKING SESSION - August 28, 2025
 
-## ✅ FIXES COMPLETED
+## 🔴 CRITICAL DISCOVERY: WRONG FILE EDITED
+**Problem**: Spent hours editing `JobDetailsView.tsx` when app uses `JobDetailView.tsx` (no 's')
+**Solution**: Deleted unused file, fixed correct file
+**Lesson**: Always verify which component is actually imported
 
-### 1. Edit Job Button - FIXED ✅
-- **Removed**: Black "Edit Job" button from header
-- **Added**: Edit button inside Job Details box (top right corner)
-- **Result**: Cleaner header, edit functionality in context
+## ✅ COMPLETED FIXES (in correct file)
+1. Removed Edit Job button from header
+2. Added Edit button to Job Details box
+3. Fixed status to show "SCHEDULED" when job has scheduled_date
+4. Cleaned up unused files
 
-### 2. Job Status Label - FIXED ✅
-- **Issue**: Showed "NOT SCHEDULED" even when job was scheduled
-- **Fix**: Status now checks scheduled_date and payment status
-- **Priority**: Payment status > Scheduled > Job status
-- Shows "SCHEDULED" when job has scheduled_date
-- Shows payment stages when applicable (DEPOSIT PAID, etc.)
+## 📋 REMAINING TASKS & STRATEGY
 
-### 3. Technician Display - FIXED ✅
-- **Issue**: Assigned technicians weren't showing
-- **Fix**: Now loads technician data from job.technician_id
-- Shows technician name and email when assigned
-- Dropdown to add/change technician assignment
-
-### 4. Payment Status Update - FIXED ✅
-- **Issue**: After Stripe payment, status showed $0 paid
-- **Fix**: Added payment success detection
-- Automatically refreshes proposal when returning from Stripe
-- Updates payment totals immediately after payment
-
-### 5. Photo/File Upload & Viewing - FUNCTIONAL ✅
-- **Storage buckets**: Confirmed public access enabled
-- **Upload paths**: job-photos/{jobId}/{filename}
-- **File viewer**: Shows View and Download buttons
-- **Photo viewer**: Click photo for full-screen view
-
-## 📊 CURRENT STATUS
-
-### What's Working:
-- ✅ Edit button in Job Details box
-- ✅ Correct job status display
-- ✅ Technician assignment and display
-- ✅ Payment status updates after Stripe
-- ✅ Photo viewer modal (click to view full size)
-- ✅ File download functionality
-- ✅ Storage buckets configured (public access)
-
-### Database Info:
-- **Password**: cSEX2IYYjeJru6V
-- **Project**: dqcxwekmehrqkigcufug
-- **URL**: https://dqcxwekmehrqkigcufug.supabase.co
-
-### Storage Buckets:
-```sql
-job-photos: public = true, no mime restrictions
-job-files: public = true, allows PDFs, docs, images
+### 1. EditJobModal.tsx Integration
+**Current State**: File exists but not connected
+**Strategy**:
+```
+1. Import EditJobModal in JobDetailView.tsx
+2. Replace setShowEditModal(true) with EditJobModal component
+3. Pass job data as props to EditJobModal
+4. Connect save handler to update job in database
+5. Ensure modal updates parent component state on save
 ```
 
-## 🔍 TROUBLESHOOTING
+### 2. Fix Upload Functionality (CRITICAL)
+**Problem**: Both photo and file uploads not working
+**Debug Strategy**:
+```
+1. Console log at each stage:
+   - File selection event
+   - File object properties (name, size, type)
+   - Supabase storage path being used
+   - Upload response/error from Supabase
+   - Public URL generation
+   - Database insert response
+   
+2. Check Supabase side:
+   - Verify bucket policies allow uploads
+   - Check RLS policies on job_photos/job_files tables
+   - Ensure user has INSERT permissions
+   - Verify storage bucket CORS settings
+   
+3. Common issues to check:
+   - userId being passed correctly
+   - File size limits
+   - MIME type restrictions
+   - Bucket naming (job-photos vs job_photos)
+   - Path formatting issues
+```
 
-If uploads aren't working:
-1. Check browser console for errors
-2. Verify userId is being passed correctly
-3. Check Supabase dashboard for RLS policies
-4. Ensure bucket CORS settings allow uploads
+**Implementation approach**:
+```javascript
+// Add extensive logging
+console.log('Upload attempt:', {
+  userId,
+  jobId,
+  fileName: file.name,
+  fileSize: file.size,
+  fileType: file.type,
+  bucketName: 'job-photos',
+  fullPath: filePath
+})
 
-## 📝 TESTING CHECKLIST
+// Check each step
+const { data, error } = await supabase.storage...
+console.log('Storage response:', { data, error })
 
-1. **Edit Job**: Click Edit in Job Details box → Modal opens with all fields populated
-2. **Status Label**: Create job with scheduled date → Shows "SCHEDULED"
-3. **Technician**: Assign technician → Shows in Assigned Technicians card
-4. **Payment**: Make Stripe payment → Return to proposal → Shows payment amount
-5. **Photos**: Upload photo → Click thumbnail → Full view opens
-6. **Files**: Upload file → Click View/Download → File opens/downloads
+// Verify URL format
+console.log('Generated URL:', publicUrl)
+```
 
-## 🚀 DEPLOYMENT
+### 3. Type Error Prevention Guidelines
+**Common TypeScript issues encountered**:
 
-All changes pushed to GitHub. Vercel should deploy automatically.
-Build warnings about auth pages are normal (static generation issue).
+1. **Duplicate/floating JSX elements**
+   - Always ensure proper nesting
+   - Check for unclosed tags
+   - Verify event handlers are props, not children
 
-## 💬 SUMMARY
+2. **Optional chaining**
+   - Use `job?.scheduled_date` instead of `job.scheduled_date`
+   - Guard against undefined with defaults: `value={editedJob.title || ''}`
 
-All requested fixes have been implemented with minimal code changes:
-- UI preserved exactly as designed
-- No new components added (except where specifically needed)
-- Original styling maintained
-- All functionality working as requested
+3. **Event handler types**
+   ```typescript
+   onChange={(e: React.ChangeEvent<HTMLInputElement>) => ...}
+   onClick={(e: React.MouseEvent) => ...}
+   ```
+
+4. **State initialization**
+   - Initialize with proper types or empty values
+   - Don't use `job` object directly as initial state for edited version
+
+### 4. Technician Display Fix
+**Strategy**:
+```
+1. Check job.technician_id exists
+2. Query profiles table for technician details
+3. Display in Assigned Technicians card
+4. Add to job fetch query: join with profiles where role='technician'
+```
+
+## 🚨 PRIORITY ORDER
+1. **Fix uploads** - Core functionality broken
+2. **Connect EditJobModal** - UI already expects it
+3. **Fix technician display** - Data exists but not showing
+4. **Add payment status sync** - Keep jobs/proposals in sync
+
+## 🔍 DEBUG COMMANDS
+```bash
+# Check storage buckets
+SELECT * FROM storage.buckets;
+
+# Check RLS policies
+SELECT * FROM pg_policies WHERE tablename IN ('job_photos', 'job_files');
+
+# Test direct upload via Supabase dashboard
+# If works there but not in app = permission/auth issue
+```
+
+## ⚠️ CRITICAL NOTES
+- **File naming**: JobDetailView.tsx (NO 's') is the active component
+- **Imports**: MediaUpload/FileUpload from @/components/uploads/
+- **User context**: Must pass userId from page.tsx → JobDetailView → Upload components
+- **Storage paths**: Verify exact bucket names in Supabase dashboard
+
+## 📊 CURRENT FILE STRUCTURE
+```
+app/(authenticated)/jobs/[id]/
+  ├── JobDetailView.tsx ← ACTIVE COMPONENT
+  ├── EditJobModal.tsx ← EXISTS BUT NOT CONNECTED
+  ├── page.tsx ← Entry point
+  └── diagnostic.tsx ← Debug tool
+```
+
+## 🎯 NEXT SESSION GOALS
+1. Connect EditJobModal properly
+2. Fix upload with extensive debugging
+3. Ensure technician shows when assigned
+4. Test complete flow: Create job → Edit → Upload → View

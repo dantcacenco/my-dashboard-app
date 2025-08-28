@@ -47,14 +47,28 @@ export default function MediaUpload({ jobId, userId, onUploadComplete }: MediaUp
     
     for (const file of selectedFiles) {
       try {
+        // Debug logging
+        console.log('Upload attempt:', {
+          userId,
+          jobId,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          bucketName: 'job-photos'
+        })
+
         // Upload to storage with proper path
         const fileExt = file.name.split('.').pop()
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
         const filePath = `${jobId}/${fileName}`
         
+        console.log('Full upload path:', filePath)
+        
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('job-photos')
           .upload(filePath, file)
+        
+        console.log('Storage response:', { uploadData, uploadError })
         
         if (uploadError) throw uploadError
         
@@ -62,6 +76,8 @@ export default function MediaUpload({ jobId, userId, onUploadComplete }: MediaUp
         const { data: { publicUrl } } = supabase.storage
           .from('job-photos')
           .getPublicUrl(filePath)
+        
+        console.log('Generated public URL:', publicUrl)
         
         // Save to database
         const { error: dbError } = await supabase
@@ -74,11 +90,13 @@ export default function MediaUpload({ jobId, userId, onUploadComplete }: MediaUp
             uploaded_by: userId
           })
         
+        console.log('Database insert error:', dbError)
+        
         if (dbError) throw dbError
         
         successCount++
       } catch (error) {
-        console.error('Upload error:', error)
+        console.error('Upload error details:', error)
         toast.error(`Failed to upload ${file.name}`)
       }
     }
