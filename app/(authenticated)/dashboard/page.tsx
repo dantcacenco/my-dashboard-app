@@ -48,7 +48,18 @@ export default async function DashboardPage() {
     .from('jobs')
     .select(`
       *,
-      customers (name, address)
+      customers (name, address),
+      proposals (
+        id,
+        status,
+        total,
+        deposit_amount,
+        progress_payment_amount,
+        final_payment_amount,
+        deposit_paid_at,
+        progress_paid_at,
+        final_paid_at
+      )
     `)
     .gte('scheduled_date', startOfMonth.toISOString())
     .lte('scheduled_date', endOfMonth.toISOString())

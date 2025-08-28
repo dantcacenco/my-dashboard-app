@@ -30,18 +30,38 @@ export default function JobEditModal({ job, isOpen, onClose, onUpdate }: JobEdit
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      const { error } = await supabase
+      // Prepare job update data
+      const jobUpdateData: any = {
+        title: editedJob.title,
+        description: editedJob.description,
+        scheduled_date: editedJob.scheduled_date,
+        scheduled_time: editedJob.scheduled_time
+      }
+
+      // Only update job status if there's no proposal
+      if (!editedJob.proposals) {
+        jobUpdateData.status = editedJob.status
+      }
+
+      // Update job details
+      const { error: jobError } = await supabase
         .from('jobs')
-        .update({
-          title: editedJob.title,
-          description: editedJob.description,
-          status: editedJob.status,
-          scheduled_date: editedJob.scheduled_date,
-          scheduled_time: editedJob.scheduled_time
-        })
+        .update(jobUpdateData)
         .eq('id', editedJob.id)
 
-      if (error) throw error
+      if (jobError) throw jobError
+
+      // If there's a proposal, update its status (DB triggers will sync to job)
+      if (editedJob.proposals && editedJob.proposals.id) {
+        const { error: proposalError } = await supabase
+          .from('proposals')
+          .update({
+            status: editedJob.proposals.status
+          })
+          .eq('id', editedJob.proposals.id)
+
+        if (proposalError) throw proposalError
+      }
 
       if (onUpdate) onUpdate()
       onClose()
@@ -183,18 +203,41 @@ export default function JobEditModal({ job, isOpen, onClose, onUpdate }: JobEdit
 
             <div>
               <Label htmlFor="status">Status</Label>
-              <select
-                id="status"
-                className="w-full px-3 py-2 border rounded-md"
-                value={editedJob.status}
-                onChange={(e) => setEditedJob({ ...editedJob, status: e.target.value })}
-              >
-                <option value="not_scheduled">Not Scheduled</option>
-                <option value="scheduled">Scheduled</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+              {editedJob.proposals ? (
+                // If job has a proposal, use proposal statuses
+                <select
+                  id="status"
+                  className="w-full px-3 py-2 border rounded-md"
+                  value={editedJob.proposals.status}
+                  onChange={(e) => setEditedJob({ 
+                    ...editedJob, 
+                    proposals: { ...editedJob.proposals, status: e.target.value }
+                  })}
+                >
+                  <option value="draft">Draft</option>
+                  <option value="sent">Sent</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="deposit paid">Deposit Paid</option>
+                  <option value="rough-in paid">Rough-In Paid</option>
+                  <option value="final paid">Final Paid</option>
+                  <option value="completed">Completed</option>
+                </select>
+              ) : (
+                // If no proposal, use job statuses
+                <select
+                  id="status"
+                  className="w-full px-3 py-2 border rounded-md"
+                  value={editedJob.status}
+                  onChange={(e) => setEditedJob({ ...editedJob, status: e.target.value })}
+                >
+                  <option value="not_scheduled">Not Scheduled</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              )}
             </div>
           </div>
 
