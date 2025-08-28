@@ -1,50 +1,77 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const supabase = await createClient()
+  const { searchParams } = new URL(request.url)
+  const jobId = searchParams.get('job_id')
+  
+  if (!jobId) {
+    return NextResponse.json({ error: 'job_id parameter required' }, { status: 400 })
+  }
+
   try {
-    const supabase = await createClient()
+    console.log('Debug API - Job ID:', jobId)
     
-    // Check auth
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Get ALL profiles to see what's in there
-    const { data: allProfiles, error: allError } = await supabase
+    // 1. Check job exists
+    const { data: job, error: jobError } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('id', jobId)
+      .single()
+    
+    // 2. Check raw job_technicians entries
+    const { data: rawAssignments, error: rawError } = await supabase
+      .from('job_technicians')
+      .select('*')
+      .eq('job_id', jobId)
+    
+    // 3. Check job_technicians with profiles
+    const { data: assignments, error: assignError } = await supabase
+      .from('job_technicians')
+      .select(`
+        *,
+        profiles!technician_id (
+          id,
+          email,
+          full_name,
+          role
+        )
+      `)
+      .eq('job_id', jobId)
+    
+    // 4. Check specific technician profile
+    const { data: techProfile, error: techError } = await supabase
       .from('profiles')
       .select('*')
-
-    // Get profiles with role = technician
-    const { data: techProfiles, error: techError } = await supabase
+      .eq('email', 'technician@gmail.com')
+    
+    // 5. Check all technicians
+    const { data: allTechs, error: allTechError } = await supabase
       .from('profiles')
       .select('*')
       .eq('role', 'technician')
-
-    // Get active technicians
-    const { data: activeTechs, error: activeError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('role', 'technician')
-      .eq('is_active', true)
-
+    
     return NextResponse.json({
-      debug: {
-        totalProfiles: allProfiles?.length || 0,
-        allProfiles: allProfiles,
-        techniciansWithRole: techProfiles?.length || 0,
-        techProfiles: techProfiles,
-        activeTechnicians: activeTechs?.length || 0,
-        activeTechs: activeTechs,
-        errors: {
-          all: allError?.message,
-          tech: techError?.message,
-          active: activeError?.message
-        }
+      job: { data: job, error: jobError },
+      rawAssignments: { data: rawAssignments, error: rawError },
+      assignments: { data: assignments, error: assignError },
+      techProfile: { data: techProfile, error: techError },
+      allTechs: { data: allTechs, error: allTechError },
+      summary: {
+        jobExists: !!job,
+        jobNumber: job?.job_number,
+        assignmentCount: rawAssignments?.length || 0,
+        technicianEmail: techProfile?.[0]?.email,
+        technicianId: techProfile?.[0]?.id
       }
     })
+    
   } catch (error) {
-    return NextResponse.json({ error: 'Server error', details: error }, { status: 500 })
+    console.error('Debug API error:', error)
+    return NextResponse.json({ 
+      error: 'Database query failed', 
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
   }
 }

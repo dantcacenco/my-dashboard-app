@@ -92,82 +92,21 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
   }
 
   const loadAssignedTechnicians = async () => {
-    console.log('=== TECHNICIAN ASSIGNMENT DEBUG START ===')
-    console.log('Job ID:', job.id)
-    console.log('Job Number:', job.job_number)
-    
-    try {
-      // First, let's check what's in the job_technicians table for this job
-      const { data: rawAssignments, error: rawError } = await supabase
-        .from('job_technicians')
-        .select('*')
-        .eq('job_id', job.id)
-      
-      console.log('Raw job_technicians query result:', {
-        data: rawAssignments,
-        error: rawError,
-        count: rawAssignments?.length || 0
-      })
-      
-      // Now let's try the full query with profile joins
-      const { data: fullData, error: fullError } = await supabase
-        .from('job_technicians')
-        .select(`
-          *,
-          profiles!technician_id (
-            id,
-            email,
-            full_name,
-            role
-          )
-        `)
-        .eq('job_id', job.id)
-      
-      console.log('Full technician assignment query result:', {
-        data: fullData,
-        error: fullError,
-        count: fullData?.length || 0
-      })
-      
-      if (fullData && fullData.length > 0) {
-        console.log('Individual assignment records:')
-        fullData.forEach((assignment, index) => {
-          console.log(`Assignment ${index}:`, {
-            id: assignment.id,
-            job_id: assignment.job_id,
-            technician_id: assignment.technician_id,
-            assigned_at: assignment.assigned_at,
-            profile: assignment.profiles
-          })
-        })
-      }
-      
-      // Let's also check if the technician exists in profiles
-      const { data: techProfile, error: techError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('email', 'technician@gmail.com')
-        .single()
-      
-      console.log('Technician profile lookup:', {
-        data: techProfile,
-        error: techError
-      })
-      
-      // Set the assigned technicians - but let's see what we're setting
-      const processedData = fullData?.map((item: any) => {
-        console.log('Processing assignment item:', item)
-        return item.profiles || item
-      }) || []
-      
-      console.log('Processed technician data for setState:', processedData)
-      
-      setAssignedTechnicians(processedData)
-      console.log('=== TECHNICIAN ASSIGNMENT DEBUG END ===')
-      
-    } catch (error) {
-      console.error('Error in loadAssignedTechnicians:', error)
-      setAssignedTechnicians([])
+    const { data } = await supabase
+      .from('job_technicians')
+      .select(`
+        technician_id,
+        profiles (
+          id,
+          email,
+          full_name,
+          role
+        )
+      `)
+      .eq('job_id', job.id)
+
+    if (data) {
+      setAssignedTechnicians(data.map((item: any) => item.profiles))
     }
   }
 
@@ -418,7 +357,6 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                 <User className="h-5 w-5" />
                 Assigned Technicians
               </CardTitle>
-                <Button size="sm" variant="outline" onClick={() => { console.log("Manual debug trigger"); loadAssignedTechnicians(); }}>Debug Reload</Button>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -456,12 +394,8 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                   </select>
                 )}
                 
-                {assignedTechnicians.length === 0 && (
-                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
-                    <p className="text-sm text-yellow-800">
-                      No technicians assigned (Debug: Check console for assignment data)
-                    </p>
-                  </div>
+                {assignedTechnicians.length === 0 && userRole !== 'boss' && (
+                  <p className="text-muted-foreground">No technicians assigned yet</p>
                 )}
               </div>
             </CardContent>

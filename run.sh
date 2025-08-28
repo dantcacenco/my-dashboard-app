@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Fix Non-Clickable View Buttons
-# Run as: ./fix_view_buttons.sh from my-dashboard-app directory
+# Debug Technician Assignment Issues (Fixed Version)
+# Run as: ./debug_technicians_fixed.sh from my-dashboard-app directory
 
 set -e
 
-echo "Fixing non-clickable View buttons..."
-echo "==================================="
+echo "Debugging Technician Assignment Issues..."
+echo "======================================="
 
 # Check we're in the right directory
 if [[ ! -f "package.json" ]] || [[ ! -d "app" ]]; then
@@ -14,123 +14,267 @@ if [[ ! -f "package.json" ]] || [[ ! -d "app" ]]; then
     exit 1
 fi
 
-# Backup the file
-cp -f app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx .fix-backups/JobDetailView.tsx.backup
+# Restore from backup first to start clean
+if [[ -f "app/(authenticated)/jobs/[id]/JobDetailView.tsx.backup" ]]; then
+    cp app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx.backup app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx
+    echo "Restored from backup to start clean"
+fi
 
-echo "1. Fixing View buttons in JobDetailView..."
+# Backup the current file
+cp app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx.backup
 
-# Use a more targeted approach to fix the View buttons
-python3 - << 'EOF'
-import re
+echo "1. Adding comprehensive debugging to JobDetailView..."
 
-with open('app/(authenticated)/jobs/[id]/JobDetailView.tsx', 'r') as f:
-    content = f.read()
-
-print("Current content preview around jobFiles:")
-lines = content.split('\n')
-for i, line in enumerate(lines):
-    if 'jobFiles.map' in line:
-        print(f"Line {i}: {line.strip()}")
-        for j in range(max(0, i-2), min(len(lines), i+15)):
-            print(f"  {j}: {lines[j].strip()}")
-        break
-
-# Ensure openFileViewer function exists
-if 'openFileViewer' not in content:
-    print("Adding openFileViewer function...")
-    # Find where to insert it (after openMediaViewer)
-    pattern = r'(setViewerOpen\(true\)\s*\n\s*\})'
-    replacement = r'\1\n\n  const openFileViewer = (files: any[], index: number) => {\n    console.log("openFileViewer called with:", { filesCount: files.length, index })\n    const items = files.map(file => ({\n      id: file.id,\n      url: file.file_url,\n      name: file.file_name,\n      caption: file.file_name,\n      type: \'file\' as const,\n      mime_type: file.mime_type || \'application/octet-stream\'\n    }))\n    \n    console.log("MediaViewer items:", items)\n    setViewerItems(items)\n    setViewerIndex(index)\n    setViewerOpen(true)\n  }'
+# Create the debug function as a separate file first to avoid quote issues
+cat > temp_debug_function.txt << 'FUNC_EOF'
+  const loadAssignedTechnicians = async () => {
+    console.log('=== TECHNICIAN ASSIGNMENT DEBUG START ===')
+    console.log('Job ID:', job.id)
+    console.log('Job Number:', job.job_number)
     
-    content = re.sub(pattern, replacement, content)
-    print("openFileViewer function added")
+    try {
+      // First, let's check what's in the job_technicians table for this job
+      const { data: rawAssignments, error: rawError } = await supabase
+        .from('job_technicians')
+        .select('*')
+        .eq('job_id', job.id)
+      
+      console.log('Raw job_technicians query result:', {
+        data: rawAssignments,
+        error: rawError,
+        count: rawAssignments?.length || 0
+      })
+      
+      // Now let's try the full query with profile joins
+      const { data: fullData, error: fullError } = await supabase
+        .from('job_technicians')
+        .select(`
+          *,
+          profiles!technician_id (
+            id,
+            email,
+            full_name,
+            role
+          )
+        `)
+        .eq('job_id', job.id)
+      
+      console.log('Full technician assignment query result:', {
+        data: fullData,
+        error: fullError,
+        count: fullData?.length || 0
+      })
+      
+      if (fullData && fullData.length > 0) {
+        console.log('Individual assignment records:')
+        fullData.forEach((assignment, index) => {
+          console.log(`Assignment ${index}:`, {
+            id: assignment.id,
+            job_id: assignment.job_id,
+            technician_id: assignment.technician_id,
+            assigned_at: assignment.assigned_at,
+            profile: assignment.profiles
+          })
+        })
+      }
+      
+      // Let's also check if the technician exists in profiles
+      const { data: techProfile, error: techError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', 'technician@gmail.com')
+        .single()
+      
+      console.log('Technician profile lookup:', {
+        data: techProfile,
+        error: techError
+      })
+      
+      // Set the assigned technicians - but let's see what we're setting
+      const processedData = fullData?.map((item: any) => {
+        console.log('Processing assignment item:', item)
+        return item.profiles || item
+      }) || []
+      
+      console.log('Processed technician data for setState:', processedData)
+      
+      setAssignedTechnicians(processedData)
+      console.log('=== TECHNICIAN ASSIGNMENT DEBUG END ===')
+      
+    } catch (error) {
+      console.error('Error in loadAssignedTechnicians:', error)
+      setAssignedTechnicians([])
+    }
+  }
+FUNC_EOF
 
-# Now fix the file mapping to ensure it has index and proper onClick
-print("Fixing jobFiles mapping...")
+# Now use Node.js to safely replace the function
+node - << 'NODE_EOF'
+const fs = require('fs');
 
-# First, ensure jobFiles.map has index parameter
-if 'jobFiles.map(file =>' in content:
-    content = content.replace('jobFiles.map(file =>', 'jobFiles.map((file, index) =>')
-    print("Added index parameter to jobFiles.map")
+let content = fs.readFileSync('app/(authenticated)/jobs/[id]/JobDetailView.tsx', 'utf8');
+const newFunction = fs.readFileSync('temp_debug_function.txt', 'utf8');
 
-# Now find and replace the Button components with proper onClick handlers
-# Look for the pattern where View buttons exist
-button_pattern = r'<Button\s+size="sm"\s+variant="outline"(?:\s+onClick=\{[^}]+\})?\s*>\s*View\s*</Button>'
-button_replacement = '''<Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          console.log("View button clicked for file:", file.file_name)
-                          openFileViewer(jobFiles, index)
-                        }}
-                      >
-                        View
-                      </Button>'''
+// Find and replace the loadAssignedTechnicians function
+const functionPattern = /const loadAssignedTechnicians = async \(\) => \{[\s\S]*?\n  \}/;
 
-new_content = re.sub(button_pattern, button_replacement, content)
+if (functionPattern.test(content)) {
+  content = content.replace(functionPattern, newFunction.trim());
+  console.log('Successfully replaced loadAssignedTechnicians function');
+} else {
+  console.log('Could not find existing function, will add it');
+  // Find a good place to add it (after openFileViewer or similar)
+  const insertPattern = /(const openFileViewer[\s\S]*?\n  \})/;
+  if (insertPattern.test(content)) {
+    content = content.replace(insertPattern, '$1\n\n' + newFunction.trim());
+    console.log('Added function after openFileViewer');
+  }
+}
 
-if new_content != content:
-    content = new_content
-    print("Successfully added onClick handlers to View buttons")
-else:
-    print("Could not find Button pattern, trying alternative approach...")
+// Add debug button to the technician section
+const titlePattern = /(<CardTitle className="flex items-center gap-2">\s*<User className="h-5 w-5" \/>\s*Assigned Technicians\s*<\/CardTitle>)/;
+const debugButton = '$1\n                <Button size="sm" variant="outline" onClick={() => { console.log("Manual debug trigger"); loadAssignedTechnicians(); }}>Debug Reload</Button>';
+
+content = content.replace(titlePattern, debugButton);
+
+// Add a debug message when no technicians are found
+const noTechPattern = /(\{assignedTechnicians\.length === 0 && userRole !== 'boss' && \(\s*<p className="text-muted-foreground">No technicians assigned yet<\/p>\s*\)\})/;
+const debugMessage = `{assignedTechnicians.length === 0 && (
+                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
+                    <p className="text-sm text-yellow-800">
+                      No technicians assigned (Debug: Check console for assignment data)
+                    </p>
+                  </div>
+                )}`;
+
+content = content.replace(noTechPattern, debugMessage);
+
+fs.writeFileSync('app/(authenticated)/jobs/[id]/JobDetailView.tsx', content);
+console.log('JobDetailView updated with debugging');
+NODE_EOF
+
+# Clean up temp file
+rm temp_debug_function.txt
+
+echo "2. Creating database inspection API endpoint..."
+
+# Create a debug API endpoint to inspect the database directly
+cat > app/api/debug-technicians/route.ts << 'EOF'
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+
+export async function GET(request: Request) {
+  const supabase = await createClient()
+  const { searchParams } = new URL(request.url)
+  const jobId = searchParams.get('job_id')
+  
+  if (!jobId) {
+    return NextResponse.json({ error: 'job_id parameter required' }, { status: 400 })
+  }
+
+  try {
+    console.log('Debug API - Job ID:', jobId)
     
-    # Alternative approach - look for just the View text and replace the whole button
-    view_pattern = r'<Button[^>]*>\s*View\s*</Button>'
-    content = re.sub(view_pattern, button_replacement, content)
-    print("Applied alternative Button replacement")
-
-# Ensure the file has proper imports for console logging
-if 'console.log' in content and 'useEffect' in content:
-    print("Debug logging will be available")
-
-print("Final content preview around fixed area:")
-lines = content.split('\n')
-for i, line in enumerate(lines):
-    if 'View' in line and 'Button' in line:
-        print(f"Found View Button at line {i}:")
-        for j in range(max(0, i-3), min(len(lines), i+8)):
-            print(f"  {j}: {lines[j].strip()}")
-        break
-
-with open('app/(authenticated)/jobs/[id]/JobDetailView.tsx', 'w') as f:
-    f.write(content)
-
-print("JobDetailView.tsx updated successfully")
+    // 1. Check job exists
+    const { data: job, error: jobError } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('id', jobId)
+      .single()
+    
+    // 2. Check raw job_technicians entries
+    const { data: rawAssignments, error: rawError } = await supabase
+      .from('job_technicians')
+      .select('*')
+      .eq('job_id', jobId)
+    
+    // 3. Check job_technicians with profiles
+    const { data: assignments, error: assignError } = await supabase
+      .from('job_technicians')
+      .select(`
+        *,
+        profiles!technician_id (
+          id,
+          email,
+          full_name,
+          role
+        )
+      `)
+      .eq('job_id', jobId)
+    
+    // 4. Check specific technician profile
+    const { data: techProfile, error: techError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', 'technician@gmail.com')
+    
+    // 5. Check all technicians
+    const { data: allTechs, error: allTechError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'technician')
+    
+    return NextResponse.json({
+      job: { data: job, error: jobError },
+      rawAssignments: { data: rawAssignments, error: rawError },
+      assignments: { data: assignments, error: assignError },
+      techProfile: { data: techProfile, error: techError },
+      allTechs: { data: allTechs, error: allTechError },
+      summary: {
+        jobExists: !!job,
+        jobNumber: job?.job_number,
+        assignmentCount: rawAssignments?.length || 0,
+        technicianEmail: techProfile?.[0]?.email,
+        technicianId: techProfile?.[0]?.id
+      }
+    })
+    
+  } catch (error) {
+    console.error('Debug API error:', error)
+    return NextResponse.json({ 
+      error: 'Database query failed', 
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}
 EOF
 
-echo "2. Running TypeScript check..."
+echo "3. Running TypeScript check..."
 if ! npx tsc --noEmit; then
     echo "TypeScript errors found. Restoring backup..."
-    cp .fix-backups/JobDetailView.tsx.backup app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx
+    cp app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx.backup app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx
     exit 1
 fi
 
-echo "3. Git commit and push..."
+echo "4. Git commit and push..."
 git add -A
-git commit -m "Fix: Non-clickable View buttons for file viewing
+git commit -m "Debug: Add comprehensive technician assignment debugging (Fixed)
 
-- Added proper onClick handlers to file View buttons
-- Ensured openFileViewer function exists with debug logging
-- Fixed jobFiles.map to include index parameter
-- View buttons now properly trigger file viewing in MediaViewer
-- Added console logging for debugging click events"
+- Fixed quote escaping issues from previous script
+- Added extensive console logging to loadAssignedTechnicians function
+- Shows raw database queries and results step by step
+- Added visual debug indicators when no technicians assigned
+- Created debug API endpoint at /api/debug-technicians
+- Added manual Debug Reload button to technician section
+- Logs individual assignment records and profile data
+- Uses Node.js for safer string manipulation"
 
 if ! git push origin main; then
     echo "Git push failed, but changes committed locally"
 fi
 
 echo ""
-echo "SUCCESS! View buttons should now be clickable!"
-echo "============================================="
-echo "Changes made:"
-echo "- Added onClick handlers to all View buttons"
-echo "- Added debug logging to track clicks"
-echo "- Ensured openFileViewer function exists"
+echo "SUCCESS! Fixed technician debugging added!"
+echo "========================================"
 echo ""
-echo "TEST NOW:"
-echo "1. Click any 'View' button on a file"
-echo "2. Check browser console for debug messages"
-echo "3. File should open in MediaViewer"
+echo "DEBUGGING STEPS:"
+echo "1. Visit: https://my-dashboard-app-tau.vercel.app/jobs/3915209b-93f8-4474-990f-533090b98138"
+echo "2. Open browser console (F12)"
+echo "3. Look for debug output starting with '=== TECHNICIAN ASSIGNMENT DEBUG START ==='"
+echo "4. Click the 'Debug Reload' button in the Assigned Technicians section"
+echo "5. Check API: https://my-dashboard-app-tau.vercel.app/api/debug-technicians?job_id=3915209b-93f8-4474-990f-533090b98138"
 echo ""
-echo "If still not working, check console for error messages"
+echo "This will show exactly what data exists in the database vs what's displayed"
+
+# Cleanup
+rm -f app/\(authenticated\)/jobs/\[id\]/JobDetailView.tsx.backup
