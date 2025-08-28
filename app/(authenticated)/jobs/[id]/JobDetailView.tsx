@@ -54,6 +54,8 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [photosExpanded, setPhotosExpanded] = useState(false)
+  const [filesExpanded, setFilesExpanded] = useState(false)
 
   useEffect(() => {
     console.log('=== JOB DETAIL VIEW DEBUG START ===')
@@ -463,29 +465,42 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
               )}
 
               {jobPhotos.length > 0 && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-                  {jobPhotos.map((photo, index) => (
-                    <div
-                      key={photo.id}
-                      className="relative group cursor-pointer"
-                      onClick={() => openMediaViewer(jobPhotos, index)}
-                    >
-                      {photo.mime_type?.startsWith('video/') ? (
-                        <VideoThumbnail videoUrl={photo.photo_url} onClick={() => openMediaViewer(jobPhotos, index)} />
-                      ) : (
-                        <img
-                          src={photo.photo_url}
-                          alt={photo.caption || 'Job photo'}
-                          className="w-full h-32 object-cover rounded hover:opacity-90 transition"
-                        />
-                      )}
-                      {photo.caption && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-2 rounded-b">
-                          {photo.caption}
-                        </div>
-                      )}
+                <div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+                    {(photosExpanded ? jobPhotos : jobPhotos.slice(0, 3)).map((photo, index) => (
+                      <div
+                        key={photo.id}
+                        className="relative group cursor-pointer"
+                        onClick={() => openMediaViewer(jobPhotos, index)}
+                      >
+                        {photo.mime_type?.startsWith('video/') ? (
+                          <VideoThumbnail videoUrl={photo.photo_url} onClick={() => openMediaViewer(jobPhotos, index)} />
+                        ) : (
+                          <img
+                            src={photo.photo_url}
+                            alt={photo.caption || 'Job photo'}
+                            className="w-full h-32 object-cover rounded hover:opacity-90 transition"
+                          />
+                        )}
+                        {photo.caption && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-2 rounded-b">
+                            {photo.caption}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {jobPhotos.length > 3 && (
+                    <div className="flex justify-center mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPhotosExpanded(!photosExpanded)}
+                      >
+                        {photosExpanded ? 'Collapse' : `Expand (${jobPhotos.length - 3} more)`}
+                      </Button>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </CardContent>
@@ -508,31 +523,44 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
               )}
 
               {jobFiles.length > 0 && (
-                <div className="space-y-2 mt-4">
-                  {jobFiles.map((file, index) => (
-                    <div key={file.id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50">
-                      <div 
-                        className="flex items-center gap-3 flex-1 cursor-pointer"
-                        onClick={() => {
-                          console.log('FILE NAME CLICKED!', file.file_name, 'Index:', index);
-                          openFileViewer(jobFiles, index);
-                        }}
-                      >
-                        <FileText className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium text-blue-600 hover:text-blue-800">
-                            {file.file_name}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {new Date(file.created_at).toLocaleDateString()}
-                          </p>
+                <div>
+                  <div className="space-y-2 mt-4">
+                    {(filesExpanded ? jobFiles : jobFiles.slice(0, 3)).map((file, index) => (
+                      <div key={file.id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50">
+                        <div 
+                          className="flex items-center gap-3 flex-1 cursor-pointer"
+                          onClick={() => {
+                            console.log('FILE NAME CLICKED!', file.file_name, 'Index:', index);
+                            openFileViewer(jobFiles, index);
+                          }}
+                        >
+                          <FileText className="h-5 w-5 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium text-blue-600 hover:text-blue-800">
+                              {file.file_name}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {new Date(file.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Click filename to view
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        Click filename to view
-                      </div>
+                    ))}
+                  </div>
+                  {jobFiles.length > 3 && (
+                    <div className="flex justify-center mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFilesExpanded(!filesExpanded)}
+                      >
+                        {filesExpanded ? 'Collapse' : `Expand (${jobFiles.length - 3} more)`}
+                      </Button>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
 
