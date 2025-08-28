@@ -400,11 +400,11 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                       className="relative group cursor-pointer"
                       onClick={() => openMediaViewer(jobPhotos, index)}
                     >
-                      {photo.media_type === 'video' ? (
-                        <VideoThumbnail videoUrl={photo.url} onClick={() => openMediaViewer(jobPhotos, index)} />
+                      {photo.mime_type?.startsWith('video/') ? (
+                        <VideoThumbnail videoUrl={photo.photo_url} onClick={() => openMediaViewer(jobPhotos, index)} />
                       ) : (
                         <img
-                          src={photo.url}
+                          src={photo.photo_url}
                           alt={photo.caption || 'Job photo'}
                           className="w-full h-32 object-cover rounded hover:opacity-90 transition"
                         />
