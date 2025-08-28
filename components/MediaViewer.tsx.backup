@@ -94,7 +94,6 @@ export default function MediaViewer({ items, initialIndex, onClose }: MediaViewe
             controls 
             className="max-w-full max-h-full rounded"
             poster=""
-            preload="metadata"
           >
             <source src={url} type={mime_type || 'video/mp4'} />
             Your browser does not support the video tag.

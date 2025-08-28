@@ -1,0 +1,41 @@
+
+> build
+> next build
+
+   ▲ Next.js 15.4.3
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ ⚠ Compiled with warnings in 2000ms
+
+./node_modules/@supabase/realtime-js/dist/module/lib/websocket-factory.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/@supabase/realtime-js/dist/module/lib/websocket-factory.js
+./node_modules/@supabase/realtime-js/dist/module/index.js
+./node_modules/@supabase/supabase-js/dist/module/index.js
+./app/api/technicians/route.ts
+
+ ✓ Compiled successfully in 3.0s
+   Skipping linting
+   Checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/41) ...
+ ⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+   Generating static pages (10/41) 
+   Generating static pages (20/41) 
+Error occurred prerendering page "/auth/login". Read more: https://nextjs.org/docs/messages/prerender-error
+Error: @supabase/ssr: Your project's URL and API key are required to create a Supabase client!
+
+Check your Supabase project's API settings to find these values
+
+https://supabase.com/dashboard/project/_/settings/api
+    at <unknown> (https://supabase.com/dashboard/project/_/settings/api)
+    at t (.next/server/chunks/9605.js:1:7686)
+    at e (.next/server/app/auth/login/page.js:2:7757)
+    at j (.next/server/app/auth/login/page.js:2:8133) {
+  digest: '2992869987'
+}
+Export encountered an error on /auth/login/page: /auth/login, exiting the build.
+ ⨯ Next.js build worker exited with code: 1 and signal: null
