@@ -350,12 +350,15 @@ export default function ProposalEditor({ proposal, customers: initialCustomers, 
                   >
                     <option value="draft">Draft</option>
                     <option value="sent">Sent</option>
-                    <option value="viewed">Viewed</option>
                     <option value="approved">Approved</option>
                     <option value="rejected">Rejected</option>
+                    <option value="deposit paid">Deposit Paid</option>
+                    <option value="rough-in paid">Rough-In Paid</option>
+                    <option value="final paid">Final Paid</option>
+                    <option value="completed">Completed</option>
                   </select>
                   <p className="mt-1 text-sm text-gray-500">
-                    Note: Payment statuses are set automatically when payments are processed
+                    Note: Payment statuses will automatically sync with job status when database triggers are active
                   </p>
                 </div>
               </div>
