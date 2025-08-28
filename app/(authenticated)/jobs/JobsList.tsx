@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MapPin, Phone, Mail, Calendar, DollarSign, Users } from 'lucide-react'
+import { getUnifiedDisplayStatus } from '@/lib/status-sync'
 
 interface JobsListProps {
   jobs: any[]
@@ -32,12 +33,23 @@ export default function JobsList({ jobs, userRole }: JobsListProps) {
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    // Normalize the display status for color matching
+    const normalizedStatus = status.toLowerCase().replace(' ', '_').replace('-', '_')
+    
+    switch (normalizedStatus) {
+      case 'draft': return 'bg-gray-100 text-gray-800'
+      case 'sent': return 'bg-blue-100 text-blue-800'
+      case 'approved': return 'bg-green-100 text-green-800'
+      case 'rejected': return 'bg-red-100 text-red-800'
+      case 'deposit_paid': return 'bg-blue-100 text-blue-800'
+      case 'rough_in_paid': return 'bg-yellow-100 text-yellow-800'
+      case 'final_payment_complete': return 'bg-green-100 text-green-800'
       case 'pending': return 'bg-yellow-100 text-yellow-800'
       case 'scheduled': return 'bg-blue-100 text-blue-800'
       case 'in_progress': return 'bg-purple-100 text-purple-800'
       case 'completed': return 'bg-green-100 text-green-800'
       case 'cancelled': return 'bg-red-100 text-red-800'
+      case 'not_scheduled': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
@@ -119,9 +131,17 @@ export default function JobsList({ jobs, userRole }: JobsListProps) {
                         </td>
                       )}
                       <td className="px-4 py-3">
-                        <Badge className={getStatusColor(job.status)}>
-                          {job.status.replace('_', ' ')}
-                        </Badge>
+                        {(() => {
+                          const displayStatus = getUnifiedDisplayStatus(
+                            job.status, 
+                            job.proposals?.status || ''
+                          )
+                          return (
+                            <Badge className={getStatusColor(displayStatus)}>
+                              {displayStatus}
+                            </Badge>
+                          )
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         {job.scheduled_date ? formatDate(job.scheduled_date) : 'Not scheduled'}
@@ -150,9 +170,17 @@ export default function JobsList({ jobs, userRole }: JobsListProps) {
                     <Link href={`/jobs/${job.id}`} className="font-semibold text-blue-600 hover:text-blue-700">
                       {job.job_number}
                     </Link>
-                    <Badge className={`ml-2 ${getStatusColor(job.status)}`}>
-                      {job.status.replace('_', ' ')}
-                    </Badge>
+                    {(() => {
+                      const displayStatus = getUnifiedDisplayStatus(
+                        job.status, 
+                        job.proposals?.status || ''
+                      )
+                      return (
+                        <Badge className={`ml-2 ${getStatusColor(displayStatus)}`}>
+                          {displayStatus}
+                        </Badge>
+                      )
+                    })()}
                   </div>
                 </div>
                 

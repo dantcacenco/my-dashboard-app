@@ -43,6 +43,10 @@ export default async function JobsPage() {
             email,
             phone,
             address
+          ),
+          proposals!proposal_id (
+            id,
+            status
           )
         `)
         .in('id', jobIds)
@@ -62,6 +66,10 @@ export default async function JobsPage() {
           email,
           phone,
           address
+        ),
+        proposals!proposal_id (
+          id,
+          status
         )
       `)
       .order('created_at', { ascending: false })
