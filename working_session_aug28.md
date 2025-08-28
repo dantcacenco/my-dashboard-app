@@ -20,61 +20,70 @@
    - Function definition was already correct
    - Technicians should now display when assigned to job
 
-## 🔍 NEXT STEPS FOR UPLOAD FIX
-With debugging in place, to fix uploads:
-1. Open browser console while testing upload
-2. Try uploading a file and check console output
-3. Look for:
-   - Missing userId or jobId
-   - Storage bucket access errors
-   - Database insert failures
-   - URL formatting issues
+## 🔴 CURRENT CONSOLE ERRORS (NEED IMMEDIATE FIX)
 
-Common fixes:
-- Verify storage buckets exist: 'job-photos' and 'job-files'
-- Check RLS policies allow INSERT on job_photos/job_files tables
-- Ensure storage bucket policies allow uploads
-- Verify userId is being passed correctly from page.tsx
+### 1. React Minified Error #418
+- **Error**: Hydration mismatch or invalid HTML nesting
+- **URL**: https://react.dev/errors/418
+- **Action**: Check for invalid HTML structure in JobDetailView
+
+### 2. Missing API Routes (404)
+- **Missing**: `/api/invoices/route.ts`
+- **Error**: Failed to load invoices endpoint
+- **Solution**: Create invoice API route handler
+
+### 3. Duplicate Technician Assignment
+- **Error**: `duplicate key value violates unique constraint "job_technicians_job_id_technician_id_key"`
+- **Issue**: Trying to INSERT already assigned technician
+- **Fix**: Check existence before INSERT in toggleTechnician function
+
+## 📝 SONNET BRIEFING CREATED
+Created comprehensive briefing document: `SONNET_BRIEFING.md`
+Contains:
+- All project context and rules
+- Specific code fixes for current issues
+- Database patterns and common pitfalls
+- Testing commands and workflows
+- Priority fix order with solutions
+
+## 🔧 QUICK FIXES NEEDED
+
+### Fix 1: Technician Toggle (JobDetailView.tsx)
+Replace toggleTechnician with check for existing assignment before INSERT
+
+### Fix 2: Create Invoice Route
+Create `/app/api/invoices/route.ts` with GET and POST handlers
+
+### Fix 3: Upload Testing
+Test with browser console open to see debug output and identify failure point
 
 ## 📋 REMAINING TASKS
 
-### 1. Fix Upload Functionality (Debug now in place)
-**Next Action**: Test uploads with console open to see debug output
-**Likely Issues**:
-- Storage bucket permissions
-- Missing userId in props
-- RLS policy restrictions
-- Bucket naming mismatches
+### Immediate Priority
+1. Fix technician duplicate key error
+2. Create invoice API route
+3. Test and fix uploads based on debug output
+4. Resolve React hydration issues
 
-### 2. Payment Status Sync
-**Strategy**:
-```
-1. When proposal payment status changes → update job status
-2. When job status changes → update proposal status
-3. Add database triggers or update both in transaction
-```
+### Next Phase
+1. Payment status sync between jobs and proposals
+2. Add loading states to all modals
+3. Improve error handling throughout
+4. Add success toasts for all actions
 
-### 3. Additional Enhancements
-- Add loading states to modals
-- Add success/error toasts for all actions
-- Improve error handling throughout
-
-## 🚨 CRITICAL NOTES
-- **EditJobModal**: Now properly connected and functional
-- **Uploads**: Debug logging added - test to identify specific failure point
-- **Technicians**: Display issue fixed, should show assigned technicians
-- **File Structure**: JobDetailView.tsx (NO 's') is the active component
+## 🚨 CRITICAL NOTES FOR NEXT SESSION
+- **Use Desktop Commander only** - no artifacts or .sh files
+- **Check SONNET_BRIEFING.md** for complete context
+- **Test build** before pushing any changes
+- **Preserve existing UI** - don't change design unless asked
+- **Use absolute paths** for all file operations
 
 ## 📊 CURRENT STATUS
 ```
 ✅ Edit functionality: WORKING
-✅ Technician display: FIXED
-🔍 Upload functionality: DEBUGGING (logs added)
+✅ Technician display: FIXED (but toggle has duplicate key issue)
+🔍 Upload functionality: DEBUGGING (logs added, need testing)
+❌ Invoice route: MISSING (404 error)
+⚠️ React hydration: ERROR #418
 ⏳ Payment sync: TODO
 ```
-
-## 🎯 IMMEDIATE PRIORITY
-1. Test uploads with browser console open
-2. Identify specific error from debug logs
-3. Apply targeted fix based on error type
-4. Verify uploads work for both photos and files
