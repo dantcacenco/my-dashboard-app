@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { getUnifiedDisplayStatus, syncJobProposalStatus } from '@/lib/status-sync'
 import MediaUpload from '@/components/uploads/MediaUpload'
 import FileUpload from '@/components/uploads/FileUpload'
 import MediaViewer from '@/components/MediaViewer'
@@ -199,6 +200,42 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
     }
   }
 
+  const handleStatusUpdate = async (newStatus: string) => {
+    try {
+      // Update job status
+      const { error: jobError } = await supabase
+        .from('jobs')
+        .update({ status: newStatus })
+        .eq('id', currentJob.id)
+
+      if (jobError) throw jobError
+
+      // Sync proposal status if proposal exists
+      if (currentJob.proposal_id) {
+        await syncJobProposalStatus(
+          supabase,
+          currentJob.id,
+          currentJob.proposal_id,
+          newStatus,
+          'job'
+        )
+      }
+
+      // Update local state
+      setJob({ ...currentJob, status: newStatus })
+      
+      // Reload proposal to reflect changes
+      if (currentJob.proposal_id) {
+        loadProposal()
+      }
+
+      toast.success('Status updated successfully')
+    } catch (error) {
+      console.error('Error updating status:', error)
+      toast.error('Failed to update status')
+    }
+  }
+
   const handleTechnicianToggle = async (techId: string) => {
     const isAssigned = assignedTechnicians.some(t => t.id === techId)
     
@@ -346,17 +383,24 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
     })
   }
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (jobStatus: string, proposalStatus?: string) => {
+    const displayStatus = getUnifiedDisplayStatus(jobStatus, proposalStatus || '')
+    
     const statusColors = {
-      'scheduled': 'bg-blue-100 text-blue-800',
-      'in-progress': 'bg-yellow-100 text-yellow-800',
-      'completed': 'bg-green-100 text-green-800',
-      'cancelled': 'bg-red-100 text-red-800',
+      'Draft': 'bg-gray-100 text-gray-800',
+      'Sent': 'bg-blue-100 text-blue-800',
+      'Viewed': 'bg-purple-100 text-purple-800',
+      'Approved': 'bg-green-100 text-green-800',
+      'Scheduled': 'bg-blue-100 text-blue-800',
+      'In Progress': 'bg-yellow-100 text-yellow-800',
+      'Completed': 'bg-green-100 text-green-800',
+      'Cancelled': 'bg-red-100 text-red-800',
+      'Rejected': 'bg-red-100 text-red-800',
     }
     
     return (
-      <Badge className={statusColors[status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+      <Badge className={statusColors[displayStatus as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}>
+        {displayStatus}
       </Badge>
     )
   }
@@ -376,7 +420,7 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {getStatusBadge(currentJob.status)}
+          {getStatusBadge(currentJob.status, proposal?.status)}
           {userRole === 'boss' && (
             <Button
               variant="destructive"
@@ -401,12 +445,8 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {assignedTechnicians.length === 0 && (
-                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
-                    <p className="text-sm text-yellow-800">
-                      No technicians assigned (Debug: Check console for assignment data)
-                    </p>
-                  </div>
+                {assignedTechnicians.length === 0 && userRole !== 'boss' && (
+                  <p className="text-muted-foreground">No technicians assigned yet</p>
                 )}
                 {assignedTechnicians.map((tech) => (
                   <div key={tech.id} className="flex items-center justify-between p-2 bg-accent rounded">
