@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { 
-  ArrowLeft, Edit, Calendar, Clock, MapPin, User, 
+import {
+  ArrowLeft, Edit, Calendar, Clock, MapPin, User,
   FileText, Camera, Upload, Plus, X, Save, Trash2,
   DollarSign, Link as LinkIcon, FileCheck
 } from 'lucide-react'
@@ -29,21 +29,16 @@ import {
 
 interface JobDetailViewProps {
   job: any
-  userRole: string
   userId?: string
+  userRole?: string // Added this prop to fix TypeScript error
 }
 
-export default function JobDetailView({ job: initialJob, userRole, userId }: JobDetailViewProps) {
+export default function JobDetailView({ job, userId, userRole: initialUserRole }: JobDetailViewProps) {
   const router = useRouter()
   const supabase = createClient()
-  const [job, setJob] = useState(initialJob)
-  const [isEditingNotes, setIsEditingNotes] = useState(false)
-  const [notesText, setNotesText] = useState(job.notes || '')
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [technicians, setTechnicians] = useState<any[]>([])
-  const [assignedTechnicians, setAssignedTechnicians] = useState<any[]>([])
+  
+  // State - Added setJob to fix TypeScript error
+  const [currentJob, setJob] = useState(job)
   const [jobPhotos, setJobPhotos] = useState<any[]>([])
   const [jobFiles, setJobFiles] = useState<any[]>([])
   const [currentUserId, setCurrentUserId] = useState(userId || '')
@@ -51,8 +46,22 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
   const [viewerItems, setViewerItems] = useState<any[]>([])
   const [viewerIndex, setViewerIndex] = useState(0)
   const [proposal, setProposal] = useState<any>(null)
+  const [technicians, setTechnicians] = useState<any[]>([])
+  const [assignedTechnicians, setAssignedTechnicians] = useState<any[]>([])
+  const [userRole, setUserRole] = useState(initialUserRole || 'technician')
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [notesText, setNotesText] = useState(currentJob.notes || '')
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
+    console.log('=== JOB DETAIL VIEW DEBUG START ===')
+    console.log('Job ID:', currentJob.id)
+    console.log('Job Number:', currentJob.job_number)
+    console.log('User ID:', currentUserId)
+    console.log('User Role:', userRole)
+    
     loadTechnicians()
     loadAssignedTechnicians()
     loadJobMedia()
@@ -61,23 +70,43 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
     if (!userId) {
       getCurrentUser()
     }
-  }, [job.id])
+  }, [currentJob.id])
 
   const getCurrentUser = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       setCurrentUserId(user.id)
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      
+      setUserRole(profile?.role || 'technician')
     }
   }
 
   const loadProposal = async () => {
-    if (job.proposal_id) {
+    if (currentJob.proposal_id) {
       const { data } = await supabase
         .from('proposals')
-        .select('*')
-        .eq('id', job.proposal_id)
+        .select(`
+          *,
+          customers!inner (
+            id,
+            name,
+            email,
+            phone,
+            address
+          )
+        `)
+        .eq('id', currentJob.proposal_id)
         .single()
-      setProposal(data)
+      
+      if (data) {
+        setProposal(data)
+      }
     }
   }
 
@@ -92,121 +121,62 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
   }
 
   const loadAssignedTechnicians = async () => {
-    console.log('=== TECHNICIAN ASSIGNMENT DEBUG START ===')
-    console.log('Job ID:', job.id)
-    console.log('Job Number:', job.job_number)
+    console.log('=== TECHNICIAN DEBUG START ===', { jobId: currentJob.id, jobNumber: currentJob.job_number })
     
-    try {
-      // First, let's check what's in the job_technicians table for this job
-      const { data: rawAssignments, error: rawError } = await supabase
-        .from('job_technicians')
-        .select('*')
-        .eq('job_id', job.id)
-      
-      console.log('Raw job_technicians query result:', {
-        data: rawAssignments,
-        error: rawError,
-        count: rawAssignments?.length || 0
-      })
-      
-      // Now let's try the full query with profile joins
-      const { data: fullData, error: fullError } = await supabase
-        .from('job_technicians')
-        .select(`
-          *,
-          profiles!technician_id (
-            id,
-            email,
-            full_name,
-            role
-          )
-        `)
-        .eq('job_id', job.id)
-      
-      console.log('Full technician assignment query result:', {
-        data: fullData,
-        error: fullError,
-        count: fullData?.length || 0
-      })
-      
-      if (fullData && fullData.length > 0) {
-        console.log('Individual assignment records:')
-        fullData.forEach((assignment, index) => {
-          console.log(`Assignment ${index}:`, {
-            id: assignment.id,
-            job_id: assignment.job_id,
-            technician_id: assignment.technician_id,
-            assigned_at: assignment.assigned_at,
-            profile: assignment.profiles
-          })
-        })
-      }
-      
-      // Let's also check if the technician exists in profiles
-      const { data: techProfile, error: techError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('email', 'technician@gmail.com')
-        .single()
-      
-      console.log('Technician profile lookup:', {
-        data: techProfile,
-        error: techError
-      })
-      
-      // Set the assigned technicians - but let's see what we're setting
-      const processedData = fullData?.map((item: any) => {
-        console.log('Processing assignment item:', item)
-        return item.profiles || item
-      }) || []
-      
-      console.log('Processed technician data for setState:', processedData)
-      
-      setAssignedTechnicians(processedData)
-      console.log('=== TECHNICIAN ASSIGNMENT DEBUG END ===')
-      
-    } catch (error) {
-      console.error('Error in loadAssignedTechnicians:', error)
-      setAssignedTechnicians([])
-    }
+    const { data } = await supabase
+      .from('job_technicians')
+      .select(`
+        *,
+        profiles!technician_id (
+          id,
+          email,
+          full_name,
+          role
+        )
+      `)
+      .eq('job_id', currentJob.id)
+
+    console.log('Technician query result:', { data, count: data?.length || 0 })
+    const processedData = data?.map((item: any) => item.profiles) || []
+    console.log('Processed technician data:', processedData)
+    setAssignedTechnicians(processedData)
   }
 
   const loadJobMedia = async () => {
     const { data } = await supabase
       .from('job_photos')
       .select('*')
-      .eq('job_id', job.id)
+      .eq('job_id', currentJob.id)
       .order('created_at', { ascending: true })
 
     setJobPhotos(data || [])
   }
 
   const loadJobFiles = async () => {
-    const { data } = await supabase
+    console.log('=== LOADING JOB FILES DEBUG ===')
+    console.log('Job ID for files:', currentJob.id)
+    
+    const { data, error } = await supabase
       .from('job_files')
       .select('*')
-      .eq('job_id', job.id)
+      .eq('job_id', currentJob.id)
       .order('created_at', { ascending: false })
 
-    setJobFiles(data || [])
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'not_scheduled': return 'bg-gray-500'
-      case 'scheduled': return 'bg-blue-500'
-      case 'in_progress': return 'bg-yellow-500'
-      case 'completed': return 'bg-green-500'
-      case 'cancelled': return 'bg-red-500'
-      default: return 'bg-gray-500'
+    console.log('Job files query result:', { data, error, count: data?.length || 0 })
+    
+    if (data) {
+      console.log('Individual files:')
+      data.forEach((file, index) => {
+        console.log(`File ${index}:`, {
+          id: file.id,
+          name: file.file_name,
+          url: file.file_url,
+          created: file.created_at
+        })
+      })
     }
+    
+    setJobFiles(data || [])
   }
 
   const handleSaveNotes = async () => {
@@ -214,11 +184,11 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
       const { error } = await supabase
         .from('jobs')
         .update({ notes: notesText })
-        .eq('id', job.id)
+        .eq('id', currentJob.id)
 
       if (error) throw error
 
-      setJob({ ...job, notes: notesText })
+      setJob({ ...currentJob, notes: notesText })
       setIsEditingNotes(false)
       toast.success('Notes saved successfully')
     } catch (error) {
@@ -232,39 +202,34 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
     
     try {
       if (isAssigned) {
-        // Remove technician
         const { error } = await supabase
           .from('job_technicians')
           .delete()
-          .eq('job_id', job.id)
+          .eq('job_id', currentJob.id)
           .eq('technician_id', techId)
 
         if (error) throw error
         
-        // Reload assigned technicians from database
         await loadAssignedTechnicians()
         toast.success('Technician removed')
       } else {
-        // Add technician - first check if already exists
         const { data: existing } = await supabase
           .from('job_technicians')
           .select('id')
-          .eq('job_id', job.id)
+          .eq('job_id', currentJob.id)
           .eq('technician_id', techId)
           .single()
         
         if (!existing) {
-          // Only insert if doesn't exist
           const { error } = await supabase
             .from('job_technicians')
             .insert({
-              job_id: job.id,
+              job_id: currentJob.id,
               technician_id: techId
             })
 
           if (error) throw error
           
-          // Reload assigned technicians from database
           await loadAssignedTechnicians()
           toast.success('Technician assigned')
         } else {
@@ -279,32 +244,27 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
 
   const handleDeleteJob = async () => {
     setIsDeleting(true)
-    
+
     try {
-      // Delete related records first (due to foreign key constraints)
-      // Delete job technicians
       await supabase
         .from('job_technicians')
         .delete()
-        .eq('job_id', job.id)
+        .eq('job_id', currentJob.id)
 
-      // Delete job photos
       await supabase
         .from('job_photos')
         .delete()
-        .eq('job_id', job.id)
+        .eq('job_id', currentJob.id)
 
-      // Delete job files
       await supabase
         .from('job_files')
         .delete()
-        .eq('job_id', job.id)
+        .eq('job_id', currentJob.id)
 
-      // Finally delete the job itself
       const { error } = await supabase
         .from('jobs')
         .delete()
-        .eq('id', job.id)
+        .eq('id', currentJob.id)
 
       if (error) throw error
 
@@ -318,11 +278,12 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
   }
 
   const openMediaViewer = (photos: any[], index: number) => {
-    // Format photos for MediaViewer component
+    console.log('Opening media viewer for photos:', { count: photos.length, index })
+    
     const items = photos.map(photo => ({
       id: photo.id,
       url: photo.photo_url,
-      name: photo.caption || 'Job Photo',
+      name: photo.caption || 'Media',
       caption: photo.caption,
       type: photo.mime_type?.startsWith('video/') ? 'video' : 'photo',
       mime_type: photo.mime_type
@@ -331,83 +292,76 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
     setViewerItems(items)
     setViewerIndex(index)
     setViewerOpen(true)
-
-  const openFileViewer = (files: any[], index: number) => {
-    console.log("File clicked:", files[index]?.file_name)
-    const items = files.map(file => ({
-      id: file.id,
-      url: file.file_url,
-      name: file.file_name,
-      type: "file",
-      mime_type: file.mime_type
-    }))
-    setViewerItems(items)
-    setViewerIndex(index)
-    setViewerOpen(true)
-  }
   }
 
   const openFileViewer = (files: any[], index: number) => {
-    // Format files for MediaViewer component
+    console.log('=== FILE VIEWER CLICKED ===')
+    console.log('Files array:', files)
+    console.log('Index clicked:', index)
+    console.log('File being opened:', files[index])
+    
     const items = files.map(file => ({
       id: file.id,
       url: file.file_url,
       name: file.file_name,
       caption: file.file_name,
-      type: 'file' as const,
+      type: 'file',
       mime_type: file.mime_type || 'application/octet-stream'
     }))
     
+    console.log('MediaViewer items:', items)
     setViewerItems(items)
     setViewerIndex(index)
     setViewerOpen(true)
-
-  const openFileViewer = (files: any[], index: number) => {
-    console.log("File clicked:", files[index]?.file_name)
-    const items = files.map(file => ({
-      id: file.id,
-      url: file.file_url,
-      name: file.file_name,
-      type: "file",
-      mime_type: file.mime_type
-    }))
-    setViewerItems(items)
-    setViewerIndex(index)
-    setViewerOpen(true)
-  }
+    console.log('MediaViewer should now open')
   }
 
-  // Format the job description/overview with proper line breaks
   const formatJobOverview = (description: string | null | undefined) => {
     if (!description) return 'No overview available'
     
-    // Split by line breaks and format sections
     return description.split('\n').map((line, index) => {
-      // Check if it's a header line (SERVICES: or ADD-ONS:)
       if (line.includes('SERVICES:') || line.includes('ADD-ONS:')) {
         return (
-          <div key={index} className="font-semibold mt-2 mb-1">
+          <div key={index} className="font-semibold text-gray-900 mt-4 mb-2">
             {line}
           </div>
         )
       }
-      // Regular lines
-      if (line.trim()) {
+      
+      if (line.trim().startsWith('- ') || line.trim().startsWith('• ')) {
         return (
-          <div key={index} className="ml-2">
+          <div key={index} className="ml-4 text-gray-700">
             {line}
           </div>
         )
       }
-      // Empty lines for spacing
-      return <div key={index} className="h-2" />
+      
+      return (
+        <div key={index} className="text-gray-700">
+          {line}
+        </div>
+      )
     })
   }
 
+  const getStatusBadge = (status: string) => {
+    const statusColors = {
+      'scheduled': 'bg-blue-100 text-blue-800',
+      'in-progress': 'bg-yellow-100 text-yellow-800',
+      'completed': 'bg-green-100 text-green-800',
+      'cancelled': 'bg-red-100 text-red-800',
+    }
+    
+    return (
+      <Badge className={statusColors[status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </Badge>
+    )
+  }
+
   return (
-    <div className="max-w-7xl mx-auto p-4 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-start">
+    <div className="container mx-auto py-6 px-4">
+      <div className="flex justify-between items-start mb-6">
         <div className="flex items-start gap-4">
           <Link href="/jobs">
             <Button variant="ghost" size="sm">
@@ -415,17 +369,16 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Job {job.job_number}</h1>
-            <p className="text-muted-foreground">{job.title}</p>
+            <h1 className="text-2xl font-bold">Job {currentJob.job_number}</h1>
+            <p className="text-muted-foreground">{currentJob.title}</p>
           </div>
-          <Badge className={getStatusColor(job.scheduled_date ? 'scheduled' : job.status)}>
-            {job.scheduled_date ? 'SCHEDULED' : job.status.replace('_', ' ').toUpperCase()}
-          </Badge>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {getStatusBadge(currentJob.status)}
           {userRole === 'boss' && (
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
+              size="sm"
               onClick={() => setShowDeleteModal(true)}
             >
               <Trash2 className="h-4 w-4 mr-2" />
@@ -436,21 +389,24 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content - Left Side */}
         <div className="lg:col-span-2 space-y-6">
-          
-          {/* Technicians Card */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5" />
                 Assigned Technicians
-              </CardTitle>
                 <Button size="sm" variant="outline" onClick={() => { console.log("Manual debug trigger"); loadAssignedTechnicians(); }}>Debug Reload</Button>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {/* Assigned Technicians */}
+                {assignedTechnicians.length === 0 && (
+                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
+                    <p className="text-sm text-yellow-800">
+                      No technicians assigned (Debug: Check console for assignment data)
+                    </p>
+                  </div>
+                )}
                 {assignedTechnicians.map((tech) => (
                   <div key={tech.id} className="flex items-center justify-between p-2 bg-accent rounded">
                     <span>{tech.full_name || tech.email}</span>
@@ -465,13 +421,17 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                     )}
                   </div>
                 ))}
-                
-                {/* Add Technician Dropdown */}
+
                 {userRole === 'boss' && (
                   <select
                     className="w-full p-2 border rounded"
                     value=""
-                    onChange={(e) => e.target.value && handleTechnicianToggle(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleTechnicianToggle(e.target.value)
+                        e.target.value = ''
+                      }
+                    }}
                   >
                     <option value="">Add a technician...</option>
                     {technicians
@@ -483,19 +443,10 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                       ))}
                   </select>
                 )}
-                
-                {assignedTechnicians.length === 0 && (
-                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
-                    <p className="text-sm text-yellow-800">
-                      No technicians assigned (Debug: Check console for assignment data)
-                    </p>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Photos & Videos Card */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -506,12 +457,12 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
             <CardContent>
               {currentUserId && (
                 <MediaUpload
-                  jobId={job.id}
+                  jobId={currentJob.id}
                   userId={currentUserId}
                   onUploadComplete={loadJobMedia}
                 />
               )}
-              
+
               {jobPhotos.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
                   {jobPhotos.map((photo, index) => (
@@ -530,9 +481,9 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
                         />
                       )}
                       {photo.caption && (
-                        <p className="text-xs mt-1 text-muted-foreground truncate">
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-2 rounded-b">
                           {photo.caption}
-                        </p>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -541,240 +492,184 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
             </CardContent>
           </Card>
 
-          {/* Files Card */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <FileCheck className="h-5 w-5" />
+                <FileText className="h-5 w-5" />
                 Documents & Files
               </CardTitle>
             </CardHeader>
             <CardContent>
+              <div 
+                className="p-4 bg-yellow-50 border border-yellow-200 rounded mb-4"
+                onClick={() => {
+                  console.log('=== FILES DEBUG CLICK ===');
+                  console.log('Current jobFiles state:', jobFiles);
+                  console.log('Files count:', jobFiles.length);
+                  loadJobFiles();
+                }}
+                style={{ cursor: 'pointer' }}
+              >
+                <p className="text-sm text-yellow-800">
+                  DEBUG: Files loaded: {jobFiles.length} | Click here to reload files | Check console for details
+                </p>
+              </div>
+
               {currentUserId && (
                 <FileUpload
-                  jobId={job.id}
+                  jobId={currentJob.id}
                   userId={currentUserId}
                   onUploadComplete={loadJobFiles}
                 />
               )}
-              
+
               {jobFiles.length > 0 && (
                 <div className="space-y-2 mt-4">
                   {jobFiles.map((file, index) => (
-                    <div key={file.id} className="flex items-center justify-between p-2 border rounded">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
+                    <div key={file.id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50">
+                      <div 
+                        className="flex items-center gap-3 flex-1 cursor-pointer"
+                        onClick={() => {
+                          console.log('FILE NAME CLICKED!', file.file_name, 'Index:', index);
+                          openFileViewer(jobFiles, index);
+                        }}
+                      >
+                        <FileText className="h-5 w-5 text-muted-foreground" />
                         <div>
-                          <p className="text-sm font-medium">{file.file_name}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="font-medium text-blue-600 hover:text-blue-800">
+                            {file.file_name}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
                             {new Date(file.created_at).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
-                      <a
-                        href={file.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-500 hover:underline text-sm"
-                      >
-                        View
-                      </a>
+                      <div className="text-xs text-gray-500">
+                        Click filename to view
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
 
-          {/* Notes Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Internal Notes
-                </span>
-                {userRole === 'boss' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => isEditingNotes ? handleSaveNotes() : setIsEditingNotes(true)}
-                  >
-                    {isEditingNotes ? (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        Save
-                      </>
-                    ) : (
-                      <>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit
-                      </>
-                    )}
-                  </Button>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isEditingNotes ? (
-                <textarea
-                  value={notesText}
-                  onChange={(e) => setNotesText(e.target.value)}
-                  className="w-full p-2 border rounded min-h-[100px]"
-                  placeholder="Add notes..."
-                />
-              ) : (
-                <p className="text-muted-foreground">
-                  {job.notes || 'No notes yet'}
-                </p>
+              {jobFiles.length === 0 && (
+                <p className="text-muted-foreground">No files uploaded yet</p>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Sidebar */}
         <div className="space-y-6">
-          {/* Job Details Card */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Job Details</CardTitle>
-              <Button size="sm" variant="outline" onClick={() => setShowEditModal(true)}>
-                <Edit className="h-4 w-4 mr-1" />
-                Edit
-              </Button>
+              {userRole === 'boss' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowEditModal(true)}
+                >
+                  <Edit className="h-4 w-4 mr-1" />
+                  Edit
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Customer</p>
-                  <p className="font-medium">{job.customers?.name || job.customer_name || 'N/A'}</p>
+                  <h3 className="font-medium">Customer</h3>
+                  <p className="text-muted-foreground">{currentJob.customers?.name || 'No customer assigned'}</p>
                 </div>
-                
+
                 <div>
-                  <p className="text-sm text-muted-foreground">Job Type</p>
-                  <p className="font-medium">{job.job_type}</p>
+                  <h3 className="font-medium">Job Type</h3>
+                  <p className="text-muted-foreground">{currentJob.job_type}</p>
                 </div>
-                
+
                 <div>
-                  <p className="text-sm text-muted-foreground">Job Overview</p>
-                  <div className="font-medium">
-                    {formatJobOverview(job.description)}
+                  <h3 className="font-medium">Job Overview</h3>
+                  <div className="text-sm text-muted-foreground">
+                    {formatJobOverview(currentJob.description)}
                   </div>
                 </div>
-                
-                <div>
-                  <p className="text-sm text-muted-foreground">Scheduled Date</p>
-                  <p className="font-medium">
-                    {job.scheduled_date ? new Date(job.scheduled_date).toLocaleDateString() : 'Not scheduled'}
-                  </p>
-                </div>
-                
-                {job.scheduled_time && (
+
+                {currentJob.scheduled_date && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Scheduled Time</p>
-                    <p className="font-medium">
-                      {job.scheduled_time}
-                    </p>
+                    <h3 className="font-medium">Scheduled Date</h3>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      {new Date(currentJob.scheduled_date).toLocaleDateString()}
+                    </div>
                   </div>
                 )}
-                
-                <div>
-                  <p className="text-sm text-muted-foreground">Service Address</p>
-                  <p className="font-medium">
-                    {job.service_address || 'No address specified'}
-                  </p>
-                </div>
 
-                {/* Financial Information */}
-                {userRole === 'boss' && (
-                  <>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Value</p>
-                      <p className="font-medium">
-                        {formatCurrency(job.total_value || 0)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-muted-foreground">Payment Status</p>
-                      <Badge variant={job.payment_status === 'paid' ? 'default' : 'secondary'}>
-                        {job.payment_status || 'pending'}
-                      </Badge>
-                    </div>
-                  </>
-                )}
-
-                {/* Link to Proposal */}
-                {job.proposal_id && proposal && (
+                {currentJob.scheduled_time && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Related Proposal</p>
-                    <Link href={`/proposals/${job.proposal_id}`}>
-                      <Button variant="link" className="p-0 h-auto">
-                        <LinkIcon className="h-4 w-4 mr-1" />
-                        #{proposal.proposal_number}
-                      </Button>
-                    </Link>
+                    <h3 className="font-medium">Scheduled Time</h3>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      {currentJob.scheduled_time}
+                    </div>
                   </div>
                 )}
+
+                {currentJob.service_address && (
+                  <div>
+                    <h3 className="font-medium">Service Address</h3>
+                    <div className="flex items-start gap-2 text-muted-foreground">
+                      <MapPin className="h-4 w-4 mt-1 flex-shrink-0" />
+                      <p>{currentJob.service_address}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <h3 className="font-medium mb-2">Notes</h3>
+                  {isEditingNotes ? (
+                    <div className="space-y-2">
+                      <textarea
+                        value={notesText}
+                        onChange={(e) => setNotesText(e.target.value)}
+                        className="w-full p-2 border rounded-md resize-none"
+                        rows={4}
+                        placeholder="Add notes about this job..."
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setNotesText(currentJob.notes || '')
+                            setIsEditingNotes(false)
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button size="sm" onClick={handleSaveNotes}>
+                          <Save className="h-4 w-4 mr-1" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="min-h-[40px] p-2 border rounded-md cursor-pointer hover:bg-gray-50"
+                      onClick={() => setIsEditingNotes(true)}
+                    >
+                      {currentJob.notes || (
+                        <span className="text-muted-foreground">
+                          Click to add notes...
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Edit Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <h2 className="text-xl font-bold mb-4">Edit Job</h2>
-            {/* Add your edit form here */}
-            <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setShowEditModal(false)}>
-                Cancel
-              </Button>
-              <Button>Save Changes</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Job</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this job? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-muted-foreground">
-              Job #{job.job_number}: {job.title}
-            </p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Customer: {job.customers?.name || 'N/A'}
-            </p>
-          </div>
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setShowDeleteModal(false)}
-              disabled={isDeleting}
-            >
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive" 
-              onClick={handleDeleteJob}
-              disabled={isDeleting}
-            >
-              {isDeleting ? 'Deleting...' : 'Delete Job'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Media Viewer */}
       {viewerOpen && (
         <MediaViewer
           items={viewerItems}
@@ -783,40 +678,41 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
         />
       )}
 
-      {/* Edit Job Modal */}
       <EditJobModal
-        job={job}
+        job={currentJob}
         isOpen={showEditModal}
         onClose={() => setShowEditModal(false)}
         onJobUpdated={async () => {
-          // Refresh job data
-          const { data } = await supabase
-            .from('jobs')
-            .select(`
-              *,
-              customers!inner (
-                id,
-                name,
-                email,
-                phone,
-                address
-              ),
-              proposals (
-                id,
-                status,
-                total_amount
-              )
-            `)
-            .eq('id', job.id)
-            .single()
-          
-          if (data) {
-            setJob(data)
-          }
           setShowEditModal(false)
           toast.success('Job updated successfully')
         }}
       />
+
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Job</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this job? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteJob}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Job'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

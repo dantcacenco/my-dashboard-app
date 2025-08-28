@@ -560,7 +560,7 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
               
               {jobFiles.length > 0 && (
                 <div className="space-y-2 mt-4">
-                  {jobFiles.map((file) => (
+                  {jobFiles.map((file, index) => (
                     <div key={file.id} className="flex items-center justify-between p-2 border rounded">
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4" />
