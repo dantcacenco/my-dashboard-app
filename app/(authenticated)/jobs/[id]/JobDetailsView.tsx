@@ -236,21 +236,15 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
             <h1 className="text-2xl font-bold">Job {job.job_number}</h1>
             <p className="text-muted-foreground">{job.title}</p>
           </div>
-          <Badge className={`${getStatusColor(job.scheduled_date ? 'scheduled' : job.status)} text-white`}>
-            {(() => {
-              // Check payment status first for payment-related statuses
-              if (job.payment_status === 'paid' || job.status === 'completed') return 'COMPLETED'
-              if (job.payment_status === 'final_paid') return 'FINAL PAID'
-              if (job.payment_status === 'roughin_paid') return 'ROUGH IN PAID'
-              if (job.payment_status === 'deposit_paid') return 'DEPOSIT PAID'
-              // Then check if scheduled
-              if (job.scheduled_date) return 'SCHEDULED'
-              // Otherwise use the job status
-              return job.status?.toUpperCase().replace('_', ' ') || 'NOT SCHEDULED'
-            })()}
+          <Badge className={`${getStatusColor(job.status)} text-white`}>
+            {job.scheduled_date ? 'SCHEDULED' : (job.status?.toUpperCase().replace('_', ' ') || 'NOT SCHEDULED')}
           </Badge>
         </div>
         <div className="flex gap-2">
+          <Button onClick={handleEditClick}>
+            <Edit className="h-4 w-4 mr-2" />
+            Edit Job
+          </Button>
           <Button variant="destructive" onClick={handleDelete}>
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
