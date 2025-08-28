@@ -51,7 +51,7 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 
   // Refresh proposal data
   const refreshProposal = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('proposals')
       .select(`
         *,
@@ -62,7 +62,15 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
       .single()
     
     if (data) {
+      console.log('Refreshed proposal data:', data)
+      console.log('Payment status - deposit_paid_at:', data.deposit_paid_at)
+      console.log('Payment status - progress_paid_at:', data.progress_paid_at)
+      console.log('Payment status - final_paid_at:', data.final_paid_at)
+      console.log('Proposal status:', data.status)
       setProposal(data)
+    }
+    if (error) {
+      console.error('Error refreshing proposal:', error)
     }
   }
 
@@ -70,14 +78,19 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
   useEffect(() => {
     const payment = searchParams.get('payment')
     if (payment === 'success') {
-      // Immediately refresh proposal to show updated payment status
+      // Force refresh multiple times to ensure we get the latest data
       refreshProposal()
+      // Additional refresh after a short delay to handle any race conditions
+      setTimeout(() => refreshProposal(), 1000)
+      setTimeout(() => refreshProposal(), 2000)
     }
   }, [searchParams])
 
   useEffect(() => {
     // Poll for updates every 5 seconds if payment is in progress
-    if (proposal.status === 'approved' || proposal.status === 'deposit_paid' || proposal.status === 'progress_paid' || proposal.status === 'final_paid') {
+    if (proposal.status === 'approved' || proposal.status === 'deposit paid' || 
+        proposal.status === 'rough-in paid' || proposal.status === 'final paid' || 
+        proposal.status === 'completed') {
       const interval = setInterval(refreshProposal, 5000)
       return () => clearInterval(interval)
     }
@@ -506,8 +519,9 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
             </div>
 
             {/* Approval/Payment Section */}
-            {(proposal.status === 'approved' || proposal.status === 'deposit_paid' || 
-              proposal.status === 'progress_paid' || proposal.status === 'final_paid') ? (
+            {(proposal.status === 'approved' || proposal.status === 'deposit paid' || 
+              proposal.status === 'rough-in paid' || proposal.status === 'final paid' || 
+              proposal.status === 'completed') ? (
               <>
                 {/* Payment Schedule */}
                 <div className="space-y-6">

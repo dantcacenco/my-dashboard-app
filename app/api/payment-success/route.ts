@@ -33,17 +33,20 @@ export async function GET(request: NextRequest) {
       case 'deposit':
         updateData.deposit_paid_at = now
         updateData.total_paid = proposal.deposit_amount || 0
-        updateData.status = 'deposit_paid'  // Update status
+        updateData.status = 'deposit paid'  // Update status - use space not underscore
+        updateData.payment_stage = 'deposit'
         break
       case 'roughin':
         updateData.progress_paid_at = now
         updateData.total_paid = (proposal.deposit_amount || 0) + (proposal.progress_payment_amount || 0)
-        updateData.status = 'progress_paid'  // Update status
+        updateData.status = 'rough-in paid'  // Update status - use hyphen
+        updateData.payment_stage = 'roughin'
         break
       case 'final':
         updateData.final_paid_at = now
         updateData.total_paid = proposal.total
-        updateData.status = 'final_paid'  // Update status
+        updateData.status = 'completed'  // Change to 'completed' not 'final_paid'
+        updateData.payment_stage = 'complete'
         break
     }
     
