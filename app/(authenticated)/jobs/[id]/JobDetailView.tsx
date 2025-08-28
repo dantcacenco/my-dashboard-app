@@ -395,7 +395,6 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
               <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5" />
                 Assigned Technicians
-                <Button size="sm" variant="outline" onClick={() => { console.log("Manual debug trigger"); loadAssignedTechnicians(); }}>Debug Reload</Button>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -500,21 +499,6 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div 
-                className="p-4 bg-yellow-50 border border-yellow-200 rounded mb-4"
-                onClick={() => {
-                  console.log('=== FILES DEBUG CLICK ===');
-                  console.log('Current jobFiles state:', jobFiles);
-                  console.log('Files count:', jobFiles.length);
-                  loadJobFiles();
-                }}
-                style={{ cursor: 'pointer' }}
-              >
-                <p className="text-sm text-yellow-800">
-                  DEBUG: Files loaded: {jobFiles.length} | Click here to reload files | Check console for details
-                </p>
-              </div>
-
               {currentUserId && (
                 <FileUpload
                   jobId={currentJob.id}
@@ -620,6 +604,18 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
                       <MapPin className="h-4 w-4 mt-1 flex-shrink-0" />
                       <p>{currentJob.service_address}</p>
                     </div>
+                  </div>
+                )}
+
+                {proposal && (
+                  <div>
+                    <h3 className="font-medium">Related Proposal</h3>
+                    <Link href={`/proposals/${proposal.id}`}>
+                      <Button variant="outline" size="sm" className="w-full justify-start">
+                        <LinkIcon className="h-4 w-4 mr-1" />
+                        #{proposal.proposal_number} - ${proposal.total}
+                      </Button>
+                    </Link>
                   </div>
                 )}
 
