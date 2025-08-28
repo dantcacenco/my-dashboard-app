@@ -3,9 +3,12 @@
 export const PROPOSAL_STATUSES = {
   DRAFT: 'draft',
   SENT: 'sent', 
-  VIEWED: 'viewed',
   APPROVED: 'approved',
-  REJECTED: 'rejected'
+  REJECTED: 'rejected',
+  DEPOSIT_PAID: 'deposit paid',
+  ROUGH_IN_PAID: 'rough-in paid',
+  FINAL_PAID: 'final paid',
+  COMPLETED: 'completed'
 } as const
 
 export const JOB_STATUSES = {
@@ -22,7 +25,13 @@ export const JOB_STATUSES = {
 export function getJobStatusFromProposal(proposalStatus: string): string {
   switch (proposalStatus) {
     case PROPOSAL_STATUSES.APPROVED:
+    case PROPOSAL_STATUSES.DEPOSIT_PAID:
       return JOB_STATUSES.SCHEDULED
+    case PROPOSAL_STATUSES.ROUGH_IN_PAID:
+    case PROPOSAL_STATUSES.FINAL_PAID:
+      return JOB_STATUSES.IN_PROGRESS
+    case PROPOSAL_STATUSES.COMPLETED:
+      return JOB_STATUSES.COMPLETED
     case PROPOSAL_STATUSES.REJECTED:
       return JOB_STATUSES.CANCELLED
     default:
@@ -32,51 +41,50 @@ export function getJobStatusFromProposal(proposalStatus: string): string {
 
 /**
  * Maps job status to corresponding proposal status
- * Note: Proposals stay "approved" even when jobs are completed
- * The UI will show unified status based on job status
  */
 export function getProposalStatusFromJob(jobStatus: string): string {
   switch (jobStatus) {
+    case JOB_STATUSES.SCHEDULED:
+      return PROPOSAL_STATUSES.APPROVED
+    case JOB_STATUSES.IN_PROGRESS:
+      return PROPOSAL_STATUSES.ROUGH_IN_PAID // Assume work started means rough-in payment made
     case JOB_STATUSES.COMPLETED:
-      return PROPOSAL_STATUSES.APPROVED // Keep approved, show "Completed" in UI
+      return PROPOSAL_STATUSES.COMPLETED
     case JOB_STATUSES.CANCELLED:
       return PROPOSAL_STATUSES.REJECTED
-    case JOB_STATUSES.SCHEDULED:
-    case JOB_STATUSES.IN_PROGRESS:
-      return PROPOSAL_STATUSES.APPROVED
     default:
-      return PROPOSAL_STATUSES.APPROVED
+      return PROPOSAL_STATUSES.DRAFT
   }
 }
 
 /**
  * Gets the display status that should be shown to users
- * This ensures both job and proposal show consistent status
  */
 export function getUnifiedDisplayStatus(jobStatus: string, proposalStatus: string): string {
-  // Priority: Job status takes precedence for display
-  if (jobStatus === JOB_STATUSES.COMPLETED) {
+  // Priority: Use the most advanced status between job and proposal
+  
+  if (jobStatus === JOB_STATUSES.COMPLETED || proposalStatus === PROPOSAL_STATUSES.COMPLETED) {
     return 'Completed'
   }
   
-  if (jobStatus === JOB_STATUSES.CANCELLED) {
+  if (jobStatus === JOB_STATUSES.CANCELLED || proposalStatus === PROPOSAL_STATUSES.REJECTED) {
     return 'Cancelled'
   }
   
-  if (proposalStatus === PROPOSAL_STATUSES.REJECTED) {
-    return 'Cancelled'
+  if (proposalStatus === PROPOSAL_STATUSES.FINAL_PAID) {
+    return 'Final Payment Complete'
   }
   
-  // For active work
-  if (proposalStatus === PROPOSAL_STATUSES.APPROVED) {
-    switch (jobStatus) {
-      case JOB_STATUSES.SCHEDULED:
-        return 'Scheduled'
-      case JOB_STATUSES.IN_PROGRESS:
-        return 'In Progress'
-      default:
-        return 'Approved'
-    }
+  if (proposalStatus === PROPOSAL_STATUSES.ROUGH_IN_PAID || jobStatus === JOB_STATUSES.IN_PROGRESS) {
+    return 'In Progress'
+  }
+  
+  if (proposalStatus === PROPOSAL_STATUSES.DEPOSIT_PAID) {
+    return 'Deposit Paid'
+  }
+  
+  if (proposalStatus === PROPOSAL_STATUSES.APPROVED || jobStatus === JOB_STATUSES.SCHEDULED) {
+    return 'Approved'
   }
   
   // Pre-work statuses
@@ -85,14 +93,47 @@ export function getUnifiedDisplayStatus(jobStatus: string, proposalStatus: strin
       return 'Draft'
     case PROPOSAL_STATUSES.SENT:
       return 'Sent'
-    case PROPOSAL_STATUSES.VIEWED:
-      return 'Viewed'
-    case PROPOSAL_STATUSES.APPROVED:
-      return 'Approved'
-    case PROPOSAL_STATUSES.REJECTED:
-      return 'Rejected'
     default:
       return jobStatus.charAt(0).toUpperCase() + jobStatus.slice(1).replace('_', ' ')
+  }
+}
+
+/**
+ * Synchronize job and proposal statuses bidirectionally
+ */
+export async function syncJobProposalStatus(
+  supabase: any,
+  jobId: string,
+  proposalId: string,
+  newStatus: string,
+  updatedBy: 'job' | 'proposal'
+) {
+  try {
+    if (updatedBy === 'job') {
+      // Job status changed, update proposal accordingly
+      const newProposalStatus = getProposalStatusFromJob(newStatus)
+      
+      await supabase
+        .from('proposals')
+        .update({ status: newProposalStatus })
+        .eq('id', proposalId)
+        
+      console.log(`Synced proposal ${proposalId}: ${newProposalStatus} (from job: ${newStatus})`)
+      
+    } else {
+      // Proposal status changed, update job accordingly  
+      const newJobStatus = getJobStatusFromProposal(newStatus)
+      
+      await supabase
+        .from('jobs')
+        .update({ status: newJobStatus })
+        .eq('id', jobId)
+        
+      console.log(`Synced job ${jobId}: ${newJobStatus} (from proposal: ${newStatus})`)
+    }
+  } catch (error) {
+    console.error('Error syncing job/proposal status:', error)
+    throw error
   }
 }
 
