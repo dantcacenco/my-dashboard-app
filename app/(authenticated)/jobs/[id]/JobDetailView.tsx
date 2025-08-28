@@ -291,15 +291,11 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
             <h1 className="text-2xl font-bold">Job {job.job_number}</h1>
             <p className="text-muted-foreground">{job.title}</p>
           </div>
-          <Badge className={getStatusColor(job.status)}>
-            {job.status.replace('_', ' ').toUpperCase()}
+          <Badge className={getStatusColor(job.scheduled_date ? 'scheduled' : job.status)}>
+            {job.scheduled_date ? 'SCHEDULED' : job.status.replace('_', ' ').toUpperCase()}
           </Badge>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowEditModal(true)}>
-            <Edit className="h-4 w-4 mr-2" />
-            Edit Job
-          </Button>
           {userRole === 'boss' && (
             <Button 
               variant="destructive" 
@@ -508,8 +504,12 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
         <div className="space-y-6">
           {/* Job Details Card */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Job Details</CardTitle>
+              <Button size="sm" variant="outline" onClick={() => setShowEditModal(true)}>
+                <Edit className="h-4 w-4 mr-1" />
+                Edit
+              </Button>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
