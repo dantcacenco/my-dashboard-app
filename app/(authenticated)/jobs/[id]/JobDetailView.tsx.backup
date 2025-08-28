@@ -331,6 +331,20 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
     setViewerItems(items)
     setViewerIndex(index)
     setViewerOpen(true)
+
+  const openFileViewer = (files: any[], index: number) => {
+    console.log("File clicked:", files[index]?.file_name)
+    const items = files.map(file => ({
+      id: file.id,
+      url: file.file_url,
+      name: file.file_name,
+      type: "file",
+      mime_type: file.mime_type
+    }))
+    setViewerItems(items)
+    setViewerIndex(index)
+    setViewerOpen(true)
+  }
   }
 
   const openFileViewer = (files: any[], index: number) => {
@@ -347,6 +361,20 @@ export default function JobDetailView({ job: initialJob, userRole, userId }: Job
     setViewerItems(items)
     setViewerIndex(index)
     setViewerOpen(true)
+
+  const openFileViewer = (files: any[], index: number) => {
+    console.log("File clicked:", files[index]?.file_name)
+    const items = files.map(file => ({
+      id: file.id,
+      url: file.file_url,
+      name: file.file_name,
+      type: "file",
+      mime_type: file.mime_type
+    }))
+    setViewerItems(items)
+    setViewerIndex(index)
+    setViewerOpen(true)
+  }
   }
 
   // Format the job description/overview with proper line breaks
