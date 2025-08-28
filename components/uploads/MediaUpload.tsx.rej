@@ -1,0 +1,9 @@
+@@ -47,6 +47,8 @@
+     for (const file of selectedFiles) {
+       try {
+         // Upload to storage with proper path
++        const fileName = `${Date.now()}-${file.name}`
++        const filePath = `job-photos/${jobId}/${fileName}`
+         
+         const { data: uploadData, error: uploadError } = await supabase.storage
+           .from('job-photos')
