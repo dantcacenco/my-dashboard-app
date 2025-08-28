@@ -23,6 +23,11 @@ export default function CalendarView({
   const [selectedJob, setSelectedJob] = useState<any>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   
+  // DEBUG: Log what we're receiving
+  console.log('CalendarView DEBUG - monthlyJobs:', monthlyJobs)
+  console.log('CalendarView DEBUG - monthlyJobs length:', monthlyJobs?.length)
+  console.log('CalendarView DEBUG - First job:', monthlyJobs?.[0])
+  
   // Calculate actual today's jobs from monthlyJobs
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
@@ -54,9 +59,14 @@ export default function CalendarView({
 
   const getJobsForDay = (day: number) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    return monthlyJobs.filter(job => 
-      job.scheduled_date && job.scheduled_date.split('T')[0] === dateStr
-    )
+    console.log('CalendarView DEBUG - Looking for jobs on:', dateStr)
+    const dayJobs = monthlyJobs.filter(job => {
+      const jobDate = job.scheduled_date && job.scheduled_date.split('T')[0]
+      console.log('CalendarView DEBUG - Job date comparison:', jobDate, '===', dateStr, jobDate === dateStr)
+      return jobDate === dateStr
+    })
+    console.log('CalendarView DEBUG - Found jobs for', dateStr, ':', dayJobs)
+    return dayJobs
   }
 
   const getStatusColor = (status: string) => {

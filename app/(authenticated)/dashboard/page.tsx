@@ -65,6 +65,11 @@ export default async function DashboardPage() {
     .lte('scheduled_date', endOfMonth.toISOString())
     .order('scheduled_date', { ascending: true })
 
+  // DEBUG: Log the jobs fetched
+  console.log('Dashboard DEBUG - Jobs fetched:', jobs)
+  console.log('Dashboard DEBUG - Jobs count:', jobs?.length)
+  console.log('Dashboard DEBUG - Date range:', startOfMonth.toISOString(), 'to', endOfMonth.toISOString())
+
   // Count today's jobs
   const todayStr = today.toISOString().split('T')[0]
   const todaysJobsCount = jobs?.filter(j => 
@@ -168,6 +173,9 @@ export default async function DashboardPage() {
     todaysJobsCount,
     monthlyJobs: jobs || []
   }
+
+  // DEBUG: Log what we're passing to DashboardContent
+  console.log('Dashboard DEBUG - Passing monthlyJobs to DashboardContent:', dashboardData.monthlyJobs)
 
   return <DashboardContent data={dashboardData} />
 }
