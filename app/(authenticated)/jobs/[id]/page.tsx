@@ -32,7 +32,7 @@ export default async function JobDetailPage({
   
   const userRole = profile?.role || 'technician'
 
-  // Fetch job with customer info
+  // Fetch job with customer info and technician data
   const { data: job, error } = await supabase
     .from('jobs')
     .select(`
@@ -46,6 +46,19 @@ export default async function JobDetailPage({
     `)
     .eq('id', id)
     .single()
+  
+  // If job has technician_id, fetch technician info
+  if (job && job.technician_id) {
+    const { data: technician } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, role')
+      .eq('id', job.technician_id)
+      .single()
+    
+    if (technician) {
+      job.profiles = technician
+    }
+  }
 
   // If job has a proposal_id, fetch it separately
   if (job && job.proposal_id) {

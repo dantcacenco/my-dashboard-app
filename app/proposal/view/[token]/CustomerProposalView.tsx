@@ -66,6 +66,15 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
     }
   }
 
+  // Check for payment success on mount
+  useEffect(() => {
+    const payment = searchParams.get('payment')
+    if (payment === 'success') {
+      // Immediately refresh proposal to show updated payment status
+      refreshProposal()
+    }
+  }, [searchParams])
+
   useEffect(() => {
     // Poll for updates every 5 seconds if payment is in progress
     if (proposal.status === 'approved' || proposal.status === 'deposit_paid' || proposal.status === 'progress_paid' || proposal.status === 'final_paid') {
