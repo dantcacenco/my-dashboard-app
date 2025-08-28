@@ -26,6 +26,11 @@
    - ✅ Shows payment-specific statuses (Deposit Paid, Rough-In Paid, etc.)
    - ✅ Color-coded badges for all status types
 
+3. **Jobs List View**
+   - ✅ Shows unified status from linked proposals
+   - ✅ Displays "Approved" instead of "scheduled" when proposal is approved
+   - ✅ Consistent status display across all views
+
 ### Backend Logic (DEPLOYED)
 1. **Status Sync Module** (`/lib/status-sync.ts`)
    - ✅ `getUnifiedDisplayStatus` - Prioritizes proposal payment statuses
@@ -73,7 +78,9 @@ The system now shows the most informative status:
 
 ### Core Implementation
 - `/lib/status-sync.ts` - Status synchronization logic
-- `/app/(authenticated)/jobs/[id]/JobDetailView.tsx` - Job status display
+- `/app/(authenticated)/jobs/[id]/JobDetailView.tsx` - Job detail status display
+- `/app/(authenticated)/jobs/page.tsx` - Jobs list data fetching with proposals
+- `/app/(authenticated)/jobs/JobsList.tsx` - Jobs list status display
 - `/app/(authenticated)/proposals/[id]/edit/ProposalEditor.tsx` - Proposal editing
 
 ### SQL Migrations (Executed)
