@@ -49,6 +49,8 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
   useEffect(() => {
     console.log('JobDetailsView mounted with:')
     console.log('- Job:', job)
+    console.log('- Job scheduled_date:', job.scheduled_date)
+    console.log('- Job technician_id:', job.technician_id)
     console.log('- Photos count:', jobPhotos.length)
     console.log('- Files count:', jobFiles.length)
     
