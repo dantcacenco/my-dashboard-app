@@ -42,6 +42,7 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
   const [editedJob, setEditedJob] = useState(job)
   const [isSaving, setIsSaving] = useState(false)
   const [technicians, setTechnicians] = useState<any[]>([])
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
 
   // Debug logging
   useEffect(() => {
@@ -120,7 +121,11 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
 
   const handleEditClick = () => {
     console.log('Edit button clicked, opening modal with job:', job)
-    setEditedJob({...job})
+    setEditedJob({
+      ...job,
+      scheduled_date: job.scheduled_date ? job.scheduled_date.split('T')[0] : '',
+      scheduled_time: job.scheduled_time || ''
+    })
     setIsEditModalOpen(true)
   }
 
@@ -306,7 +311,8 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
                           <img
                             src={photo.url}
                             alt={`Photo ${index + 1}`}
-                            className="w-full h-32 object-cover rounded"
+                            className="w-full h-32 object-cover rounded cursor-pointer"
+                            onClick={() => setSelectedPhoto(photo.url)}
                             onError={(e) => {
                               console.error(`Image failed to load: ${photo.url}`)
                               const target = e.target as HTMLImageElement
@@ -354,14 +360,29 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
                           </p>
                         </div>
                       </div>
-                      <a
-                        href={file.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-500 hover:underline text-sm"
-                      >
-                        View
-                      </a>
+                      <div className="flex gap-2">
+                        <a
+                          href={file.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:underline text-sm"
+                        >
+                          View
+                        </a>
+                        <button
+                          onClick={() => {
+                            const link = document.createElement('a')
+                            link.href = file.url
+                            link.download = file.file_name || 'download'
+                            document.body.appendChild(link)
+                            link.click()
+                            document.body.removeChild(link)
+                          }}
+                          className="text-blue-500 hover:underline text-sm"
+                        >
+                          Download
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -558,6 +579,28 @@ export default function JobDetailsView({ job: initialJob, jobPhotos: initialPhot
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Photo Viewer Modal */}
+      {selectedPhoto && (
+        <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] p-4">
+            <DialogHeader>
+              <DialogTitle>Photo View</DialogTitle>
+            </DialogHeader>
+            <div className="flex items-center justify-center">
+              <img
+                src={selectedPhoto}
+                alt="Full size"
+                className="max-w-full max-h-[70vh] object-contain"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement
+                  target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTVlN2ViIi8+CiAgPHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyMCIgZmlsbD0iIzZiNzI4MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+RmFpbGVkIHRvIGxvYWQ8L3RleHQ+Cjwvc3ZnPg=='
+                }}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
