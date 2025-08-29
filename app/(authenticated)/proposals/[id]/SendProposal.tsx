@@ -27,7 +27,7 @@ export default function SendProposal({
 }: SendProposalProps) {
   const [email, setEmail] = useState(customerEmail || '')
   const [message, setMessage] = useState(
-    `Please find attached your proposal #${proposalNumber} for HVAC services.\n\nTotal Amount: $${total?.toFixed(2) || '0.00'}\n\nYou can view and approve your proposal by clicking the link in the email.\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nYour HVAC Team`
+    `Please find attached your proposal #${proposalNumber} for HVAC services.\n\nTotal Amount: $${total?.toFixed(2) || '0.00'}\n\nYou can view and approve your proposal by clicking the link in the email.\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nFair Air HC`
   )
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState('')
