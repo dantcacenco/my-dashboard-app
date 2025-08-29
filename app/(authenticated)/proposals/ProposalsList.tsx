@@ -207,7 +207,6 @@ export default function ProposalsList({ initialProposals }: ProposalListProps) {
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Updated</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -229,26 +228,6 @@ export default function ProposalsList({ initialProposals }: ProposalListProps) {
                   </Badge>
                 </TableCell>
                 <TableCell>{formatDate(proposal.updated_at)}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Link href={`/proposals/${proposal.id}`}>
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-4 w-4 mr-2" />
-                        View
-                      </Button>
-                    </Link>
-                    {proposal.status === 'draft' && (
-                      <Button 
-                        size="sm" 
-                        className="bg-green-600 hover:bg-green-700"
-                        onClick={(e) => handleSendProposal(proposal.id, e)}
-                      >
-                        <Send className="h-4 w-4 mr-2" />
-                        Send
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>

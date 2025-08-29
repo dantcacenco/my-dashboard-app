@@ -588,9 +588,6 @@ export default function JobDetailView({ job, userId, userRole: initialUserRole }
                             </p>
                           </div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          Click filename to view
-                        </div>
                       </div>
                     ))}
                   </div>
