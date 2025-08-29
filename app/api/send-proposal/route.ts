@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { Resend } from 'resend'
+import { trackEmailSend } from '@/lib/email-tracking'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
       const { data: emailData, error: emailError } = await resend.emails.send({
         from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
         to: email,
+        replyTo: process.env.REPLY_TO_EMAIL || process.env.BUSINESS_EMAIL || 'dantcacenco@gmail.com',
         subject: `Your Proposal #${proposalNumber} is Ready`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -79,6 +81,9 @@ export async function POST(request: Request) {
       if (emailError) {
         console.error('Email send error:', emailError)
         // Don't fail the whole request if email fails
+      } else {
+        // Track email send for limit monitoring
+        await trackEmailSend()
       }
     } catch (emailErr) {
       console.error('Email service error:', emailErr)
