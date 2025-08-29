@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar, CalendarDays } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import JobEditModal from '@/components/JobEditModal'
 import { getUnifiedDisplayStatus } from '@/lib/status-sync'
 
@@ -22,6 +23,7 @@ export default function CalendarView({
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedJob, setSelectedJob] = useState<any>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<'month' | 'week'>('month')
   
   // Calculate actual today's jobs from monthlyJobs
   const today = new Date()
@@ -39,12 +41,41 @@ export default function CalendarView({
     return new Date(date.getFullYear(), date.getMonth(), 1).getDay()
   }
 
-  const previousMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))
+  const getWeekStart = (date: Date) => {
+    const d = new Date(date)
+    const day = d.getDay()
+    const diff = d.getDate() - day
+    return new Date(d.setDate(diff))
   }
 
-  const nextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))
+  const getWeekDays = (startDate: Date) => {
+    const days = []
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(startDate)
+      day.setDate(startDate.getDate() + i)
+      days.push(day)
+    }
+    return days
+  }
+
+  const previousPeriod = () => {
+    if (viewMode === 'month') {
+      setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))
+    } else {
+      const newDate = new Date(currentDate)
+      newDate.setDate(currentDate.getDate() - 7)
+      setCurrentDate(newDate)
+    }
+  }
+
+  const nextPeriod = () => {
+    if (viewMode === 'month') {
+      setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))
+    } else {
+      const newDate = new Date(currentDate)
+      newDate.setDate(currentDate.getDate() + 7)
+      setCurrentDate(newDate)
+    }
   }
 
   const monthNames = [
@@ -52,19 +83,22 @@ export default function CalendarView({
     'July', 'August', 'September', 'October', 'November', 'December'
   ]
 
-  const getJobsForDay = (day: number) => {
-    const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const getJobsForDay = (day: number | Date) => {
+    let dateStr: string
+    if (day instanceof Date) {
+      dateStr = day.toISOString().split('T')[0]
+    } else {
+      dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
     return monthlyJobs.filter(job => 
       job.scheduled_date && job.scheduled_date.split('T')[0] === dateStr
     )
   }
 
   const getStatusColor = (status: string) => {
-    // Get unified display status if proposal exists
     const displayStatus = status.toLowerCase().replace(' ', '_').replace('-', '_')
     
     switch (displayStatus) {
-      // Proposal statuses
       case 'draft': return 'bg-gray-100 text-gray-800'
       case 'sent': return 'bg-blue-100 text-blue-800'
       case 'approved': return 'bg-green-100 text-green-800'
@@ -73,7 +107,6 @@ export default function CalendarView({
       case 'rough_in_paid': return 'bg-yellow-100 text-yellow-800'
       case 'final_payment_complete': return 'bg-green-100 text-green-800'
       case 'final_paid': return 'bg-green-100 text-green-800'
-      // Job statuses
       case 'not_scheduled': return 'bg-gray-100 text-gray-800'
       case 'scheduled': return 'bg-blue-100 text-blue-800'
       case 'in_progress': return 'bg-purple-100 text-purple-800'
@@ -107,6 +140,10 @@ export default function CalendarView({
     setSelectedJob(null)
   }
 
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
   if (!isExpanded) {
     return (
       <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={onToggle}>
@@ -125,44 +162,131 @@ export default function CalendarView({
     )
   }
 
-  const daysInMonth = getDaysInMonth(currentDate)
-  const firstDay = getFirstDayOfMonth(currentDate)
-  const days = []
+  const renderWeekView = () => {
+    const weekStart = getWeekStart(currentDate)
+    const weekDays = getWeekDays(weekStart)
+    const weekEnd = weekDays[6]
 
-  // Add empty cells for days before month starts
-  for (let i = 0; i < firstDay; i++) {
-    days.push(<div key={`empty-${i}`} className="border border-gray-200 p-2 min-h-[100px] bg-gray-50"></div>)
+    return (
+      <>
+        <div className="flex justify-between items-center mb-4">
+          <button onClick={previousPeriod} className="p-2 hover:bg-gray-100 rounded">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <h3 className="text-lg font-semibold">
+            {formatDate(weekStart)} - {formatDate(weekEnd)}, {weekStart.getFullYear()}
+          </h3>
+          <button onClick={nextPeriod} className="p-2 hover:bg-gray-100 rounded">
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-0">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => {
+            const date = weekDays[index]
+            const dayJobs = getJobsForDay(date)
+            const isToday = date.toDateString() === today.toDateString()
+            
+            return (
+              <div key={day} className="border border-gray-200">
+                <div className="font-semibold text-center p-2 bg-gray-100 text-sm">
+                  {day}
+                </div>
+                <div className={`p-2 min-h-[200px] ${isToday ? 'bg-blue-50' : 'bg-white'}`}>
+                  <div className="font-medium text-sm mb-2">
+                    {date.getDate()}
+                  </div>
+                  <div className="space-y-1">
+                    {dayJobs.map(job => {
+                      const displayStatus = getUnifiedDisplayStatus(job.status, job.proposals?.status)
+                      return (
+                        <div 
+                          key={job.id} 
+                          className={`text-xs p-1 rounded cursor-pointer hover:opacity-80 transition-opacity ${getStatusColor(displayStatus)}`}
+                          onClick={() => handleJobClick(job)}
+                        >
+                          <div className="font-medium">{job.job_number}</div>
+                          {job.scheduled_time && (
+                            <div className="text-[10px] opacity-75">{job.scheduled_time}</div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </>
+    )
   }
 
-  // Add days of the month
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dayJobs = getJobsForDay(day)
-    const isToday = day === today.getDate() && 
-                   currentDate.getMonth() === today.getMonth() && 
-                   currentDate.getFullYear() === today.getFullYear()
+  const renderMonthView = () => {
+    const daysInMonth = getDaysInMonth(currentDate)
+    const firstDay = getFirstDayOfMonth(currentDate)
+    const days = []
 
-    days.push(
-      <div 
-        key={day} 
-        className={`border border-gray-200 p-2 min-h-[100px] ${isToday ? 'bg-blue-50' : 'bg-white'}`}
-      >
-        <div className="font-semibold text-sm mb-1">{day}</div>
-        {dayJobs.slice(0, 2).map(job => {
-          const displayStatus = getUnifiedDisplayStatus(job.status, job.proposals?.status)
-          return (
-            <div 
-              key={job.id} 
-              className={`text-xs p-1 mb-1 rounded cursor-pointer hover:opacity-80 transition-opacity ${getStatusColor(displayStatus)}`}
-              onClick={() => handleJobClick(job)}
-            >
-              {job.job_number}
+    // Add empty cells for days before month starts
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<div key={`empty-${i}`} className="border border-gray-200 p-2 min-h-[100px] bg-gray-50"></div>)
+    }
+
+    // Add days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayJobs = getJobsForDay(day)
+      const isToday = day === today.getDate() && 
+                     currentDate.getMonth() === today.getMonth() && 
+                     currentDate.getFullYear() === today.getFullYear()
+
+      days.push(
+        <div 
+          key={day} 
+          className={`border border-gray-200 p-2 min-h-[100px] ${isToday ? 'bg-blue-50' : 'bg-white'}`}
+        >
+          <div className="font-semibold text-sm mb-1">{day}</div>
+          {dayJobs.slice(0, 2).map(job => {
+            const displayStatus = getUnifiedDisplayStatus(job.status, job.proposals?.status)
+            return (
+              <div 
+                key={job.id} 
+                className={`text-xs p-1 mb-1 rounded cursor-pointer hover:opacity-80 transition-opacity ${getStatusColor(displayStatus)}`}
+                onClick={() => handleJobClick(job)}
+              >
+                {job.job_number}
+              </div>
+            )
+          })}
+          {dayJobs.length > 2 && (
+            <div className="text-xs text-gray-500">+{dayJobs.length - 2} more</div>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <>
+        <div className="flex justify-between items-center mb-4">
+          <button onClick={previousPeriod} className="p-2 hover:bg-gray-100 rounded">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <h3 className="text-lg font-semibold">
+            {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+          </h3>
+          <button onClick={nextPeriod} className="p-2 hover:bg-gray-100 rounded">
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-0">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="font-semibold text-center p-2 border border-gray-200 bg-gray-100">
+              {day}
             </div>
-          )
-        })}
-        {dayJobs.length > 2 && (
-          <div className="text-xs text-gray-500">+{dayJobs.length - 2} more</div>
-        )}
-      </div>
+          ))}
+          {days}
+        </div>
+      </>
     )
   }
 
@@ -172,32 +296,35 @@ export default function CalendarView({
         <CardHeader>
           <CardTitle className="flex justify-between items-center">
             <span>Calendar</span>
-            <button onClick={onToggle} className="text-sm font-normal text-blue-500 hover:underline">
-              Collapse
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                <Button
+                  size="sm"
+                  variant={viewMode === 'week' ? 'default' : 'ghost'}
+                  onClick={() => setViewMode('week')}
+                  className="h-7 px-2"
+                >
+                  <CalendarDays className="h-4 w-4 mr-1" />
+                  Week
+                </Button>
+                <Button
+                  size="sm"
+                  variant={viewMode === 'month' ? 'default' : 'ghost'}
+                  onClick={() => setViewMode('month')}
+                  className="h-7 px-2"
+                >
+                  <Calendar className="h-4 w-4 mr-1" />
+                  Month
+                </Button>
+              </div>
+              <button onClick={onToggle} className="text-sm font-normal text-blue-500 hover:underline">
+                Collapse
+              </button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex justify-between items-center mb-4">
-            <button onClick={previousMonth} className="p-2 hover:bg-gray-100 rounded">
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <h3 className="text-lg font-semibold">
-              {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-            </h3>
-            <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded">
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-0">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="font-semibold text-center p-2 border border-gray-200 bg-gray-100">
-                {day}
-              </div>
-            ))}
-            {days}
-          </div>
+          {viewMode === 'week' ? renderWeekView() : renderMonthView()}
 
           {/* Updated Status Legend - Unified System */}
           <div className="flex flex-wrap gap-4 mt-4 text-sm">

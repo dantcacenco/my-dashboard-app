@@ -151,7 +151,67 @@ export default async function DashboardPage() {
     customers: p.customers ? [p.customers] : null
   }))
 
+  // Fetch recent activities from multiple sources
   const recentActivities: any[] = []
+  
+  // Get recent proposal activities (created, approved, rejected)
+  const recentProposalEvents = proposalList.slice(0, 20).map(p => {
+    let activity_type = 'proposal_created'
+    let description = `Proposal #${p.proposal_number} created`
+    
+    if (p.status === 'approved') {
+      activity_type = 'proposal_approved'
+      description = `Proposal #${p.proposal_number} approved by ${p.customers?.name || 'customer'}`
+    } else if (p.status === 'rejected') {
+      activity_type = 'proposal_rejected'
+      description = `Proposal #${p.proposal_number} rejected`
+    } else if (p.status === 'sent') {
+      activity_type = 'proposal_sent'
+      description = `Proposal #${p.proposal_number} sent to ${p.customers?.name || 'customer'}`
+    } else if (p.status === 'deposit paid') {
+      activity_type = 'payment_received'
+      description = `Deposit payment received for #${p.proposal_number}`
+    } else if (p.status === 'rough-in paid') {
+      activity_type = 'payment_received'
+      description = `Rough-in payment received for #${p.proposal_number}`
+    } else if (p.status === 'completed') {
+      activity_type = 'payment_received'
+      description = `Final payment received for #${p.proposal_number}`
+    }
+    
+    return {
+      id: p.id,
+      activity_type,
+      description,
+      created_at: p.created_at,
+      proposals: [{
+        proposal_number: p.proposal_number,
+        title: p.title || `Proposal #${p.proposal_number}`
+      }]
+    }
+  })
+
+  // Get recent job activities
+  const { data: recentJobs } = await supabase
+    .from('jobs')
+    .select('*, customers(name)')
+    .order('created_at', { ascending: false })
+    .limit(10)
+  
+  const jobActivities = (recentJobs || []).map(job => ({
+    id: job.id,
+    activity_type: 'job_created',
+    description: `Job #${job.job_number} created for ${job.customers?.name || 'customer'}`,
+    created_at: job.created_at,
+    proposals: null
+  }))
+
+  // Combine and sort all activities by date
+  const allActivities = [...recentProposalEvents, ...jobActivities]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 15) // Show 15 most recent activities
+
+  recentActivities.push(...allActivities)
 
   const dashboardData = {
     metrics: {

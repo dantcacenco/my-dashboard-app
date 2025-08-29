@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts'
 import CalendarView from '@/components/CalendarView'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -52,8 +51,8 @@ interface DashboardContentProps {
 }
 
 export default function DashboardContent({ data }: DashboardContentProps) {
-  const [calendarExpanded, setCalendarExpanded] = useState(false)
-  const { metrics, monthlyRevenue, statusCounts, recentProposals, recentActivities, todaysJobsCount = 0, monthlyJobs = [] } = data
+  const [calendarExpanded, setCalendarExpanded] = useState(true) // Default to expanded
+  const { recentProposals, recentActivities, todaysJobsCount = 0, monthlyJobs = [] } = data
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -80,6 +79,9 @@ export default function DashboardContent({ data }: DashboardContentProps) {
       viewed: 'bg-purple-100 text-purple-800',
       approved: 'bg-green-100 text-green-800',
       rejected: 'bg-red-100 text-red-800',
+      'deposit paid': 'bg-blue-100 text-blue-800',
+      'rough-in paid': 'bg-yellow-100 text-yellow-800',
+      'completed': 'bg-emerald-100 text-emerald-800',
       paid: 'bg-emerald-100 text-emerald-800'
     }
     return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-800'
@@ -87,142 +89,34 @@ export default function DashboardContent({ data }: DashboardContentProps) {
 
   const getActivityIcon = (activityType: string) => {
     switch (activityType) {
-      case 'created':
+      case 'proposal_created':
         return '➕'
-      case 'sent':
+      case 'proposal_sent':
         return '📧'
-      case 'viewed':
-        return '👁️'
-      case 'approved':
+      case 'proposal_approved':
         return '✅'
-      case 'rejected':
+      case 'proposal_rejected':
         return '❌'
       case 'payment_received':
         return '💰'
-      default:
+      case 'job_created':
+        return '🔧'
+      case 'job_updated':
         return '📝'
+      default:
+        return '📋'
     }
-  }
-
-  const statusData = Object.entries(statusCounts).map(([key, value]) => ({
-    name: key.charAt(0).toUpperCase() + key.slice(1),
-    value
-  }))
-
-  const COLORS = ['#94a3b8', '#3b82f6', '#a855f7', '#10b981', '#ef4444', '#10b981']
-
-  // Custom label function with proper typing
-  const renderLabel = (entry: any) => {
-    const percent = entry.percent || 0
-    return `${entry.name} ${(percent * 100).toFixed(0)}%`
   }
 
   return (
     <div className="space-y-6">
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Proposals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{metrics.totalProposals}</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(metrics.totalRevenue)}</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Approved</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{metrics.approvedProposals}</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Conversion Rate</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{metrics.conversionRate.toFixed(1)}%</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Payment Rate</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{metrics.paymentRate.toFixed(1)}%</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Calendar View - Pass jobs data */}
+      {/* Calendar View - Now the primary focus */}
       <CalendarView 
         isExpanded={calendarExpanded} 
         onToggle={() => setCalendarExpanded(!calendarExpanded)}
         todaysJobsCount={todaysJobsCount}
         monthlyJobs={monthlyJobs}
       />
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Revenue Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Monthly Revenue Trend</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={monthlyRevenue}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Status Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Proposal Status Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={renderLabel}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {statusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Recent Activity Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -238,28 +132,32 @@ export default function DashboardContent({ data }: DashboardContentProps) {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {recentProposals.map((proposal) => (
-                <div key={proposal.id} className="flex items-center justify-between border-b pb-3 last:border-0">
-                  <div className="flex-1">
-                    <Link 
-                      href={`/proposals/${proposal.id}`}
-                      className="font-medium text-blue-600 hover:text-blue-700"
-                    >
-                      #{proposal.proposal_number}
-                    </Link>
-                    <p className="text-sm text-gray-600">{proposal.title}</p>
-                    <p className="text-xs text-gray-500">
-                      {proposal.customers?.[0]?.name || 'No customer'}
-                    </p>
+              {recentProposals.length > 0 ? (
+                recentProposals.map((proposal) => (
+                  <div key={proposal.id} className="flex items-center justify-between border-b pb-3 last:border-0">
+                    <div className="flex-1">
+                      <Link 
+                        href={`/proposals/${proposal.id}`}
+                        className="font-medium text-blue-600 hover:text-blue-700"
+                      >
+                        #{proposal.proposal_number}
+                      </Link>
+                      <p className="text-sm text-gray-600">{proposal.title}</p>
+                      <p className="text-xs text-gray-500">
+                        {proposal.customers?.[0]?.name || 'No customer'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium">{formatCurrency(proposal.total)}</p>
+                      <span className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(proposal.status)}`}>
+                        {proposal.status}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium">{formatCurrency(proposal.total)}</p>
-                    <span className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(proposal.status)}`}>
-                      {proposal.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-sm text-gray-500">No proposals yet</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -270,22 +168,22 @@ export default function DashboardContent({ data }: DashboardContentProps) {
             <CardTitle>Recent Activities</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {recentActivities.length > 0 ? recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-start space-x-3 border-b pb-3 last:border-0">
-                  <span className="text-2xl">{getActivityIcon(activity.activity_type)}</span>
-                  <div className="flex-1">
-                    <p className="text-sm">{activity.description}</p>
-                    {activity.proposals?.[0] && (
-                      <p className="text-xs text-gray-500">
-                        Proposal #{activity.proposals[0].proposal_number}
-                      </p>
-                    )}
-                    <p className="text-xs text-gray-400">{formatDate(activity.created_at)}</p>
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+              {recentActivities.length > 0 ? (
+                recentActivities.slice(0, 15).map((activity) => (
+                  <div key={`${activity.activity_type}-${activity.id}`} className="flex items-start space-x-3 border-b pb-3 last:border-0">
+                    <span className="text-2xl mt-1">{getActivityIcon(activity.activity_type)}</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{activity.description}</p>
+                      <p className="text-xs text-gray-500 mt-1">{formatDate(activity.created_at)}</p>
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-sm text-gray-500">No recent activities</p>
+                  <p className="text-xs text-gray-400 mt-2">Activities will appear here as you create proposals, receive payments, and manage jobs.</p>
                 </div>
-              )) : (
-                <p className="text-sm text-gray-500">No recent activities</p>
               )}
             </div>
           </CardContent>
