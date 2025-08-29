@@ -4,7 +4,7 @@ import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Printer, Send, Edit, ChevronLeft, Plus, DollarSign } from 'lucide-react'
+import { Printer, Send, Edit, ChevronLeft, Plus, DollarSign, Link2 } from 'lucide-react'
 import Link from 'next/link'
 import { PaymentStages } from './PaymentStages'
 import SendProposal from './SendProposal'
@@ -106,12 +106,16 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
               Print
             </Button>
             <Button 
-              onClick={() => setShowRecordPayment(true)} 
+              onClick={() => {
+                const customerUrl = `${window.location.origin}/proposal/view/${proposal.customer_view_token}`
+                navigator.clipboard.writeText(customerUrl)
+                toast.success('Customer link copied to clipboard!')
+              }} 
               variant="outline" 
               size="sm"
             >
-              <DollarSign className="h-4 w-4 mr-1" />
-              Record Payment
+              <Link2 className="h-4 w-4 mr-1" />
+              Customer Link 🔗
             </Button>
             <Button 
               onClick={() => setShowCreateJobModal(true)} 
@@ -166,7 +170,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
           <CardTitle>Customer Information</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
             <div>
               <p className="text-sm text-gray-500">Name</p>
               <p className="font-medium">{proposal.customers?.name || 'No customer'}</p>
@@ -268,6 +272,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
           progressAmount={proposal.progress_payment_amount || proposal.total * 0.3}
           finalAmount={proposal.final_payment_amount || proposal.total * 0.2}
           total={proposal.total}
+          onRecordPayment={() => setShowRecordPayment(true)}
         />
       )}
 

@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { DollarSign, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { DollarSign, CheckCircle2, Clock, AlertCircle, Camera, X } from 'lucide-react'
 
 interface PaymentBalanceProps {
   proposalId: string
@@ -21,6 +22,8 @@ interface PaymentRecord {
   payment_method: string
   payment_date: string
   notes?: string
+  check_number?: string
+  check_image_url?: string
 }
 
 export default function PaymentBalance({ 
@@ -28,10 +31,12 @@ export default function PaymentBalance({
   depositAmount, 
   progressAmount, 
   finalAmount,
-  total 
-}: PaymentBalanceProps) {
+  total,
+  onRecordPayment
+}: PaymentBalanceProps & { onRecordPayment?: () => void }) {
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedCheckImage, setSelectedCheckImage] = useState<string | null>(null)
 
   useEffect(() => {
     fetchPayments()
@@ -130,7 +135,7 @@ export default function PaymentBalance({
       <CardContent className="space-y-4">
         {/* Overall Summary */}
         <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
             <div>
               <p className="text-sm text-gray-600">Total Contract</p>
               <p className="text-xl font-bold">{formatCurrency(total)}</p>
@@ -240,6 +245,16 @@ export default function PaymentBalance({
           </div>
         </div>
 
+        {/* Record Payment Button */}
+        {onRecordPayment && remainingBalance > 0 && (
+          <div className="flex justify-center py-4">
+            <Button onClick={onRecordPayment} variant="outline" size="sm">
+              <DollarSign className="h-4 w-4 mr-1" />
+              Record Payment
+            </Button>
+          </div>
+        )}
+
         {/* Payment History */}
         {payments.length > 0 && (
           <div className="mt-4 pt-4 border-t">
@@ -247,12 +262,21 @@ export default function PaymentBalance({
             <div className="space-y-2">
               {payments.map((payment) => (
                 <div key={payment.id} className="text-sm flex justify-between items-center">
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="text-gray-600">
                       {new Date(payment.payment_date).toLocaleDateString()} - 
                     </span>
                     <span className="ml-1 capitalize">{payment.payment_stage} payment</span>
                     <span className="ml-1 text-gray-500">({payment.payment_method})</span>
+                    {payment.check_image_url && (
+                      <button
+                        onClick={() => setSelectedCheckImage(payment.check_image_url!)}
+                        className="text-blue-600 hover:text-blue-800"
+                        title="View check image"
+                      >
+                        <Camera className="h-4 w-4" />
+                      </button>
+                    )}
                     {payment.notes && <span className="ml-1 text-gray-400">- {payment.notes}</span>}
                   </div>
                   <span className="font-medium">{formatCurrency(payment.amount)}</span>
@@ -273,6 +297,28 @@ export default function PaymentBalance({
           </div>
         )}
       </CardContent>
+
+      {/* Check Image Modal */}
+      {selectedCheckImage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setSelectedCheckImage(null)}>
+          <div className="bg-white rounded-lg p-4 max-w-4xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Check Image</h3>
+              <button
+                onClick={() => setSelectedCheckImage(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <img
+              src={selectedCheckImage}
+              alt="Check"
+              className="max-w-full h-auto"
+            />
+          </div>
+        </div>
+      )}
     </Card>
   )
 }
