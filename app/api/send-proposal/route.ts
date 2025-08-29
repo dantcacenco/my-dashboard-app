@@ -50,8 +50,7 @@ export async function POST(request: Request) {
         .eq('id', proposalId)
     }
 
-    // Force correct URL regardless of environment variable
-    const proposalUrl = `https://fairairhc.service-pro.app/proposal/view/${token}`
+    const proposalUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://fairairhc.service-pro.app'}/proposal/view/${token}`
 
     // Send email using Resend
     try {
