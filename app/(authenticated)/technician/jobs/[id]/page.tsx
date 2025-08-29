@@ -33,7 +33,7 @@ export default async function TechnicianJobPage({ params }: { params: Promise<{ 
     redirect('/technician')
   }
 
-  // Get job details
+  // Get job details with proposal data
   const { data: job } = await supabase
     .from('jobs')
     .select(`
@@ -43,6 +43,17 @@ export default async function TechnicianJobPage({ params }: { params: Promise<{ 
         email,
         phone,
         address
+      ),
+      proposals:proposal_id (
+        id,
+        status,
+        total,
+        deposit_amount,
+        progress_payment_amount,
+        final_payment_amount,
+        deposit_paid_at,
+        progress_paid_at,
+        final_paid_at
       )
     `)
     .eq('id', id)

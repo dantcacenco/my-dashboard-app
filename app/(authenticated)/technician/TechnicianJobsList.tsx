@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Plus, Grid, List, Calendar as CalendarIcon } from 'lucide-react'
 import CalendarView from '@/components/CalendarView'
+import { getUnifiedDisplayStatus } from '@/lib/status-sync'
 
 interface TechnicianJobsListProps {
   jobs: any[]
@@ -32,11 +33,20 @@ export default function TechnicianJobsList({ jobs, technicianName }: TechnicianJ
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    const displayStatus = status.toLowerCase().replace(' ', '_').replace('-', '_')
+    
+    switch (displayStatus) {
+      case 'draft': return 'text-gray-500 bg-gray-100'
+      case 'sent': return 'text-blue-600 bg-blue-100'
+      case 'approved': return 'text-green-600 bg-green-100'
+      case 'rejected': return 'text-red-600 bg-red-100'
+      case 'deposit_paid': return 'text-blue-600 bg-blue-100'
+      case 'rough_in_paid': return 'text-yellow-600 bg-yellow-100'
+      case 'final_paid': return 'text-green-600 bg-green-100'
+      case 'completed': return 'text-green-600 bg-green-100'
       case 'not_scheduled': return 'text-gray-500 bg-gray-100'
       case 'scheduled': return 'text-blue-600 bg-blue-100'
       case 'in_progress': return 'text-yellow-600 bg-yellow-100'
-      case 'completed': return 'text-green-600 bg-green-100'
       case 'cancelled': return 'text-red-600 bg-red-100'
       default: return 'text-gray-500 bg-gray-100'
     }
@@ -98,6 +108,7 @@ export default function TechnicianJobsList({ jobs, technicianName }: TechnicianJ
           onToggle={() => setCalendarExpanded(!calendarExpanded)}
           todaysJobsCount={todaysJobsCount}
           monthlyJobs={formattedJobs}
+          isTechnician={true}
         />
       )}
 
@@ -158,8 +169,8 @@ export default function TechnicianJobsList({ jobs, technicianName }: TechnicianJ
                       <div className="text-sm text-gray-900">{job.service_address || job.customers?.address || 'No address'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(job.status)}`}>
-                        {job.status.replace('_', ' ')}
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(getUnifiedDisplayStatus(job.status, job.proposals?.status))}`}>
+                        {getUnifiedDisplayStatus(job.status, job.proposals?.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -179,8 +190,8 @@ export default function TechnicianJobsList({ jobs, technicianName }: TechnicianJ
                     <h3 className="text-lg font-semibold text-blue-600">
                       {job.job_number}
                     </h3>
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(job.status)}`}>
-                      {job.status.replace('_', ' ')}
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(getUnifiedDisplayStatus(job.status, job.proposals?.status))}`}>
+                      {getUnifiedDisplayStatus(job.status, job.proposals?.status)}
                     </span>
                   </div>
                   <p className="text-gray-900 font-medium mb-2">{job.title || 'No title'}</p>

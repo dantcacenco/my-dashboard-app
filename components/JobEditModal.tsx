@@ -18,7 +18,7 @@ interface JobEditModalProps {
   onUpdate?: () => void
 }
 
-export default function JobEditModal({ job, isOpen, onClose, onUpdate }: JobEditModalProps) {
+export default function JobEditModal({ job, isOpen, onClose, onUpdate, isTechnician = false }: JobEditModalProps & { isTechnician?: boolean }) {
   const [editedJob, setEditedJob] = useState(job)
   const [isSaving, setIsSaving] = useState(false)
   const supabase = createClientComponentClient()
@@ -282,7 +282,7 @@ export default function JobEditModal({ job, isOpen, onClose, onUpdate }: JobEdit
             </Button>
             <div className="flex gap-2">
               <Button asChild variant="outline">
-                <a href={`/jobs/${job.id}`} target="_blank">
+                <a href={isTechnician ? `/technician/jobs/${job.id}` : `/jobs/${job.id}`} target="_blank">
                   View Full Details
                 </a>
               </Button>

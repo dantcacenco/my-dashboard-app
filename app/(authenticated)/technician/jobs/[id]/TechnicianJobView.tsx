@@ -18,6 +18,7 @@ import MediaUpload from '@/components/uploads/MediaUpload'
 import FileUpload from '@/components/uploads/FileUpload'
 import MediaViewer from '@/components/MediaViewer'
 import VideoThumbnail from '@/components/VideoThumbnail'
+import { getUnifiedDisplayStatus } from '@/lib/status-sync'
 
 interface TechnicianJobViewProps {
   job: any
@@ -93,31 +94,52 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
   }
 
   const loadTimeEntries = async () => {
-    const { data } = await supabase
-      .from('time_entries')
-      .select('*')
-      .eq('job_id', job.id)
-      .eq('technician_id', userId)
-      .order('start_time', { ascending: false })
+    try {
+      const { data, error } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('job_id', job.id)
+        .eq('technician_id', userId)
+        .order('start_time', { ascending: false })
 
-    setTimeEntries(data || [])
+      if (error) {
+        console.error('Error loading time entries:', error)
+        // If table doesn't exist, show a message
+        if (error.message?.includes('relation "time_entries" does not exist')) {
+          toast.error('Time tracking not set up. Please contact your administrator.')
+        }
+      } else {
+        setTimeEntries(data || [])
+      }
+    } catch (err) {
+      console.error('Error in loadTimeEntries:', err)
+    }
   }
   const checkActiveTimer = async () => {
-    // Check if there's an active timer (no end_time)
-    const { data } = await supabase
-      .from('time_entries')
-      .select('*')
-      .eq('job_id', job.id)
-      .eq('technician_id', userId)
-      .is('end_time', null)
-      .single()
+    try {
+      // Check if there's an active timer (no end_time)
+      const { data, error } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('job_id', job.id)
+        .eq('technician_id', userId)
+        .is('end_time', null)
+        .single()
 
-    if (data) {
-      setCurrentTimeEntry(data)
-      setIsTimerRunning(true)
-      const start = new Date(data.start_time).getTime()
-      const now = new Date().getTime()
-      setElapsedTime(Math.floor((now - start) / 1000))
+      if (error && !error.message?.includes('No rows')) {
+        console.error('Error checking active timer:', error)
+        return
+      }
+
+      if (data) {
+        setCurrentTimeEntry(data)
+        setIsTimerRunning(true)
+        const start = new Date(data.start_time).getTime()
+        const now = new Date().getTime()
+        setElapsedTime(Math.floor((now - start) / 1000))
+      }
+    } catch (err) {
+      console.error('Error in checkActiveTimer:', err)
     }
   }
 
@@ -133,7 +155,15 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Error starting timer:', error)
+        if (error.message?.includes('relation "time_entries" does not exist')) {
+          toast.error('Time tracking not set up. Please contact your administrator to run the database migration.')
+        } else {
+          toast.error('Failed to start timer: ' + error.message)
+        }
+        return
+      }
 
       setCurrentTimeEntry(data)
       setIsTimerRunning(true)
@@ -186,30 +216,56 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    const displayStatus = status.toLowerCase().replace(' ', '_').replace('-', '_')
+    
+    switch (displayStatus) {
+      case 'draft': return 'bg-gray-500'
+      case 'sent': return 'bg-blue-500'
+      case 'approved': return 'bg-green-500'
+      case 'rejected': return 'bg-red-500'
+      case 'deposit_paid': return 'bg-blue-500'
+      case 'rough_in_paid': return 'bg-yellow-500'
+      case 'final_paid': return 'bg-green-500'
+      case 'completed': return 'bg-green-500'
       case 'not_scheduled': return 'bg-gray-500'
       case 'scheduled': return 'bg-blue-500'
       case 'in_progress': return 'bg-yellow-500'
-      case 'completed': return 'bg-green-500'
       case 'cancelled': return 'bg-red-500'
       default: return 'bg-gray-500'
     }
   }
 
-  const updateJobStatus = async (newStatus: string) => {
+  const updateJobStatus = async (newStatus: string, proposalStatus?: string) => {
     try {
-      const { error } = await supabase
-        .from('jobs')
-        .update({ status: newStatus })
-        .eq('id', job.id)
+      // If there's a proposal and we're setting specific statuses, update proposal instead
+      if (job.proposals && proposalStatus) {
+        const { error } = await supabase
+          .from('proposals')
+          .update({ status: proposalStatus })
+          .eq('id', job.proposals.id)
 
-      if (error) throw error
+        if (error) throw error
 
-      setJob({ ...job, status: newStatus })
-      toast.success(`Job status updated to ${newStatus.replace('_', ' ')}`)
+        setJob({ 
+          ...job, 
+          proposals: { ...job.proposals, status: proposalStatus }
+        })
+        toast.success(`Status updated to ${proposalStatus.replace('_', ' ')}`)
+      } else {
+        // Update job status directly
+        const { error } = await supabase
+          .from('jobs')
+          .update({ status: newStatus })
+          .eq('id', job.id)
+
+        if (error) throw error
+
+        setJob({ ...job, status: newStatus })
+        toast.success(`Job status updated to ${newStatus.replace('_', ' ')}`)
+      }
     } catch (error) {
-      console.error('Error updating job status:', error)
-      toast.error('Failed to update job status')
+      console.error('Error updating status:', error)
+      toast.error('Failed to update status')
     }
   }
 
@@ -286,8 +342,8 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
             <h1 className="text-2xl font-bold">Job {job.job_number}</h1>
             <p className="text-muted-foreground">{job.title}</p>
           </div>
-          <Badge className={getStatusColor(job.status)}>
-            {job.status.replace('_', ' ').toUpperCase()}
+          <Badge className={getStatusColor(getUnifiedDisplayStatus(job.status, job.proposals?.status))}>
+            {getUnifiedDisplayStatus(job.status, job.proposals?.status).toUpperCase()}
           </Badge>
         </div>
       </div>
@@ -390,25 +446,33 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
             >
               Work Started
             </Button>
-            <Button
-              onClick={() => updateJobStatus('scheduled')}
-              variant={job.status === 'scheduled' ? 'default' : 'outline'}
-              size="sm"
-            >
-              Rough-In Done
-            </Button>
+            {job.proposals && (
+              <Button
+                onClick={() => updateJobStatus('in_progress', 'rough-in paid')}
+                variant={job.proposals.status === 'rough-in paid' ? 'default' : 'outline'}
+                size="sm"
+              >
+                Rough-In Done
+              </Button>
+            )}
             <Button
               onClick={() => updateJobStatus('in_progress')}
-              variant="outline"
+              variant={job.status === 'in_progress' ? 'default' : 'outline'}
               size="sm"
             >
               Job Started
             </Button>
             <Button
-              onClick={() => updateJobStatus('completed')}
-              variant={job.status === 'completed' ? 'default' : 'outline'}
+              onClick={() => {
+                if (job.proposals) {
+                  updateJobStatus('completed', 'completed')
+                } else {
+                  updateJobStatus('completed')
+                }
+              }}
+              variant={job.status === 'completed' || job.proposals?.status === 'completed' ? 'default' : 'outline'}
               size="sm"
-              className={job.status === 'completed' ? 'bg-green-600 hover:bg-green-700' : ''}
+              className={job.status === 'completed' || job.proposals?.status === 'completed' ? 'bg-green-600 hover:bg-green-700' : ''}
             >
               <CheckCircle className="h-4 w-4 mr-2" />
               Final Done

@@ -12,13 +12,15 @@ interface CalendarViewProps {
   onToggle: () => void
   todaysJobsCount?: number
   monthlyJobs?: any[]
+  isTechnician?: boolean
 }
 
 export default function CalendarView({ 
   isExpanded, 
   onToggle, 
   todaysJobsCount = 0,
-  monthlyJobs = []
+  monthlyJobs = [],
+  isTechnician = false
 }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedJob, setSelectedJob] = useState<any>(null)
@@ -411,6 +413,7 @@ export default function CalendarView({
             // Optionally refresh the calendar data here
             window.location.reload()
           }}
+          isTechnician={isTechnician}
         />
       )}
     </>

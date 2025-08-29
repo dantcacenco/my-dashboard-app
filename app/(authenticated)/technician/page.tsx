@@ -43,6 +43,17 @@ export default async function TechnicianPage() {
           email,
           phone,
           address
+        ),
+        proposals:proposal_id (
+          id,
+          status,
+          total,
+          deposit_amount,
+          progress_payment_amount,
+          final_payment_amount,
+          deposit_paid_at,
+          progress_paid_at,
+          final_paid_at
         )
       `)
       .in('id', jobIds)
