@@ -6,7 +6,7 @@ export default async function HomePage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    redirect('/auth/signin')
+    redirect('/auth/login')
   }
 
   // Get user profile to check role
@@ -24,7 +24,7 @@ export default async function HomePage() {
   // Route based on role - handle both 'boss' and 'admin'
   const userRole = profile?.role
   
-  if (userRole === 'boss' || userRole === 'boss') {
+  if (userRole === 'boss' || userRole === 'admin') {
     redirect('/dashboard')
   } else if (userRole === 'technician') {
     redirect('/technician')
