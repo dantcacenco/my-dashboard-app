@@ -103,8 +103,6 @@ Please review the attached proposal and let us know if you have any questions.`}
       </div>
       
       <div style="${emailStyles.footer}">
-        <p style="margin: 0;">Best regards,</p>
-        <p style="margin: 4px 0; font-weight: 600;">${companyName}</p>
         <p style="margin: 8px 0 0 0; font-size: 12px; color: #9ca3af;">
           This is an automated message from Service Pro
         </p>
@@ -173,7 +171,6 @@ export function getApprovalEmailTemplate({
       
       <div style="${emailStyles.footer}">
         <p style="margin: 0;">This is an automated notification from Service Pro</p>
-        <p style="margin: 4px 0; font-weight: 600;">${companyName}</p>
       </div>
     </div>
   `
@@ -230,7 +227,6 @@ export function getCopyEmailTemplate({
       
       <div style="${emailStyles.footer}">
         <p style="margin: 0;">Internal notification from Service Pro</p>
-        <p style="margin: 4px 0; font-weight: 600;">${companyName}</p>
       </div>
     </div>
   `
