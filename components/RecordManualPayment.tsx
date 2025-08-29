@@ -21,6 +21,8 @@ interface RecordManualPaymentProps {
   depositAmount: number
   progressAmount: number
   finalAmount: number
+  totalAmount: number
+  totalPaid?: number
   onClose: () => void
   onSuccess: () => void
 }
@@ -31,6 +33,8 @@ export default function RecordManualPayment({
   depositAmount,
   progressAmount,
   finalAmount,
+  totalAmount,
+  totalPaid = 0,
   onClose,
   onSuccess
 }: RecordManualPaymentProps) {
@@ -42,6 +46,10 @@ export default function RecordManualPayment({
   const [checkImage, setCheckImage] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  // Calculate remaining payable amount
+  const remainingPayable = totalAmount - totalPaid
+  const maxPayableAmount = remainingPayable.toFixed(2)
 
   // Set suggested amount based on stage
   const setSuggestedAmount = (selectedStage: string) => {
@@ -60,6 +68,12 @@ export default function RecordManualPayment({
   const handleSubmit = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter a valid amount')
+      return
+    }
+
+    // Check if payment exceeds remaining payable amount
+    if (parseFloat(amount) > remainingPayable) {
+      setError(`Payment cannot exceed remaining balance of $${maxPayableAmount}`)
       return
     }
 
@@ -141,6 +155,17 @@ export default function RecordManualPayment({
         <p className="text-sm text-gray-600 mb-4">
           Proposal #{proposalNumber}
         </p>
+
+        {remainingPayable > 0 && (
+          <div className="mb-4 p-3 bg-blue-50 text-blue-700 rounded">
+            <p className="text-sm">
+              <strong>Remaining Balance:</strong> ${maxPayableAmount}
+            </p>
+            <p className="text-xs mt-1">
+              Payments will automatically cascade to the next stage if you overpay the current stage.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">

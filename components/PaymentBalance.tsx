@@ -51,30 +51,62 @@ export default function PaymentBalance({
     setLoading(false)
   }
 
-  // Calculate totals by stage
-  const depositPaid = payments
-    .filter(p => p.payment_stage === 'deposit')
-    .reduce((sum, p) => sum + Number(p.amount), 0)
+  // Calculate totals by stage with cascading logic
+  // When a payment is made to a stage, overflow cascades to the next
+  let depositApplied = 0
+  let progressApplied = 0
+  let finalApplied = 0
   
-  const progressPaid = payments
-    .filter(p => p.payment_stage === 'progress')
-    .reduce((sum, p) => sum + Number(p.amount), 0)
-  
-  const finalPaid = payments
-    .filter(p => p.payment_stage === 'final')
-    .reduce((sum, p) => sum + Number(p.amount), 0)
+  // Process payments in order to apply cascading logic
+  payments.forEach(payment => {
+    let remainingAmount = Number(payment.amount)
+    
+    if (payment.payment_stage === 'deposit') {
+      // Apply to deposit first
+      const depositNeeded = Math.max(0, depositAmount - depositApplied)
+      const applyToDeposit = Math.min(remainingAmount, depositNeeded)
+      depositApplied += applyToDeposit
+      remainingAmount -= applyToDeposit
+      
+      // Cascade to progress
+      if (remainingAmount > 0) {
+        const progressNeeded = Math.max(0, progressAmount - progressApplied)
+        const applyToProgress = Math.min(remainingAmount, progressNeeded)
+        progressApplied += applyToProgress
+        remainingAmount -= applyToProgress
+      }
+      
+      // Cascade to final
+      if (remainingAmount > 0) {
+        const finalNeeded = Math.max(0, finalAmount - finalApplied)
+        const applyToFinal = Math.min(remainingAmount, finalNeeded)
+        finalApplied += applyToFinal
+      }
+    } else if (payment.payment_stage === 'progress') {
+      // Apply to progress first
+      const progressNeeded = Math.max(0, progressAmount - progressApplied)
+      const applyToProgress = Math.min(remainingAmount, progressNeeded)
+      progressApplied += applyToProgress
+      remainingAmount -= applyToProgress
+      
+      // Cascade to final
+      if (remainingAmount > 0) {
+        const finalNeeded = Math.max(0, finalAmount - finalApplied)
+        const applyToFinal = Math.min(remainingAmount, finalNeeded)
+        finalApplied += applyToFinal
+      }
+    } else if (payment.payment_stage === 'final') {
+      finalApplied += remainingAmount
+    }
+  })
 
-  const totalPaid = depositPaid + progressPaid + finalPaid
+  const totalPaid = depositApplied + progressApplied + finalApplied
   const remainingBalance = total - totalPaid
 
   // Calculate what's due for each stage
-  const depositDue = Math.max(0, depositAmount - depositPaid)
-  const progressDue = Math.max(0, progressAmount - progressPaid)
-  const finalDue = Math.max(0, finalAmount - finalPaid)
-
-  // Handle overpayments (if someone pays extra on deposit, it should apply to next stage)
-  const depositOverpayment = Math.max(0, depositPaid - depositAmount)
-  const progressOverpayment = Math.max(0, progressPaid - progressAmount)
+  const depositDue = Math.max(0, depositAmount - depositApplied)
+  const progressDue = Math.max(0, progressAmount - progressApplied)
+  const finalDue = Math.max(0, finalAmount - finalApplied)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -126,7 +158,7 @@ export default function PaymentBalance({
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-medium">Deposit (50%)</span>
-                  {depositPaid >= depositAmount ? (
+                  {depositApplied >= depositAmount ? (
                     <Badge className="bg-green-500 text-white">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Paid
@@ -142,9 +174,8 @@ export default function PaymentBalance({
                   Expected: {formatCurrency(depositAmount)}
                 </div>
                 <div className="text-sm">
-                  Paid: <span className={depositPaid >= depositAmount ? 'text-green-600' : ''}>{formatCurrency(depositPaid)}</span>
+                  Paid: <span className={depositApplied >= depositAmount ? 'text-green-600' : ''}>{formatCurrency(depositApplied)}</span>
                   {depositDue > 0 && <span className="text-orange-600 ml-2">({formatCurrency(depositDue)} remaining)</span>}
-                  {depositOverpayment > 0 && <span className="text-blue-600 ml-2">(+{formatCurrency(depositOverpayment)} overpaid)</span>}
                 </div>
               </div>
             </div>
@@ -156,12 +187,12 @@ export default function PaymentBalance({
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-medium">Progress/Rough-in (30%)</span>
-                  {progressPaid >= progressAmount ? (
+                  {progressApplied >= progressAmount ? (
                     <Badge className="bg-green-500 text-white">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Paid
                     </Badge>
-                  ) : progressDue > 0 && depositPaid >= depositAmount ? (
+                  ) : progressDue > 0 && depositApplied >= depositAmount ? (
                     <Badge variant="outline" className="text-orange-600">
                       <Clock className="h-3 w-3 mr-1" />
                       Due
@@ -172,9 +203,8 @@ export default function PaymentBalance({
                   Expected: {formatCurrency(progressAmount)}
                 </div>
                 <div className="text-sm">
-                  Paid: <span className={progressPaid >= progressAmount ? 'text-green-600' : ''}>{formatCurrency(progressPaid)}</span>
+                  Paid: <span className={progressApplied >= progressAmount ? 'text-green-600' : ''}>{formatCurrency(progressApplied)}</span>
                   {progressDue > 0 && <span className="text-orange-600 ml-2">({formatCurrency(progressDue)} remaining)</span>}
-                  {progressOverpayment > 0 && <span className="text-blue-600 ml-2">(+{formatCurrency(progressOverpayment)} overpaid)</span>}
                 </div>
               </div>
             </div>
@@ -186,12 +216,12 @@ export default function PaymentBalance({
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-medium">Final (20%)</span>
-                  {finalPaid >= finalAmount ? (
+                  {finalApplied >= finalAmount ? (
                     <Badge className="bg-green-500 text-white">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Paid
                     </Badge>
-                  ) : finalDue > 0 && progressPaid >= progressAmount ? (
+                  ) : finalDue > 0 && progressApplied >= progressAmount ? (
                     <Badge variant="outline" className="text-orange-600">
                       <Clock className="h-3 w-3 mr-1" />
                       Due
@@ -202,7 +232,7 @@ export default function PaymentBalance({
                   Expected: {formatCurrency(finalAmount)}
                 </div>
                 <div className="text-sm">
-                  Paid: <span className={finalPaid >= finalAmount ? 'text-green-600' : ''}>{formatCurrency(finalPaid)}</span>
+                  Paid: <span className={finalApplied >= finalAmount ? 'text-green-600' : ''}>{formatCurrency(finalApplied)}</span>
                   {finalDue > 0 && <span className="text-orange-600 ml-2">({formatCurrency(finalDue)} remaining)</span>}
                 </div>
               </div>
@@ -232,13 +262,13 @@ export default function PaymentBalance({
           </div>
         )}
 
-        {/* Warning for overpayments */}
-        {(depositOverpayment > 0 || progressOverpayment > 0) && (
+        {/* Info about payment cascading */}
+        {remainingBalance > 0 && (
           <div className="bg-blue-50 text-blue-700 p-3 rounded-lg text-sm flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5" />
             <div>
-              <p className="font-medium">Overpayment Detected</p>
-              <p>Customer has overpaid on one or more stages. Consider applying the overpayment to the next stage or issuing a refund.</p>
+              <p className="font-medium">Payment Cascading</p>
+              <p>Any overpayment on a stage automatically applies to the next stage. The system prevents payments exceeding the total contract amount.</p>
             </div>
           </div>
         )}

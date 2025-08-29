@@ -320,6 +320,8 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
           depositAmount={proposal.deposit_amount || proposal.total * 0.5}
           progressAmount={proposal.progress_payment_amount || proposal.total * 0.3}
           finalAmount={proposal.final_payment_amount || proposal.total * 0.2}
+          totalAmount={proposal.total}
+          totalPaid={proposal.total_paid || 0}
           onClose={() => setShowRecordPayment(false)}
           onSuccess={() => {
             toast.success('Payment recorded successfully!')
