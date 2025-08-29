@@ -85,7 +85,9 @@ export default function RecordManualPayment({
       
       // Upload check image if provided (with better error handling)
       let checkImageUrl = null
-      if (checkImage) {
+      if (checkImage && method === 'check') {
+        console.log('Attempting to upload check image:', checkImage.name, checkImage.size)
+        
         // First check if bucket exists
         const { data: buckets } = await supabase.storage.listBuckets()
         const bucketExists = buckets?.some(b => b.name === 'check-images')
@@ -94,21 +96,28 @@ export default function RecordManualPayment({
           console.warn('check-images bucket does not exist. Skipping image upload.')
           // Continue without image upload rather than failing
         } else {
-          const fileName = `${proposalId}/${Date.now()}_${checkImage.name}`
+          const fileName = `${proposalId}/${Date.now()}_${checkImage.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+          console.log('Uploading to:', fileName)
+          
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('check-images')
-            .upload(fileName, checkImage)
+            .upload(fileName, checkImage, {
+              contentType: checkImage.type,
+              upsert: false
+            })
           
           if (uploadError) {
             console.error('Error uploading check image:', uploadError)
             // Continue without image rather than failing entire payment
           } else {
+            console.log('Upload successful:', uploadData)
             // Get public URL
             const { data: { publicUrl } } = supabase.storage
               .from('check-images')
               .getPublicUrl(fileName)
             
             checkImageUrl = publicUrl
+            console.log('Check image URL:', checkImageUrl)
           }
         }
       }
