@@ -154,63 +154,177 @@ export default async function DashboardPage() {
   // Fetch recent activities from multiple sources
   const recentActivities: any[] = []
   
-  // Get recent proposal activities (created, approved, rejected)
-  const recentProposalEvents = proposalList.slice(0, 20).map(p => {
-    let activity_type = 'proposal_created'
-    let description = `Proposal #${p.proposal_number} created`
+  // Get activities from the last 7 days
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  
+  // 1. Proposal activities with more detail
+  const proposalActivities: any[] = []
+  
+  // Recent proposal status changes
+  for (const proposal of proposalList.slice(0, 30)) {
+    // Check for various proposal events based on status and timestamps
+    const activities = []
     
-    if (p.status === 'approved') {
-      activity_type = 'proposal_approved'
-      description = `Proposal #${p.proposal_number} approved by ${p.customers?.name || 'customer'}`
-    } else if (p.status === 'rejected') {
-      activity_type = 'proposal_rejected'
-      description = `Proposal #${p.proposal_number} rejected`
-    } else if (p.status === 'sent') {
-      activity_type = 'proposal_sent'
-      description = `Proposal #${p.proposal_number} sent to ${p.customers?.name || 'customer'}`
-    } else if (p.status === 'deposit paid') {
-      activity_type = 'payment_received'
-      description = `Deposit payment received for #${p.proposal_number}`
-    } else if (p.status === 'rough-in paid') {
-      activity_type = 'payment_received'
-      description = `Rough-in payment received for #${p.proposal_number}`
-    } else if (p.status === 'completed') {
-      activity_type = 'payment_received'
-      description = `Final payment received for #${p.proposal_number}`
+    // Created
+    activities.push({
+      id: `${proposal.id}-created`,
+      activity_type: 'proposal_created',
+      description: `Proposal #${proposal.proposal_number} created for ${proposal.customers?.name || 'customer'}`,
+      created_at: proposal.created_at,
+      timestamp: new Date(proposal.created_at).getTime()
+    })
+    
+    // Status-based activities
+    if (proposal.status === 'sent' && proposal.sent_at) {
+      activities.push({
+        id: `${proposal.id}-sent`,
+        activity_type: 'proposal_sent',
+        description: `Proposal #${proposal.proposal_number} sent to ${proposal.customers?.email || 'customer'}`,
+        created_at: proposal.sent_at,
+        timestamp: new Date(proposal.sent_at).getTime()
+      })
     }
     
-    return {
-      id: p.id,
-      activity_type,
-      description,
-      created_at: p.created_at,
-      proposals: [{
-        proposal_number: p.proposal_number,
-        title: p.title || `Proposal #${p.proposal_number}`
-      }]
+    if (proposal.status === 'approved' && proposal.approved_at) {
+      activities.push({
+        id: `${proposal.id}-approved`,
+        activity_type: 'proposal_approved',
+        description: `Proposal #${proposal.proposal_number} approved by ${proposal.customers?.name || 'customer'}`,
+        created_at: proposal.approved_at,
+        timestamp: new Date(proposal.approved_at).getTime()
+      })
     }
-  })
-
-  // Get recent job activities
+    
+    if (proposal.status === 'rejected' && proposal.updated_at) {
+      activities.push({
+        id: `${proposal.id}-rejected`,
+        activity_type: 'proposal_rejected',
+        description: `Proposal #${proposal.proposal_number} rejected`,
+        created_at: proposal.updated_at,
+        timestamp: new Date(proposal.updated_at).getTime()
+      })
+    }
+    
+    // Payment activities
+    if (proposal.deposit_paid_at) {
+      activities.push({
+        id: `${proposal.id}-deposit`,
+        activity_type: 'payment_received',
+        description: `💰 Deposit payment received for Proposal #${proposal.proposal_number} (${formatCurrency(proposal.deposit_amount || 0)})`,
+        created_at: proposal.deposit_paid_at,
+        timestamp: new Date(proposal.deposit_paid_at).getTime()
+      })
+    }
+    
+    if (proposal.progress_paid_at) {
+      activities.push({
+        id: `${proposal.id}-roughin`,
+        activity_type: 'payment_received',
+        description: `💰 Rough-in payment received for Proposal #${proposal.proposal_number} (${formatCurrency(proposal.progress_payment_amount || 0)})`,
+        created_at: proposal.progress_paid_at,
+        timestamp: new Date(proposal.progress_paid_at).getTime()
+      })
+    }
+    
+    if (proposal.final_paid_at) {
+      activities.push({
+        id: `${proposal.id}-final`,
+        activity_type: 'payment_received',
+        description: `💰 Final payment received for Proposal #${proposal.proposal_number} (${formatCurrency(proposal.final_payment_amount || 0)})`,
+        created_at: proposal.final_paid_at,
+        timestamp: new Date(proposal.final_paid_at).getTime()
+      })
+    }
+    
+    proposalActivities.push(...activities)
+  }
+  
+  // 2. Job activities with status changes
   const { data: recentJobs } = await supabase
     .from('jobs')
     .select('*, customers(name)')
+    .order('updated_at', { ascending: false })
+    .limit(20)
+  
+  const jobActivities: any[] = []
+  for (const job of (recentJobs || [])) {
+    // Job created
+    jobActivities.push({
+      id: `${job.id}-created`,
+      activity_type: 'job_created',
+      description: `Job #${job.job_number} created for ${job.customers?.name || 'customer'}`,
+      created_at: job.created_at,
+      timestamp: new Date(job.created_at).getTime()
+    })
+    
+    // Job status updates
+    if (job.status === 'scheduled' && job.scheduled_date) {
+      jobActivities.push({
+        id: `${job.id}-scheduled`,
+        activity_type: 'job_scheduled',
+        description: `Job #${job.job_number} scheduled for ${new Date(job.scheduled_date).toLocaleDateString()}`,
+        created_at: job.updated_at,
+        timestamp: new Date(job.updated_at).getTime()
+      })
+    }
+    
+    if (job.status === 'in_progress') {
+      jobActivities.push({
+        id: `${job.id}-started`,
+        activity_type: 'job_started',
+        description: `Job #${job.job_number} work started`,
+        created_at: job.updated_at,
+        timestamp: new Date(job.updated_at).getTime()
+      })
+    }
+    
+    if (job.status === 'completed') {
+      jobActivities.push({
+        id: `${job.id}-completed`,
+        activity_type: 'job_completed',
+        description: `Job #${job.job_number} completed`,
+        created_at: job.updated_at,
+        timestamp: new Date(job.updated_at).getTime()
+      })
+    }
+  }
+  
+  // 3. Technician assignments
+  const { data: techAssignments } = await supabase
+    .from('job_technicians')
+    .select(`
+      *,
+      jobs:job_id (job_number),
+      profiles:technician_id (full_name, email)
+    `)
     .order('created_at', { ascending: false })
     .limit(10)
   
-  const jobActivities = (recentJobs || []).map(job => ({
-    id: job.id,
-    activity_type: 'job_created',
-    description: `Job #${job.job_number} created for ${job.customers?.name || 'customer'}`,
-    created_at: job.created_at,
-    proposals: null
+  const techActivities = (techAssignments || []).map(assignment => ({
+    id: `tech-${assignment.id}`,
+    activity_type: 'technician_assigned',
+    description: `Technician ${assignment.profiles?.full_name || 'assigned'} to Job #${assignment.jobs?.job_number || 'unknown'}`,
+    created_at: assignment.created_at,
+    timestamp: new Date(assignment.created_at).getTime()
   }))
-
-  // Combine and sort all activities by date
-  const allActivities = [...recentProposalEvents, ...jobActivities]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 15) // Show 15 most recent activities
-
+  
+  // Helper function to format currency
+  function formatCurrency(amount: number) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount)
+  }
+  
+  // Combine all activities and sort by timestamp
+  const allActivities = [...proposalActivities, ...jobActivities, ...techActivities]
+    .filter(a => a.timestamp > sevenDaysAgo.getTime()) // Only last 7 days
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 20) // Show 20 most recent activities
+  
   recentActivities.push(...allActivities)
 
   const dashboardData = {
