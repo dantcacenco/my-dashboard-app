@@ -4,7 +4,7 @@ import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Printer, Send, Edit, ChevronLeft, Plus, DollarSign, Link2 } from 'lucide-react'
+import { Printer, Send, Edit, ChevronLeft, Plus, Link2, Check } from 'lucide-react'
 import Link from 'next/link'
 import { PaymentStages } from './PaymentStages'
 import SendProposal from './SendProposal'
@@ -25,6 +25,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
   const [showSendModal, setShowSendModal] = useState(false)
   const [showCreateJobModal, setShowCreateJobModal] = useState(false)
   const [showRecordPayment, setShowRecordPayment] = useState(false)
+  const [showCopiedTooltip, setShowCopiedTooltip] = useState(false)
   const router = useRouter()
 
   const formatCurrency = (amount: number) => {
@@ -67,11 +68,15 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
     router.refresh()
   }
 
-  // Check if proposal is approved or has payments
-  const canCreateJob = proposal.status === 'approved' || 
-                      proposal.status === 'deposit_paid' || 
-                      proposal.status === 'progress_paid' || 
-                      proposal.status === 'final_paid'
+  const handleCopyCustomerLink = () => {
+    const customerUrl = `${window.location.origin}/proposal/view/${proposal.customer_view_token}`
+    navigator.clipboard.writeText(customerUrl)
+    setShowCopiedTooltip(true)
+    setTimeout(() => setShowCopiedTooltip(false), 2000)
+  }
+
+  // Check if a job can be created (no existing job for this proposal)
+  const canCreateJob = !proposal.has_existing_job
 
   // Show admin controls for boss or admin roles
   const isAdmin = userRole === 'admin' || userRole === 'boss'
@@ -105,24 +110,27 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
               <Printer className="h-4 w-4 mr-1" />
               Print
             </Button>
-            <Button 
-              onClick={() => {
-                const customerUrl = `${window.location.origin}/proposal/view/${proposal.customer_view_token}`
-                navigator.clipboard.writeText(customerUrl)
-                toast.success('Customer link copied to clipboard!')
-              }} 
-              variant="outline" 
-              size="sm"
-            >
-              <Link2 className="h-4 w-4 mr-1" />
-              Customer Link 🔗
-            </Button>
+            <div className="relative">
+              <Button 
+                onClick={handleCopyCustomerLink} 
+                variant="outline" 
+                size="sm"
+              >
+                <Link2 className="h-4 w-4 mr-1" />
+                Customer Link
+              </Button>
+              {showCopiedTooltip && (
+                <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap animate-fade-in-out">
+                  Copied to clipboard
+                </div>
+              )}
+            </div>
             <Button 
               onClick={() => setShowCreateJobModal(true)} 
               variant="default" 
               size="sm"
               disabled={!canCreateJob}
-              title={!canCreateJob ? "Proposal must be approved before creating a job" : ""}
+              title={!canCreateJob ? "A job already exists for this proposal" : ""}
             >
               <Plus className="h-4 w-4 mr-1" />
               Create Job

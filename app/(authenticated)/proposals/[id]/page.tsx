@@ -56,11 +56,19 @@ export default async function ProposalPage({ params }: PageProps) {
     .eq('proposal_id', id)
     .order('sort_order')
 
+  // Check if a job exists for this proposal
+  const { data: existingJob } = await supabase
+    .from('jobs')
+    .select('id')
+    .eq('proposal_id', id)
+    .single()
+
   // Combine everything with data transformation
   const fullProposal = {
     ...proposal,
     customers: customer,
     payment_stages: paymentStages || [],
+    has_existing_job: !!existingJob,
     proposal_items: items?.map(item => ({
       ...item,
       title: item.name, // Map name to title for display
