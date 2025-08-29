@@ -155,23 +155,23 @@ export default function DashboardContent({ data }: DashboardContentProps) {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
               {recentProposals.length > 0 ? (
                 recentProposals.map((proposal) => (
-                  <div key={proposal.id} className="flex items-center justify-between border-b pb-3 last:border-0">
-                    <div className="flex-1">
+                  <div key={proposal.id} className="flex items-center justify-between pb-3 border-b last:border-0">
+                    <div className="flex-1 min-w-0">
                       <Link 
                         href={`/proposals/${proposal.id}`}
                         className="font-medium text-blue-600 hover:text-blue-700"
                       >
                         #{proposal.proposal_number}
                       </Link>
-                      <p className="text-sm text-gray-600">{proposal.title}</p>
+                      <p className="text-sm text-gray-600 truncate">{proposal.title}</p>
                       <p className="text-xs text-gray-500">
                         {proposal.customers?.[0]?.name || 'No customer'}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0 ml-4">
                       <p className="font-medium">{formatCurrency(proposal.total)}</p>
                       <span className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(proposal.status)}`}>
                         {proposal.status}

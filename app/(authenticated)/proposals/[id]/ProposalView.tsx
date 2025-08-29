@@ -126,6 +126,27 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
         )}
       </div>
 
+      {/* Proposal Details */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Proposal Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-gray-500">Proposal Title</p>
+              <p className="font-medium">{proposal.title || 'Untitled Proposal'}</p>
+            </div>
+            {proposal.description && (
+              <div>
+                <p className="text-sm text-gray-500">Description</p>
+                <p className="text-gray-700 whitespace-pre-wrap">{proposal.description}</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Customer Information */}
       <Card className="mb-6">
         <CardHeader>

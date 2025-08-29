@@ -140,8 +140,8 @@ export default async function DashboardPage() {
     })
   }
 
-  // Format recent proposals - only show 5 most recent
-  const recentProposals = proposalList.slice(0, 5).map(p => ({
+  // Format recent proposals - show more for scrolling
+  const recentProposals = proposalList.slice(0, 15).map(p => ({
     id: p.id,
     proposal_number: p.proposal_number,
     title: p.title || `Proposal #${p.proposal_number}`,

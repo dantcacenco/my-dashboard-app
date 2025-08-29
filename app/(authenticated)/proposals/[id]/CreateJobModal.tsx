@@ -109,7 +109,7 @@ export default function CreateJobModal({ proposal, isOpen, onClose }: CreateJobM
       setFormData({
         customer_id: proposal.customer_id || '',
         proposal_id: proposal.id,
-        title: `Job from Proposal #${proposal.proposal_number}`,
+        title: proposal.title || `Job from Proposal #${proposal.proposal_number}`,
         description: description,
         job_type: jobType,
         status: 'not_scheduled',
