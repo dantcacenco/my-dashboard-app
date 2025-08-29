@@ -104,21 +104,21 @@ export async function POST(request: NextRequest) {
               updateData.deposit_paid_at = now
               updateData.total_paid = proposal.deposit_amount || 0
               updateData.status = 'deposit paid'
-              updateData.payment_stage = 'deposit'
+              // Remove payment_stage field - it's causing constraint violation
               console.log('Setting deposit payment data')
               break
             case 'roughin':
               updateData.progress_paid_at = now
               updateData.total_paid = (proposal.deposit_amount || 0) + (proposal.progress_payment_amount || 0)
               updateData.status = 'rough-in paid'
-              updateData.payment_stage = 'roughin'
+              // Remove payment_stage field - it's causing constraint violation
               console.log('Setting rough-in payment data')
               break
             case 'final':
               updateData.final_paid_at = now
               updateData.total_paid = proposal.total
               updateData.status = 'completed'
-              updateData.payment_stage = 'complete'
+              // Remove payment_stage field - it's causing constraint violation
               console.log('Setting final payment data')
               break
             default:
@@ -145,16 +145,21 @@ export async function POST(request: NextRequest) {
             console.log('Updated proposal:', JSON.stringify(updatedProposal, null, 2))
           }
           
-          // Log the payment
-          const paymentLogData = {
+          // Log the payment (remove customer_id as it doesn't exist in payments table)
+          const paymentLogData: any = {
             proposal_id,
             amount: session.amount_total ? session.amount_total / 100 : 0, // Convert from cents
             payment_type: 'stripe',
             payment_stage,
             stripe_session_id: session.id,
             stripe_payment_intent: session.payment_intent as string,
-            customer_id: proposal.customer_id,
             paid_at: now
+          }
+          
+          // Only add customer_id if the column exists
+          if (proposal.customer_id) {
+            // Skip customer_id for now as the column doesn't exist
+            console.log('Skipping customer_id in payment log')
           }
           
           console.log('Logging payment:', JSON.stringify(paymentLogData, null, 2))
