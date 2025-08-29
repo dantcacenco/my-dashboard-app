@@ -1,6 +1,6 @@
 # MASTER WORKING SESSION - Service Pro HVAC Management System
 **Last Updated:** August 29, 2025  
-**Version:** 2.4 STABLE  
+**Version:** Active Development  
 **Project Path:** `/Users/dantcacenco/Documents/GitHub/my-dashboard-app`
 **Domain:** `https://fairairhc.service-pro.app`
 
@@ -26,7 +26,24 @@ Customer → Proposal → Job → Technician Assignment → Completion → Payme
         Token    DB Triggers                        Email Queue   Dashboard
 ```
 
-## ✅ COMPLETED IN VERSION 2.4
+## 🚨 IMMEDIATE ACTION REQUIRED
+
+### Run SQL Migration for Payment Recording
+**CRITICAL**: The Record Payment feature won't work until you run the SQL migration in Supabase!
+
+1. **Go to Supabase SQL Editor**
+2. **Copy the entire script from:** `database_migrations/create_check_images_bucket.sql`
+3. **Run it** to create the storage bucket and improved payment triggers
+
+This migration:
+- Creates `check-images` storage bucket (fixes "Bucket not found" error)
+- Adds improved payment tracking with overpayment handling
+- Updates proposal status automatically based on payments
+- Adds `total_paid` column if missing
+
+See `RUN_THIS_SQL_MIGRATION.md` for detailed instructions.
+
+## ✅ LATEST UPDATES (August 29, 2025 - Evening Session)
 
 ### Session Date: August 29, 2025 (Updated)
 
@@ -35,7 +52,35 @@ Customer → Proposal → Job → Technician Assignment → Completion → Payme
 - ✅ Manual Payment Recording infrastructure
 - ✅ Domain & Environment Setup
 
-#### New in Version 2.4
+#### Latest Updates (Evening Session)
+1. **Payment Recording Fixes**
+   - ✅ Fixed "Bucket not found" error with graceful fallback
+   - ✅ Created SQL migration for check-images bucket
+   - ✅ Improved error handling for storage operations
+   - ✅ Component continues working even if image upload fails
+
+2. **Comprehensive Payment Tracking**
+   - ✅ Created PaymentBalance component showing:
+     - Total paid vs remaining balance
+     - Payment status per stage (deposit/progress/final)
+     - Overpayment detection and alerts
+     - Complete payment history
+   - ✅ Improved payment trigger with smart status updates
+   - ✅ Handles partial payments and overpayments
+
+3. **Database Improvements**
+   - ✅ Created improved payment trigger function
+   - ✅ Automatic proposal status updates based on payments
+   - ✅ Tracks total_paid amount on proposals
+   - ✅ Smart payment stage completion detection
+
+4. **UI Enhancements**
+   - ✅ Record Payment modal properly integrated
+   - ✅ PaymentBalance component shows detailed breakdown
+   - ✅ Visual indicators for paid/due/overpaid stages
+   - ✅ Payment history with method and notes
+
+#### Earlier Today (Morning Session)
 1. **Record Payment Modal Integration**
    - ✅ Added RecordManualPayment modal to ProposalView
    - ✅ Created missing Select UI component
@@ -100,8 +145,13 @@ Customer → Proposal → Job → Technician Assignment → Completion → Payme
 
 ### 3. Payment System Reality
 - **Stripe:** For online credit card and ACH payments
-- **Manual Recording:** For cash/check payments
-- **Bill.com:** NOT for consumer payments (B2B only)
+- **Manual Recording:** For cash/check payments with image upload
+- **Bill.com:** For invoice generation ONLY (not payment processing)
+- **Payment Tracking:** 
+  - Automatic status updates via database triggers
+  - Handles overpayments with alerts
+  - Tracks payment history by stage
+  - Shows remaining balance per stage
 - **Future:** Consider Sunbit/Affirm for financing options
 
 ### 4. User Role Architecture
