@@ -259,8 +259,9 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
       </Card>
 
       {/* Payment Balance - Show for approved proposals with detailed payment tracking */}
-      {(proposal.status === 'approved' || proposal.status === 'deposit_paid' || 
-        proposal.status === 'progress_paid' || proposal.status === 'final_paid') && (
+      {(proposal.status === 'approved' || proposal.status === 'deposit paid' || 
+        proposal.status === 'rough-in paid' || proposal.status === 'final paid' || 
+        proposal.status === 'completed') && (
         <PaymentBalance
           proposalId={proposal.id}
           depositAmount={proposal.deposit_amount || proposal.total * 0.5}
@@ -268,26 +269,6 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
           finalAmount={proposal.final_payment_amount || proposal.total * 0.2}
           total={proposal.total}
         />
-      )}
-
-      {/* Payment Progress - Show for approved proposals */}
-      {(proposal.status === 'approved' || proposal.status === 'deposit_paid' || 
-        proposal.status === 'progress_paid' || proposal.status === 'final_paid') && (
-        <div className="mt-6">
-          <PaymentStages 
-            depositPaidAt={proposal.deposit_paid_at}
-            progressPaidAt={proposal.progress_paid_at}
-            finalPaidAt={proposal.final_paid_at}
-            depositAmount={proposal.deposit_amount || 0}
-            progressPaymentAmount={proposal.progress_payment_amount || 0}
-            finalPaymentAmount={proposal.final_payment_amount || 0}
-            currentStage={
-              proposal.final_paid_at ? 'complete' :
-              proposal.progress_paid_at ? 'final' :
-              proposal.deposit_paid_at ? 'roughin' : 'deposit'
-            }
-          />
-        </div>
       )}
 
       {/* Send Proposal Modal */}

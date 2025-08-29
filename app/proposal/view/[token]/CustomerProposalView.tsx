@@ -48,6 +48,82 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
   )
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([])
+
+  // Calculate payment amounts for each stage
+  const calculatePaymentAmounts = () => {
+    const depositExpected = proposal.deposit_amount || proposal.total * 0.5
+    const progressExpected = proposal.progress_payment_amount || proposal.total * 0.3
+    const finalExpected = proposal.final_payment_amount || proposal.total * 0.2
+    
+    // Calculate how much has been paid for each stage with cascading logic
+    let depositPaid = 0
+    let progressPaid = 0
+    let finalPaid = 0
+    
+    paymentHistory.forEach(payment => {
+      let remainingAmount = Number(payment.amount)
+      
+      if (payment.payment_stage === 'deposit') {
+        const depositNeeded = Math.max(0, depositExpected - depositPaid)
+        const applyToDeposit = Math.min(remainingAmount, depositNeeded)
+        depositPaid += applyToDeposit
+        remainingAmount -= applyToDeposit
+        
+        if (remainingAmount > 0) {
+          const progressNeeded = Math.max(0, progressExpected - progressPaid)
+          const applyToProgress = Math.min(remainingAmount, progressNeeded)
+          progressPaid += applyToProgress
+          remainingAmount -= applyToProgress
+        }
+        
+        if (remainingAmount > 0) {
+          const finalNeeded = Math.max(0, finalExpected - finalPaid)
+          const applyToFinal = Math.min(remainingAmount, finalNeeded)
+          finalPaid += applyToFinal
+        }
+      } else if (payment.payment_stage === 'progress') {
+        const progressNeeded = Math.max(0, progressExpected - progressPaid)
+        const applyToProgress = Math.min(remainingAmount, progressNeeded)
+        progressPaid += applyToProgress
+        remainingAmount -= applyToProgress
+        
+        if (remainingAmount > 0) {
+          const finalNeeded = Math.max(0, finalExpected - finalPaid)
+          const applyToFinal = Math.min(remainingAmount, finalNeeded)
+          finalPaid += applyToFinal
+        }
+      } else if (payment.payment_stage === 'final') {
+        finalPaid += remainingAmount
+      }
+    })
+    
+    return {
+      depositExpected,
+      depositPaid,
+      depositRemaining: Math.max(0, depositExpected - depositPaid),
+      progressExpected,
+      progressPaid,
+      progressRemaining: Math.max(0, progressExpected - progressPaid),
+      finalExpected,
+      finalPaid,
+      finalRemaining: Math.max(0, finalExpected - finalPaid),
+      totalPaid: depositPaid + progressPaid + finalPaid
+    }
+  }
+
+  // Fetch payment history
+  const fetchPaymentHistory = async () => {
+    const { data, error } = await supabase
+      .from('manual_payments')
+      .select('*')
+      .eq('proposal_id', proposal.id)
+      .order('created_at', { ascending: true })
+    
+    if (data) {
+      setPaymentHistory(data)
+    }
+  }
 
   // Refresh proposal data
   const refreshProposal = async () => {
@@ -101,6 +177,13 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
       }, 3000)
     }
   }, [searchParams])
+
+  // Fetch payment history when proposal changes
+  useEffect(() => {
+    if (proposal.id) {
+      fetchPaymentHistory()
+    }
+  }, [proposal.id, proposal.total_paid])
 
   useEffect(() => {
     // Poll for updates every 5 seconds if payment is in progress
@@ -547,84 +630,119 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
                 <div className="space-y-6">
                   <h2 className="text-xl font-semibold mb-4">Payment Schedule</h2>
                   
-                  {/* Deposit */}
-                  <div className="border rounded-lg p-6">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-semibold">50% Deposit</h3>
-                        <p className="text-gray-600 text-sm mt-1">Due upon approval</p>
-                        <p className="text-2xl font-bold mt-2">{formatCurrency(proposal.deposit_amount || 0)}</p>
-                      </div>
-                      {proposal.deposit_paid_at ? (
-                        <div className="flex items-center text-green-600">
-                          <Check className="h-5 w-5 mr-2" />
-                          <span className="font-medium">Paid</span>
+                  {(() => {
+                    const amounts = calculatePaymentAmounts()
+                    
+                    return (
+                      <>
+                        {/* Deposit */}
+                        <div className="border rounded-lg p-6">
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <h3 className="font-semibold">50% Deposit</h3>
+                              <p className="text-gray-600 text-sm mt-1">Due upon approval</p>
+                              <p className="text-2xl font-bold mt-2">
+                                {amounts.depositRemaining > 0 
+                                  ? `${formatCurrency(amounts.depositRemaining)} remaining`
+                                  : formatCurrency(amounts.depositExpected)}
+                              </p>
+                              {amounts.depositPaid > 0 && (
+                                <p className="text-sm text-gray-500 mt-1">
+                                  Paid: {formatCurrency(amounts.depositPaid)} of {formatCurrency(amounts.depositExpected)}
+                                </p>
+                              )}
+                            </div>
+                            {proposal.deposit_paid_at || amounts.depositRemaining === 0 ? (
+                              <div className="flex items-center text-green-600">
+                                <Check className="h-5 w-5 mr-2" />
+                                <span className="font-medium">Paid</span>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handlePayment('deposit')}
+                                disabled={isProcessing}
+                                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                              >
+                                Pay Now
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      ) : (
-                        <button
-                          onClick={() => handlePayment('deposit')}
-                          disabled={isProcessing}
-                          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-                        >
-                          Pay Now
-                        </button>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Rough-in */}
-                  <div className={`border rounded-lg p-6 ${!proposal.deposit_paid_at ? 'opacity-50' : ''}`}>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-semibold">30% Rough-in Payment</h3>
-                        <p className="text-gray-600 text-sm mt-1">Due after rough-in inspection</p>
-                        <p className="text-2xl font-bold mt-2">{formatCurrency(proposal.progress_payment_amount || 0)}</p>
-                      </div>
-                      {proposal.progress_paid_at ? (
-                        <div className="flex items-center text-green-600">
-                          <Check className="h-5 w-5 mr-2" />
-                          <span className="font-medium">Paid</span>
+                        {/* Rough-in */}
+                        <div className={`border rounded-lg p-6 ${amounts.depositRemaining > 0 ? 'opacity-50' : ''}`}>
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <h3 className="font-semibold">30% Rough-in Payment</h3>
+                              <p className="text-gray-600 text-sm mt-1">Due after rough-in inspection</p>
+                              <p className="text-2xl font-bold mt-2">
+                                {amounts.progressRemaining > 0 
+                                  ? `${formatCurrency(amounts.progressRemaining)} remaining`
+                                  : formatCurrency(amounts.progressExpected)}
+                              </p>
+                              {amounts.progressPaid > 0 && (
+                                <p className="text-sm text-gray-500 mt-1">
+                                  Paid: {formatCurrency(amounts.progressPaid)} of {formatCurrency(amounts.progressExpected)}
+                                </p>
+                              )}
+                            </div>
+                            {proposal.progress_paid_at || amounts.progressRemaining === 0 ? (
+                              <div className="flex items-center text-green-600">
+                                <Check className="h-5 w-5 mr-2" />
+                                <span className="font-medium">Paid</span>
+                              </div>
+                            ) : amounts.depositRemaining === 0 ? (
+                              <button
+                                onClick={() => handlePayment('roughin')}
+                                disabled={isProcessing}
+                                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                              >
+                                Pay Now
+                              </button>
+                            ) : (
+                              <span className="text-gray-400 font-medium">Locked</span>
+                            )}
+                          </div>
                         </div>
-                      ) : proposal.deposit_paid_at ? (
-                        <button
-                          onClick={() => handlePayment('roughin')}
-                          disabled={isProcessing}
-                          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-                        >
-                          Pay Now
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 font-medium">Locked</span>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Final */}
-                  <div className={`border rounded-lg p-6 ${!proposal.progress_paid_at ? 'opacity-50' : ''}`}>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-semibold">20% Final Payment</h3>
-                        <p className="text-gray-600 text-sm mt-1">Due upon completion</p>
-                        <p className="text-2xl font-bold mt-2">{formatCurrency(proposal.final_payment_amount || 0)}</p>
-                      </div>
-                      {proposal.final_paid_at ? (
-                        <div className="flex items-center text-green-600">
-                          <Check className="h-5 w-5 mr-2" />
-                          <span className="font-medium">Paid</span>
+                        {/* Final */}
+                        <div className={`border rounded-lg p-6 ${amounts.progressRemaining > 0 ? 'opacity-50' : ''}`}>
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <h3 className="font-semibold">20% Final Payment</h3>
+                              <p className="text-gray-600 text-sm mt-1">Due upon completion</p>
+                              <p className="text-2xl font-bold mt-2">
+                                {amounts.finalRemaining > 0 
+                                  ? `${formatCurrency(amounts.finalRemaining)} remaining`
+                                  : formatCurrency(amounts.finalExpected)}
+                              </p>
+                              {amounts.finalPaid > 0 && (
+                                <p className="text-sm text-gray-500 mt-1">
+                                  Paid: {formatCurrency(amounts.finalPaid)} of {formatCurrency(amounts.finalExpected)}
+                                </p>
+                              )}
+                            </div>
+                            {proposal.final_paid_at || amounts.finalRemaining === 0 ? (
+                              <div className="flex items-center text-green-600">
+                                <Check className="h-5 w-5 mr-2" />
+                                <span className="font-medium">Paid</span>
+                              </div>
+                            ) : amounts.progressRemaining === 0 ? (
+                              <button
+                                onClick={() => handlePayment('final')}
+                                disabled={isProcessing}
+                                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                              >
+                                Pay Now
+                              </button>
+                            ) : (
+                              <span className="text-gray-400 font-medium">Locked</span>
+                            )}
+                          </div>
                         </div>
-                      ) : proposal.progress_paid_at ? (
-                        <button
-                          onClick={() => handlePayment('final')}
-                          disabled={isProcessing}
-                          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
-                        >
-                          Pay Now
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 font-medium">Locked</span>
-                      )}
-                    </div>
-                  </div>
+                      </>
+                    )
+                  })()}
                 </div>
 
                 {/* Payment Progress */}
