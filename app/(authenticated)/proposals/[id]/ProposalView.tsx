@@ -4,11 +4,12 @@ import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Printer, Send, Edit, ChevronLeft, Plus } from 'lucide-react'
+import { Printer, Send, Edit, ChevronLeft, Plus, DollarSign } from 'lucide-react'
 import Link from 'next/link'
 import { PaymentStages } from './PaymentStages'
 import SendProposal from './SendProposal'
 import CreateJobModal from './CreateJobModal'
+import RecordManualPayment from '@/components/RecordManualPayment'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -22,6 +23,7 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
   const [showPrintView, setShowPrintView] = useState(false)
   const [showSendModal, setShowSendModal] = useState(false)
   const [showCreateJobModal, setShowCreateJobModal] = useState(false)
+  const [showRecordPayment, setShowRecordPayment] = useState(false)
   const router = useRouter()
 
   const formatCurrency = (amount: number) => {
@@ -77,40 +79,50 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
     <div className="space-y-6">
       {/* Action Buttons for Admin/Boss */}
       {isAdmin && (
-        <div className="flex gap-2 mb-6">
+        <div className="flex justify-between mb-6">
           <Button onClick={() => router.back()} variant="outline" size="sm">
             <ChevronLeft className="h-4 w-4 mr-1" />
             Back
           </Button>
-          <Button 
-            onClick={() => setShowSendModal(true)} 
-            variant="outline" 
-            size="sm"
-            disabled={!proposal.customers?.email}
-          >
-            <Send className="h-4 w-4 mr-1" />
-            Send to Customer
-          </Button>
-          <Link href={`/proposals/${proposal.id}/edit`}>
-            <Button variant="outline" size="sm">
-              <Edit className="h-4 w-4 mr-1" />
-              Edit
+          <div className="flex gap-2">
+            <Link href={`/proposals/${proposal.id}/edit`}>
+              <Button variant="outline" size="sm">
+                <Edit className="h-4 w-4 mr-1" />
+                Edit
+              </Button>
+            </Link>
+            <Button 
+              onClick={() => setShowSendModal(true)} 
+              variant="outline" 
+              size="sm"
+              disabled={!proposal.customers?.email}
+            >
+              <Send className="h-4 w-4 mr-1" />
+              Send to Customer
             </Button>
-          </Link>
-          <Button 
-            onClick={() => setShowCreateJobModal(true)} 
-            variant="default" 
-            size="sm"
-            disabled={!canCreateJob}
-            title={!canCreateJob ? "Proposal must be approved before creating a job" : ""}
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Create Job
-          </Button>
-          <Button onClick={handlePrint} variant="outline" size="sm">
-            <Printer className="h-4 w-4 mr-1" />
-            Print
-          </Button>
+            <Button onClick={handlePrint} variant="outline" size="sm">
+              <Printer className="h-4 w-4 mr-1" />
+              Print
+            </Button>
+            <Button 
+              onClick={() => setShowRecordPayment(true)} 
+              variant="outline" 
+              size="sm"
+            >
+              <DollarSign className="h-4 w-4 mr-1" />
+              Record Payment
+            </Button>
+            <Button 
+              onClick={() => setShowCreateJobModal(true)} 
+              variant="default" 
+              size="sm"
+              disabled={!canCreateJob}
+              title={!canCreateJob ? "Proposal must be approved before creating a job" : ""}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Create Job
+            </Button>
+          </div>
         </div>
       )}
 
@@ -284,6 +296,23 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
           proposal={proposal}
           isOpen={showCreateJobModal}
           onClose={() => setShowCreateJobModal(false)}
+        />
+      )}
+
+      {/* Record Manual Payment Modal */}
+      {showRecordPayment && (
+        <RecordManualPayment
+          proposalId={proposal.id}
+          proposalNumber={proposal.proposal_number}
+          depositAmount={proposal.deposit_amount || proposal.total * 0.5}
+          progressAmount={proposal.progress_payment_amount || proposal.total * 0.3}
+          finalAmount={proposal.final_payment_amount || proposal.total * 0.2}
+          onClose={() => setShowRecordPayment(false)}
+          onSuccess={() => {
+            toast.success('Payment recorded successfully!')
+            router.refresh()
+            setShowRecordPayment(false)
+          }}
         />
       )}
     </div>
