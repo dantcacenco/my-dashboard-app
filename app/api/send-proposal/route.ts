@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { Resend } from 'resend'
 import { trackEmailSend } from '@/lib/email-tracking'
+import { getProposalEmailTemplate, getCopyEmailTemplate } from '@/lib/email-templates'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -49,41 +50,47 @@ export async function POST(request: Request) {
         .eq('id', proposalId)
     }
 
-    const proposalUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://my-dashboard-app-tau.vercel.app'}/proposal/view/${token}`
+    const proposalUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://fairairhc.service-pro.app'}/proposal/view/${token}`
 
     // Send email using Resend
     try {
+      // Send to customer
       const { data: emailData, error: emailError } = await resend.emails.send({
-        from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+        from: process.env.EMAIL_FROM || 'noreply@fairairhc.service-pro.app',
         to: email,
-        replyTo: process.env.REPLY_TO_EMAIL || process.env.BUSINESS_EMAIL || 'dantcacenco@gmail.com',
+        replyTo: process.env.REPLY_TO_EMAIL || 'dantcacenco@gmail.com',
         subject: `Your Proposal #${proposalNumber} is Ready`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>Your Proposal is Ready</h2>
-            <p>Hi ${customerName || 'Customer'},</p>
-            <div style="white-space: pre-wrap;">${message || 'Please find attached your proposal for HVAC services.'}</div>
-            <p style="margin-top: 20px;">
-              <a href="${proposalUrl}" 
-                 style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; 
-                        text-decoration: none; border-radius: 6px;">
-                View Proposal
-              </a>
-            </p>
-            <p style="color: #666; font-size: 14px; margin-top: 20px;">
-              If the button doesn't work, copy and paste this link:<br>
-              ${proposalUrl}
-            </p>
-          </div>
-        `
+        html: getProposalEmailTemplate({
+          customerName,
+          proposalNumber,
+          message,
+          proposalUrl,
+          companyName: 'Fair Air HC'
+        })
       })
 
       if (emailError) {
         console.error('Email send error:', emailError)
-        // Don't fail the whole request if email fails
       } else {
         // Track email send for limit monitoring
         await trackEmailSend()
+        
+        // Send copy to business email
+        if (process.env.BUSINESS_EMAIL) {
+          await resend.emails.send({
+            from: process.env.EMAIL_FROM || 'noreply@fairairhc.service-pro.app',
+            to: process.env.BUSINESS_EMAIL,
+            subject: `[COPY] Proposal #${proposalNumber} sent to ${customerName}`,
+            html: getCopyEmailTemplate({
+              proposalNumber,
+              customerName: customerName || 'Customer',
+              customerEmail: email,
+              message,
+              proposalUrl,
+              companyName: 'Fair Air HC'
+            })
+          })
+        }
       }
     } catch (emailErr) {
       console.error('Email service error:', emailErr)

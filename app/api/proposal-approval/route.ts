@@ -1,10 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { Resend } from 'resend'
+import { getApprovalEmailTemplate } from '@/lib/email-templates'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
-    const { proposalId, action, rejectionReason } = await request.json()
+    const { proposalId, action, rejectionReason, approvedBy } = await request.json()
 
     console.log('Proposal approval request:', { proposalId, action })
 
@@ -58,7 +62,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // If approved, create payment stages
+    // If approved, create payment stages and send notification
     if (action === 'approve') {
       // Calculate payment amounts
       const depositAmount = proposal.total * 0.5
@@ -100,6 +104,33 @@ export async function POST(request: Request) {
       if (stagesError) {
         console.error('Error creating payment stages:', stagesError)
         // Continue anyway - stages can be created manually
+      }
+
+      // Send approval notification email to business
+      if (process.env.BUSINESS_EMAIL) {
+        const proposalUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://fairairhc.service-pro.app'}/proposals/${proposalId}`
+        
+        try {
+          await resend.emails.send({
+            from: process.env.EMAIL_FROM || 'noreply@fairairhc.service-pro.app',
+            to: process.env.BUSINESS_EMAIL,
+            replyTo: proposal.customers?.email || process.env.REPLY_TO_EMAIL || 'dantcacenco@gmail.com',
+            subject: `🎉 Proposal #${proposal.proposal_number} APPROVED by ${proposal.customers?.name || 'Customer'}`,
+            html: getApprovalEmailTemplate({
+              proposalNumber: proposal.proposal_number,
+              customerName: proposal.customers?.name || 'Customer',
+              customerEmail: proposal.customers?.email || 'No email',
+              customerPhone: proposal.customers?.phone,
+              totalAmount: `$${proposal.total.toFixed(2)}`,
+              approvedBy: approvedBy || proposal.customers?.name || 'Customer',
+              proposalUrl,
+              companyName: 'Fair Air HC'
+            })
+          })
+        } catch (emailError) {
+          console.error('Failed to send approval notification:', emailError)
+          // Don't fail the approval if email fails
+        }
       }
 
       // Log activity
