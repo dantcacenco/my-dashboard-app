@@ -34,6 +34,9 @@ export async function POST(request: NextRequest) {
   let event: Stripe.Event
 
   try {
+    if (!webhookSecret) {
+      throw new Error('Webhook secret not configured')
+    }
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
     console.log('✅ Webhook signature verified successfully')
   } catch (err: any) {
@@ -91,8 +94,6 @@ export async function POST(request: NextRequest) {
           console.log('✅ Found proposal:', proposal.id)
           console.log('Current deposit_paid_at:', proposal.deposit_paid_at)
           console.log('Current progress_paid_at:', proposal.progress_paid_at)
-            break
-          }
 
           // Update payment status based on stage
           const updateData: any = {}
