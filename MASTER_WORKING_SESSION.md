@@ -28,14 +28,20 @@ Customer → Proposal → Job → Technician Assignment → Completion → Payme
 
 ## ✅ DATABASE MIGRATION APPLIED (August 29, 2025)
 
-### Migration Successfully Executed
+### Migrations Successfully Executed
 - ✅ `check-images` storage bucket created
 - ✅ RLS policies configured for secure image uploads
 - ✅ `total_paid` column verified on proposals table
-- ✅ Improved payment trigger installed
+- ✅ **NEW: Payment cascading trigger installed**
 - ✅ All components verified and working
 
-**The Record Payment feature is now fully operational!**
+### Payment Cascading Logic (NEW)
+- **Automatic Overflow**: When customer overpays a stage, excess automatically flows to next stage
+- **Example**: Pay $5,500 for $4,590 deposit → $4,590 to deposit, $910 to progress
+- **Total Protection**: System prevents payments exceeding total proposal amount
+- **Smart Status Updates**: Automatically updates proposal status as stages complete
+
+**The Record Payment feature now handles overpayments intelligently!**
 
 ## ✅ LATEST UPDATES (August 29, 2025 - Evening Session)
 
@@ -74,7 +80,15 @@ Customer → Proposal → Job → Technician Assignment → Completion → Payme
    - ✅ Visual indicators for paid/due/overpaid stages
    - ✅ Payment history with method and notes
 
-#### Earlier Today (Morning Session)
+5. **Payment Cascading System (NEW)**
+   - ✅ Automatic payment overflow to next stages
+   - ✅ Database trigger handles cascading server-side
+   - ✅ Frontend shows remaining balance and prevents overpayment
+   - ✅ Example flow:
+     - Customer pays $5,500 for $4,590 deposit
+     - System applies: $4,590 to deposit, $910 to progress
+     - Deposit marked PAID, progress shows $910 applied
+   - ✅ Total payment validation prevents exceeding contract
 1. **Record Payment Modal Integration**
    - ✅ Added RecordManualPayment modal to ProposalView
    - ✅ Created missing Select UI component
