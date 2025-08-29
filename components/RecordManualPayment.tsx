@@ -69,22 +69,34 @@ export default function RecordManualPayment({
     try {
       const supabase = createClient()
       
-      // Upload check image if provided
+      // Upload check image if provided (with better error handling)
       let checkImageUrl = null
       if (checkImage) {
-        const fileName = `${proposalId}/${Date.now()}_${checkImage.name}`
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('check-images')
-          .upload(fileName, checkImage)
+        // First check if bucket exists
+        const { data: buckets } = await supabase.storage.listBuckets()
+        const bucketExists = buckets?.some(b => b.name === 'check-images')
         
-        if (uploadError) throw uploadError
-        
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('check-images')
-          .getPublicUrl(fileName)
-        
-        checkImageUrl = publicUrl
+        if (!bucketExists) {
+          console.warn('check-images bucket does not exist. Skipping image upload.')
+          // Continue without image upload rather than failing
+        } else {
+          const fileName = `${proposalId}/${Date.now()}_${checkImage.name}`
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('check-images')
+            .upload(fileName, checkImage)
+          
+          if (uploadError) {
+            console.error('Error uploading check image:', uploadError)
+            // Continue without image rather than failing entire payment
+          } else {
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+              .from('check-images')
+              .getPublicUrl(fileName)
+            
+            checkImageUrl = publicUrl
+          }
+        }
       }
 
       // Get current user

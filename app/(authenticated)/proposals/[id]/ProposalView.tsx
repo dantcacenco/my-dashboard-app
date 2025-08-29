@@ -10,6 +10,7 @@ import { PaymentStages } from './PaymentStages'
 import SendProposal from './SendProposal'
 import CreateJobModal from './CreateJobModal'
 import RecordManualPayment from '@/components/RecordManualPayment'
+import PaymentBalance from '@/components/PaymentBalance'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -256,6 +257,18 @@ export default function ProposalView({ proposal, userRole }: ProposalViewProps) 
           </div>
         </CardContent>
       </Card>
+
+      {/* Payment Balance - Show for approved proposals with detailed payment tracking */}
+      {(proposal.status === 'approved' || proposal.status === 'deposit_paid' || 
+        proposal.status === 'progress_paid' || proposal.status === 'final_paid') && (
+        <PaymentBalance
+          proposalId={proposal.id}
+          depositAmount={proposal.deposit_amount || proposal.total * 0.5}
+          progressAmount={proposal.progress_payment_amount || proposal.total * 0.3}
+          finalAmount={proposal.final_payment_amount || proposal.total * 0.2}
+          total={proposal.total}
+        />
+      )}
 
       {/* Payment Progress - Show for approved proposals */}
       {(proposal.status === 'approved' || proposal.status === 'deposit_paid' || 
