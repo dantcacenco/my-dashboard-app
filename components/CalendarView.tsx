@@ -166,6 +166,28 @@ export default function CalendarView({
     const weekStart = getWeekStart(currentDate)
     const weekDays = getWeekDays(weekStart)
     const weekEnd = weekDays[6]
+    
+    // Generate hour slots from 6 AM to 10 PM
+    const hours = []
+    for (let i = 6; i <= 22; i++) {
+      hours.push(i)
+    }
+
+    const formatHour = (hour: number) => {
+      if (hour === 0) return '12 AM'
+      if (hour === 12) return '12 PM'
+      if (hour < 12) return `${hour} AM`
+      return `${hour - 12} PM`
+    }
+
+    const getJobsForTimeSlot = (date: Date, hour: number) => {
+      const dayJobs = getJobsForDay(date)
+      return dayJobs.filter(job => {
+        if (!job.scheduled_time) return false
+        const [jobHour] = job.scheduled_time.split(':').map(Number)
+        return jobHour === hour
+      })
+    }
 
     return (
       <>
@@ -181,42 +203,61 @@ export default function CalendarView({
           </button>
         </div>
 
-        <div className="grid grid-cols-7 gap-0">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => {
-            const date = weekDays[index]
-            const dayJobs = getJobsForDay(date)
-            const isToday = date.toDateString() === today.toDateString()
-            
-            return (
-              <div key={day} className="border border-gray-200">
-                <div className="font-semibold text-center p-2 bg-gray-100 text-sm">
-                  {day}
-                </div>
-                <div className={`p-2 min-h-[200px] ${isToday ? 'bg-blue-50' : 'bg-white'}`}>
-                  <div className="font-medium text-sm mb-2">
-                    {date.getDate()}
+        <div className="overflow-x-auto">
+          <div className="min-w-[800px]">
+            {/* Header row with day names and dates */}
+            <div className="grid grid-cols-8 gap-0 sticky top-0 z-10 bg-white">
+              <div className="w-16"></div> {/* Empty cell for time column */}
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => {
+                const date = weekDays[index]
+                const isToday = date.toDateString() === today.toDateString()
+                return (
+                  <div key={day} className={`border-l border-gray-200 text-center p-2 ${isToday ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                    <div className="font-semibold text-sm">{day}</div>
+                    <div className="text-lg font-medium">{date.getDate()}</div>
                   </div>
-                  <div className="space-y-1">
-                    {dayJobs.map(job => {
-                      const displayStatus = getUnifiedDisplayStatus(job.status, job.proposals?.status)
-                      return (
-                        <div 
-                          key={job.id} 
-                          className={`text-xs p-1 rounded cursor-pointer hover:opacity-80 transition-opacity ${getStatusColor(displayStatus)}`}
-                          onClick={() => handleJobClick(job)}
-                        >
-                          <div className="font-medium">{job.job_number}</div>
-                          {job.scheduled_time && (
-                            <div className="text-[10px] opacity-75">{job.scheduled_time}</div>
-                          )}
-                        </div>
-                      )
-                    })}
+                )
+              })}
+            </div>
+
+            {/* Time slots with days */}
+            <div className="border-t border-gray-200">
+              {hours.map(hour => (
+                <div key={hour} className="grid grid-cols-8 gap-0 border-b border-gray-100">
+                  <div className="w-16 text-right pr-2 py-2 text-xs text-gray-500 border-r border-gray-200">
+                    {formatHour(hour)}
                   </div>
+                  {weekDays.map((date, dayIndex) => {
+                    const isToday = date.toDateString() === today.toDateString()
+                    const timeSlotJobs = getJobsForTimeSlot(date, hour)
+                    
+                    return (
+                      <div 
+                        key={`${hour}-${dayIndex}`} 
+                        className={`border-l border-gray-200 p-1 min-h-[60px] ${isToday ? 'bg-blue-50/30' : 'bg-white'} hover:bg-gray-50`}
+                      >
+                        {timeSlotJobs.map(job => {
+                          const displayStatus = getUnifiedDisplayStatus(job.status, job.proposals?.status)
+                          return (
+                            <div 
+                              key={job.id} 
+                              className={`text-xs p-1 mb-1 rounded cursor-pointer hover:opacity-80 transition-opacity ${getStatusColor(displayStatus)}`}
+                              onClick={() => handleJobClick(job)}
+                            >
+                              <div className="font-medium">{job.job_number}</div>
+                              {job.scheduled_time && (
+                                <div className="text-[10px] opacity-75">{job.scheduled_time}</div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
                 </div>
-              </div>
-            )
-          })}
+              ))}
+            </div>
+          </div>
         </div>
       </>
     )
