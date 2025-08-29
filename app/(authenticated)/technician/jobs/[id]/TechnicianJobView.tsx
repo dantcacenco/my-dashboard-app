@@ -269,6 +269,46 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
     }
   }
 
+  const updateJobWorkStatus = async (statusField: 'work_started' | 'roughin_done' | 'final_done') => {
+    try {
+      const currentValue = job[statusField] || false
+      const newValue = !currentValue
+      
+      // Prepare update object
+      const updateData: any = { [statusField]: newValue }
+      
+      // Add timestamp field if toggling on
+      if (newValue) {
+        const timestampField = statusField + '_at'
+        updateData[timestampField] = new Date().toISOString()
+      }
+      
+      // Update job status
+      const { error } = await supabase
+        .from('jobs')
+        .update(updateData)
+        .eq('id', job.id)
+
+      if (error) throw error
+
+      // Update local state
+      const updatedJob = { ...job, ...updateData }
+      setJob(updatedJob)
+      
+      // Show success message
+      const statusLabels = {
+        work_started: 'Work Started',
+        roughin_done: 'Rough-In Done',
+        final_done: 'Final Done'
+      }
+      
+      toast.success(`${statusLabels[statusField]} ${newValue ? 'marked complete' : 'unmarked'}`)
+    } catch (error) {
+      console.error('Error updating work status:', error)
+      toast.error('Failed to update status')
+    }
+  }
+
   const saveNotes = async () => {
     setIsSavingNotes(true)
     try {
@@ -440,39 +480,24 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
         <CardContent>
           <div className="flex flex-wrap gap-2">
             <Button
-              onClick={() => updateJobStatus('in_progress')}
-              variant={job.status === 'in_progress' ? 'default' : 'outline'}
+              onClick={() => updateJobWorkStatus('work_started')}
+              variant={job.work_started ? 'default' : 'outline'}
               size="sm"
             >
               Work Started
             </Button>
-            {job.proposals && (
-              <Button
-                onClick={() => updateJobStatus('in_progress', 'rough-in paid')}
-                variant={job.proposals.status === 'rough-in paid' ? 'default' : 'outline'}
-                size="sm"
-              >
-                Rough-In Done
-              </Button>
-            )}
             <Button
-              onClick={() => updateJobStatus('in_progress')}
-              variant={job.status === 'in_progress' ? 'default' : 'outline'}
+              onClick={() => updateJobWorkStatus('roughin_done')}
+              variant={job.roughin_done ? 'default' : 'outline'}
               size="sm"
             >
-              Job Started
+              Rough-In Done
             </Button>
             <Button
-              onClick={() => {
-                if (job.proposals) {
-                  updateJobStatus('completed', 'completed')
-                } else {
-                  updateJobStatus('completed')
-                }
-              }}
-              variant={job.status === 'completed' || job.proposals?.status === 'completed' ? 'default' : 'outline'}
+              onClick={() => updateJobWorkStatus('final_done')}
+              variant={job.final_done ? 'default' : 'outline'}
               size="sm"
-              className={job.status === 'completed' || job.proposals?.status === 'completed' ? 'bg-green-600 hover:bg-green-700' : ''}
+              className={job.final_done ? 'bg-green-600 hover:bg-green-700' : ''}
             >
               <CheckCircle className="h-4 w-4 mr-2" />
               Final Done

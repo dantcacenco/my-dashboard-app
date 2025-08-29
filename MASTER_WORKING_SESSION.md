@@ -136,32 +136,154 @@ Customer → Proposal → Job → Technician Assignment → Completion → Payme
 
 ## 📋 NEXT CHAT REQUIREMENTS
 
-### 1. Bill.com Invoice Sync Implementation
-**Understanding:** Client uses Bill.com for invoice generation/tracking ONLY
-- Not for payment processing (keep Stripe)
-- One-way sync: Service Pro → Bill.com
-- Create invoices automatically when proposals are approved
+### 1. Technician Side Navigation Memory
+**Problem:** When technician clicks job → back button, it returns to calendar view instead of last used view
+**Solution Required:**
+- Store last view preference (list/calendar) in localStorage or session
+- When navigating back, restore the last used view
+- Maintain view preference during session
+- Default to calendar only on fresh login
 
-**Implementation Steps:**
-1. Get Bill.com API credentials from client
-2. Add "Send to Bill.com" button to approved proposals
-3. Create simple API route for invoice creation
-4. Track Bill.com invoice ID in proposals table
-5. Show invoice number and sync status
+### 2. Job Status Updates - Critical Feature
+**Current Issue:** Job status buttons don't match business workflow
+**Required Changes:**
 
-**Reference:** See `BILLCOM_INVOICE_SYNC_PLAN.md` for detailed approach
+#### Database Updates Needed:
+```sql
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS work_started_at TIMESTAMP;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS roughin_completed_at TIMESTAMP;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS final_completed_at TIMESTAMP;
+```
 
-### 2. Testing & Deployment
-- Test manual payment recording in production
-- Verify all modals work correctly
-- Ensure build passes without errors
-- Deploy to production
+#### Technician View (`/technician/jobs/[id]`):
+- Replace current buttons with: "Work Started", "Rough-in Done", "Final Done"
+- Each button toggles its respective timestamp
+- Visual states: 
+  - Not done: Gray outline button
+  - Completed: Green filled with checkmark
+- Buttons should be toggleable (can undo if clicked by mistake)
 
-### 3. Future Enhancements to Consider
-- Sunbit/Affirm financing options (as mentioned in docs)
-- Bulk operations for proposals
-- Enhanced reporting for manual payments
-- Invoice status webhooks from Bill.com (later phase)
+#### Admin View (`/jobs/[id]`):
+- Add same three buttons inside "Assigned Technicians" box
+- Place buttons below each technician's name
+- Show total hours worked by that technician next to their name
+- Format: "Technician Test (8.5 hours total)"
+- Both admin and technician can toggle these statuses
+- Real-time sync between views
+
+#### Implementation Notes:
+- Use optimistic updates for better UX
+- Add API endpoint for status updates
+- Ensure proper permissions (technician can only update their own jobs)
+- Status changes should trigger notifications/logs
+
+### 3. Bill.com Invoice Integration Strategy
+
+#### Business Requirements:
+- **Critical:** Must use Bill.com (accountant has QuickBooks integration)
+- **Goal:** Convert approved proposals to Bill.com invoices
+- **Workflow:** Proposal → PDF → Bill.com → Customer
+
+#### Proposed Technical Approach:
+
+##### Phase 1: PDF Generation
+```javascript
+// Use existing proposal view as template
+// Libraries to consider:
+- Puppeteer for server-side PDF generation
+- React-pdf for client-side generation
+- Or use browser print-to-pdf API
+```
+
+##### Phase 2: Bill.com API Integration
+**Research Findings Needed:**
+1. **Authentication Method:**
+   - OAuth 2.0 or API keys?
+   - Session management requirements
+   
+2. **Invoice Creation Endpoint:**
+   - Required fields mapping:
+     - Customer info (name, email, address)
+     - Line items from proposal
+     - Payment terms (Net 30, etc.)
+     - Invoice number generation
+   
+3. **Document Attachment:**
+   - Can we attach PDF to invoice?
+   - Size limits?
+   - Format requirements?
+
+4. **Payment Tracking:**
+   - Webhook support for payment status?
+   - How to sync payment status back to our system?
+
+##### Phase 3: Implementation Plan
+```typescript
+// Proposed flow
+1. Admin clicks "Send to Bill.com" on approved proposal
+2. System generates PDF of proposal
+3. API call to Bill.com:
+   - Create/find customer
+   - Create invoice with:
+     - Total amount
+     - Due date
+     - Attached PDF as backup doc
+   - Send invoice to customer
+4. Store Bill.com invoice ID in proposals table
+5. Set up webhooks for payment tracking
+```
+
+#### API Research Tasks:
+- [ ] Review Bill.com API documentation
+- [ ] Check rate limits and pricing
+- [ ] Verify PDF attachment capabilities
+- [ ] Understand customer creation/matching logic
+- [ ] Research webhook events available
+- [ ] Check if batch operations are supported
+
+#### Database Updates for Bill.com:
+```sql
+ALTER TABLE proposals ADD COLUMN IF NOT EXISTS billcom_invoice_id VARCHAR(255);
+ALTER TABLE proposals ADD COLUMN IF NOT EXISTS billcom_invoice_number VARCHAR(100);
+ALTER TABLE proposals ADD COLUMN IF NOT EXISTS billcom_invoice_status VARCHAR(50);
+ALTER TABLE proposals ADD COLUMN IF NOT EXISTS billcom_synced_at TIMESTAMP;
+ALTER TABLE proposals ADD COLUMN IF NOT EXISTS billcom_invoice_url TEXT;
+```
+
+#### UI Changes Required:
+1. Add "Send to Bill.com" button in proposal view (after approval)
+2. Show Bill.com invoice status/number when synced
+3. Add "View in Bill.com" link when invoice exists
+4. Status indicators for sync state
+
+### 4. Testing Checklist Before Implementation
+- [ ] Verify job status updates work for both admin and technician
+- [ ] Confirm time tracking totals are accurate
+- [ ] Test view preference persistence
+- [ ] Validate Bill.com sandbox environment
+- [ ] Test PDF generation quality
+- [ ] Verify QuickBooks sync (with client's accountant)
+
+### 5. Priority Order
+1. **HIGH:** Job status buttons (Work Started, Rough-in, Final)
+2. **HIGH:** Show technician hours in assigned box
+3. **MEDIUM:** View preference memory for technician
+4. **HIGH:** Bill.com research and planning
+5. **MEDIUM:** Bill.com implementation after approval
+
+### 6. Questions for Client
+1. What specific information should appear on Bill.com invoices?
+2. Payment terms preferences (Net 30, Due on receipt, etc.)?
+3. Should we auto-send invoices or require manual approval?
+4. How to handle partial payments in Bill.com?
+5. Need access to Bill.com sandbox for testing?
+
+---
+**IMPORTANT:** Do not start Bill.com implementation until:
+1. Client provides API credentials
+2. We understand their exact workflow
+3. Testing environment is set up
+4. Accountant confirms QuickBooks mapping requirements
 
 ## 🔑 KEY ARCHITECTURAL INSIGHTS
 
@@ -358,13 +480,37 @@ database_migrations/
 ```
 
 ---
-**This document represents the current state and next requirements for Service Pro HVAC System as of Version 2.4 STABLE. 
+**This document represents the current state and next requirements for Service Pro HVAC System as of August 29, 2025.
 
-## Summary of Today's Session:
-1. ✅ Successfully integrated RecordManualPayment modal into ProposalView
-2. ✅ Created missing Select UI component for payment recording
-3. ✅ Verified button order matches requirements
-4. ✅ Created revised Bill.com integration plan focusing on invoice sync only
-5. ✅ Clarified that Bill.com is for invoicing, NOT payment processing
+## Summary of Today's Complete Session:
 
-Next session should focus on implementing the Bill.com invoice sync feature after obtaining API credentials from the client.**
+### ✅ Major Accomplishments:
+1. **Payment System Overhaul**
+   - Implemented cascading payment logic
+   - Fixed database constraints and triggers
+   - Added manual payment recording with check images
+   - Created comprehensive payment tracking UI
+
+2. **Customer Proposal Sync**
+   - Synced payment data between admin and customer views
+   - Added remaining balance calculations
+   - Implemented payment history tracking
+
+3. **UI/UX Improvements**
+   - Single column layouts for better readability
+   - Check image viewing with modal
+   - Customer link with clipboard copy
+   - Improved button organization
+
+4. **Business Logic Fixes**
+   - Create Job button based on existing job check
+   - Payment cascading with overflow protection
+   - Status updates with proper validation
+
+### 🔜 Next Session Focus:
+1. **Technician workflow improvements** (job status buttons)
+2. **Time tracking display** in assigned technicians
+3. **View preference persistence**
+4. **Bill.com API research and implementation planning**
+
+The system is now production-ready for current features. Next session will focus on technician experience and Bill.com integration.**

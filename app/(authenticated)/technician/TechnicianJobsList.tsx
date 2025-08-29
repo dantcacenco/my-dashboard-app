@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Plus, Grid, List, Calendar as CalendarIcon } from 'lucide-react'
@@ -13,8 +13,23 @@ interface TechnicianJobsListProps {
 }
 
 export default function TechnicianJobsList({ jobs, technicianName }: TechnicianJobsListProps) {
+  // Load saved view preference from localStorage or default to calendar
   const [viewMode, setViewMode] = useState<'list' | 'grid' | 'calendar'>('calendar')
   const [calendarExpanded, setCalendarExpanded] = useState(true)
+
+  // Load saved view preference on mount
+  useEffect(() => {
+    const savedView = localStorage.getItem('technicianViewMode')
+    if (savedView === 'list' || savedView === 'grid' || savedView === 'calendar') {
+      setViewMode(savedView)
+    }
+  }, [])
+
+  // Save view preference when it changes
+  const handleViewModeChange = (newMode: 'list' | 'grid' | 'calendar') => {
+    setViewMode(newMode)
+    localStorage.setItem('technicianViewMode', newMode)
+  }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
