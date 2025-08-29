@@ -6,10 +6,11 @@ import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { 
   ArrowLeft, Calendar, Clock, MapPin, User, 
   FileText, Camera, Upload, Save, CheckCircle,
-  AlertCircle, Phone, Mail
+  AlertCircle, Phone, Mail, Play, Pause, Timer
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -23,6 +24,15 @@ interface TechnicianJobViewProps {
   userId: string
 }
 
+interface TimeEntry {
+  id: string
+  job_id: string
+  technician_id: string
+  start_time: string
+  end_time: string | null
+  created_at: string
+}
+
 export default function TechnicianJobView({ job: initialJob, userId }: TechnicianJobViewProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -32,13 +42,35 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerItems, setViewerItems] = useState<any[]>([])
   const [viewerIndex, setViewerIndex] = useState(0)
-  const [notes, setNotes] = useState('')
+  const [notes, setNotes] = useState(job.notes || '')
   const [isSavingNotes, setIsSavingNotes] = useState(false)
+  const [photosExpanded, setPhotosExpanded] = useState(false)
+  const [filesExpanded, setFilesExpanded] = useState(false)  
+  // Time tracking states
+  const [isTimerRunning, setIsTimerRunning] = useState(false)
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([])
+  const [currentTimeEntry, setCurrentTimeEntry] = useState<TimeEntry | null>(null)
+  const [elapsedTime, setElapsedTime] = useState(0)
 
   useEffect(() => {
     loadJobMedia()
     loadJobFiles()
+    loadTimeEntries()
+    checkActiveTimer()
   }, [job.id])
+
+  // Timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (isTimerRunning && currentTimeEntry) {
+      interval = setInterval(() => {
+        const start = new Date(currentTimeEntry.start_time).getTime()
+        const now = new Date().getTime()
+        setElapsedTime(Math.floor((now - start) / 1000))
+      }, 1000)
+    }
+    return () => clearInterval(interval)
+  }, [isTimerRunning, currentTimeEntry])
 
   const loadJobMedia = async () => {
     const { data } = await supabase
@@ -58,6 +90,99 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
       .order('created_at', { ascending: false })
 
     setJobFiles(data || [])
+  }
+
+  const loadTimeEntries = async () => {
+    const { data } = await supabase
+      .from('time_entries')
+      .select('*')
+      .eq('job_id', job.id)
+      .eq('technician_id', userId)
+      .order('start_time', { ascending: false })
+
+    setTimeEntries(data || [])
+  }
+  const checkActiveTimer = async () => {
+    // Check if there's an active timer (no end_time)
+    const { data } = await supabase
+      .from('time_entries')
+      .select('*')
+      .eq('job_id', job.id)
+      .eq('technician_id', userId)
+      .is('end_time', null)
+      .single()
+
+    if (data) {
+      setCurrentTimeEntry(data)
+      setIsTimerRunning(true)
+      const start = new Date(data.start_time).getTime()
+      const now = new Date().getTime()
+      setElapsedTime(Math.floor((now - start) / 1000))
+    }
+  }
+
+  const startTimer = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('time_entries')
+        .insert({
+          job_id: job.id,
+          technician_id: userId,
+          start_time: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setCurrentTimeEntry(data)
+      setIsTimerRunning(true)
+      setElapsedTime(0)
+      toast.success('Timer started')
+    } catch (error) {
+      console.error('Error starting timer:', error)
+      toast.error('Failed to start timer')
+    }
+  }
+
+  const stopTimer = async () => {
+    if (!currentTimeEntry) return
+
+    try {
+      const { error } = await supabase
+        .from('time_entries')
+        .update({ end_time: new Date().toISOString() })
+        .eq('id', currentTimeEntry.id)
+
+      if (error) throw error
+
+      setIsTimerRunning(false)
+      setCurrentTimeEntry(null)
+      setElapsedTime(0)
+      loadTimeEntries()
+      toast.success('Timer stopped')
+    } catch (error) {
+      console.error('Error stopping timer:', error)
+      toast.error('Failed to stop timer')
+    }
+  }
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const calculateTotalHours = () => {
+    let total = 0
+    timeEntries.forEach(entry => {
+      if (entry.end_time) {
+        const start = new Date(entry.start_time).getTime()
+        const end = new Date(entry.end_time).getTime()
+        total += (end - start) / 1000 / 3600 // Convert to hours
+      }
+    })
+    return total.toFixed(2)
   }
 
   const getStatusColor = (status: string) => {
@@ -89,35 +214,38 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
   }
 
   const saveNotes = async () => {
-    if (!notes.trim()) return
-    
     setIsSavingNotes(true)
     try {
-      // Add note to job_notes table or append to job notes
-      const currentNotes = job.notes || ''
-      const timestamp = new Date().toLocaleString()
-      const newNote = `[${timestamp}] Technician Note:\n${notes}\n\n${currentNotes}`
-      
       const { error } = await supabase
         .from('jobs')
-        .update({ notes: newNote })
+        .update({ notes })
         .eq('id', job.id)
 
       if (error) throw error
 
-      setJob({ ...job, notes: newNote })
-      setNotes('')
-      toast.success('Note added successfully')
+      setJob({ ...job, notes })
+      toast.success('Notes saved successfully')
     } catch (error) {
-      console.error('Error saving note:', error)
-      toast.error('Failed to save note')
+      console.error('Error saving notes:', error)
+      toast.error('Failed to save notes')
     } finally {
       setIsSavingNotes(false)
     }
   }
-
   const openMediaViewer = (items: any[], index: number) => {
+    console.log('Opening media viewer with items:', items, 'at index:', index)
     setViewerItems(items)
+    setViewerIndex(index)
+    setViewerOpen(true)
+  }
+
+  const openFileViewer = (files: any[], index: number) => {
+    console.log('Opening file viewer with files:', files, 'at index:', index)
+    setViewerItems(files.map(f => ({
+      ...f,
+      photo_url: f.file_url,
+      caption: f.file_name
+    })))
     setViewerIndex(index)
     setViewerOpen(true)
   }
@@ -163,44 +291,135 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
           </Badge>
         </div>
       </div>
-
-      {/* Quick Status Update Buttons */}
+      {/* Time Sheet Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Timer className="h-5 w-5" />
+            Time Sheet
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {/* Timer Controls */}
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-4">
+                {isTimerRunning ? (
+                  <>
+                    <Button
+                      onClick={stopTimer}
+                      variant="destructive"
+                      size="lg"
+                    >
+                      <Pause className="h-5 w-5 mr-2" />
+                      Stop
+                    </Button>
+                    <div className="text-2xl font-mono font-bold text-blue-600">
+                      {formatTime(elapsedTime)}
+                    </div>
+                  </>
+                ) : (
+                  <Button
+                    onClick={startTimer}
+                    variant="default"
+                    size="lg"
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <Play className="h-5 w-5 mr-2" />
+                    Start
+                  </Button>
+                )}
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Total Hours</p>
+                <p className="text-xl font-bold">{calculateTotalHours()}</p>
+              </div>
+            </div>
+            {/* Time Entries Table */}
+            {timeEntries.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-2">Time Log</h4>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Date</th>
+                        <th className="px-4 py-2 text-left">Start Time</th>
+                        <th className="px-4 py-2 text-left">End Time</th>
+                        <th className="px-4 py-2 text-left">Duration</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {timeEntries.map((entry) => {
+                        const start = new Date(entry.start_time)
+                        const end = entry.end_time ? new Date(entry.end_time) : null
+                        const duration = end ? (end.getTime() - start.getTime()) / 1000 / 3600 : 0
+                        
+                        return (
+                          <tr key={entry.id}>
+                            <td className="px-4 py-2">{start.toLocaleDateString()}</td>
+                            <td className="px-4 py-2">{start.toLocaleTimeString()}</td>
+                            <td className="px-4 py-2">
+                              {end ? end.toLocaleTimeString() : 'In Progress'}
+                            </td>
+                            <td className="px-4 py-2">
+                              {end ? `${duration.toFixed(2)} hrs` : '-'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      {/* Status Update Card */}
       <Card>
         <CardHeader>
           <CardTitle>Update Job Status</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            {job.status !== 'in_progress' && (
-              <Button
-                onClick={() => updateJobStatus('in_progress')}
-                variant="outline"
-                size="sm"
-              >
-                <AlertCircle className="h-4 w-4 mr-2" />
-                Start Job
-              </Button>
-            )}
-            {job.status === 'in_progress' && (
-              <Button
-                onClick={() => updateJobStatus('completed')}
-                variant="default"
-                size="sm"
-                className="bg-green-600 hover:bg-green-700"
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Complete Job
-              </Button>
-            )}
+            <Button
+              onClick={() => updateJobStatus('in_progress')}
+              variant={job.status === 'in_progress' ? 'default' : 'outline'}
+              size="sm"
+            >
+              Work Started
+            </Button>
+            <Button
+              onClick={() => updateJobStatus('scheduled')}
+              variant={job.status === 'scheduled' ? 'default' : 'outline'}
+              size="sm"
+            >
+              Rough-In Done
+            </Button>
+            <Button
+              onClick={() => updateJobStatus('in_progress')}
+              variant="outline"
+              size="sm"
+            >
+              Job Started
+            </Button>
+            <Button
+              onClick={() => updateJobStatus('completed')}
+              variant={job.status === 'completed' ? 'default' : 'outline'}
+              size="sm"
+              className={job.status === 'completed' ? 'bg-green-600 hover:bg-green-700' : ''}
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Final Done
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content - Left Side */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* Photos & Videos Card */}
+        <div className="lg:col-span-2 space-y-6">          {/* Photos & Videos */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -214,40 +433,56 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
                 userId={userId}
                 onUploadComplete={loadJobMedia}
               />
-              
+
               {jobPhotos.length > 0 && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-                  {jobPhotos.map((photo, index) => (
-                    <div
-                      key={photo.id}
-                      className="relative group cursor-pointer"
-                      onClick={() => openMediaViewer(jobPhotos, index)}
-                    >
-                      {photo.media_type === 'video' ? (
-                        <VideoThumbnail 
-                          videoUrl={photo.url} 
-                          onClick={() => openMediaViewer(jobPhotos, index)}
-                        />
-                      ) : (
-                        <img
-                          src={photo.url}
-                          alt={photo.caption || 'Job photo'}
-                          className="w-full h-32 object-cover rounded hover:opacity-90 transition"
-                        />
-                      )}
-                      {photo.caption && (
-                        <p className="text-xs mt-1 text-muted-foreground truncate">
-                          {photo.caption}
-                        </p>
-                      )}
+                <div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+                    {(photosExpanded ? jobPhotos : jobPhotos.slice(0, 3)).map((photo, index) => (
+                      <div
+                        key={photo.id}
+                        className="relative group cursor-pointer"
+                        onClick={() => openMediaViewer(jobPhotos, index)}
+                      >
+                        {photo.mime_type?.startsWith('video/') ? (
+                          <VideoThumbnail 
+                            videoUrl={photo.photo_url} 
+                            onClick={() => openMediaViewer(jobPhotos, index)} 
+                          />
+                        ) : (
+                          <img
+                            src={photo.photo_url}
+                            alt={photo.caption || 'Job photo'}
+                            className="w-full h-32 object-cover rounded hover:opacity-90 transition"
+                          />
+                        )}
+                        {photo.caption && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-2 rounded-b">
+                            {photo.caption}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {jobPhotos.length > 3 && (
+                    <div className="flex justify-center mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPhotosExpanded(!photosExpanded)}
+                      >
+                        {photosExpanded ? 'Collapse' : `Expand (${jobPhotos.length - 3} more)`}
+                      </Button>
                     </div>
-                  ))}
+                  )}
                 </div>
+              )}
+
+              {jobPhotos.length === 0 && (
+                <p className="text-muted-foreground mt-4">No photos or videos uploaded yet</p>
               )}
             </CardContent>
           </Card>
-
-          {/* Files Card */}
+          {/* Documents & Files */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -261,140 +496,152 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
                 userId={userId}
                 onUploadComplete={loadJobFiles}
               />
-              
+
               {jobFiles.length > 0 && (
-                <div className="space-y-2 mt-4">
-                  {jobFiles.map((file) => (
-                    <div key={file.id} className="flex items-center justify-between p-2 border rounded">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        <div>
-                          <p className="text-sm font-medium">{file.file_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(file.created_at).toLocaleDateString()}
-                          </p>
+                <div>
+                  <div className="space-y-2 mt-4">
+                    {(filesExpanded ? jobFiles : jobFiles.slice(0, 3)).map((file, index) => (
+                      <div key={file.id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50">
+                        <div 
+                          className="flex items-center gap-3 flex-1 cursor-pointer"
+                          onClick={() => openFileViewer(jobFiles, index)}
+                        >
+                          <FileText className="h-5 w-5 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium text-blue-600 hover:text-blue-800">
+                              {file.file_name}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {new Date(file.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                      <a
-                        href={file.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-500 hover:underline text-sm"
+                    ))}
+                  </div>
+                  {jobFiles.length > 3 && (
+                    <div className="flex justify-center mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFilesExpanded(!filesExpanded)}
                       >
-                        View
-                      </a>
+                        {filesExpanded ? 'Collapse' : `Expand (${jobFiles.length - 3} more)`}
+                      </Button>
                     </div>
-                  ))}
+                  )}
                 </div>
+              )}
+
+              {jobFiles.length === 0 && (
+                <p className="text-muted-foreground mt-4">No files uploaded yet</p>
               )}
             </CardContent>
           </Card>
-
-          {/* Add Notes Card */}
+          {/* Notes */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Add Notes
+                Notes
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <textarea
+              <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add notes about the job..."
-                className="w-full p-3 border rounded-md min-h-[100px]"
+                placeholder="Add notes about this job..."
+                rows={6}
+                className="w-full"
               />
               <Button
                 onClick={saveNotes}
-                disabled={!notes.trim() || isSavingNotes}
-                className="mt-2"
+                disabled={isSavingNotes}
+                className="mt-3"
               >
                 <Save className="h-4 w-4 mr-2" />
-                {isSavingNotes ? 'Saving...' : 'Save Note'}
+                {isSavingNotes ? 'Saving...' : 'Save Notes'}
               </Button>
-              
-              {/* Display existing notes */}
-              {job.notes && (
-                <div className="mt-4 p-3 bg-gray-50 rounded-md">
-                  <p className="text-sm font-medium mb-2">Previous Notes:</p>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{job.notes}</p>
-                </div>
-              )}
             </CardContent>
           </Card>
         </div>
 
         {/* Right Sidebar */}
         <div className="space-y-6">
-          {/* Job Details Card */}
+          {/* Customer Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Customer Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <p className="font-medium">{job.customers?.name || 'N/A'}</p>
+              </div>
+              {job.customers?.email && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <span>{job.customers.email}</span>
+                </div>
+              )}
+              {job.customers?.phone && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <span>{job.customers.phone}</span>
+                </div>
+              )}
+              {(job.service_address || job.customers?.address) && (
+                <div className="flex items-start gap-2 text-sm">
+                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <span>{job.service_address || job.customers.address}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          {/* Job Details */}
           <Card>
             <CardHeader>
               <CardTitle>Job Details</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Customer</p>
-                  <p className="font-medium">{job.customers?.name || 'N/A'}</p>
-                  {job.customers?.phone && (
-                    <a href={`tel:${job.customers.phone}`} className="text-sm text-blue-600 flex items-center mt-1">
-                      <Phone className="h-3 w-3 mr-1" />
-                      {job.customers.phone}
-                    </a>
-                  )}
-                  {job.customers?.email && (
-                    <a href={`mailto:${job.customers.email}`} className="text-sm text-blue-600 flex items-center mt-1">
-                      <Mail className="h-3 w-3 mr-1" />
-                      {job.customers.email}
-                    </a>
-                  )}
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="font-medium text-sm text-muted-foreground">Job Type</h3>
+                <p>{job.job_type || 'N/A'}</p>
+              </div>
+
+              <div>
+                <h3 className="font-medium text-sm text-muted-foreground">Scheduled Date</h3>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>
+                    {job.scheduled_date 
+                      ? new Date(job.scheduled_date).toLocaleDateString('en-US', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })
+                      : 'Not scheduled'}
+                  </span>
                 </div>
-                
+              </div>
+
+              {job.scheduled_time && (
                 <div>
-                  <p className="text-sm text-muted-foreground">Job Type</p>
-                  <p className="font-medium">{job.job_type}</p>
-                </div>
-                
-                <div>
-                  <p className="text-sm text-muted-foreground">Job Overview</p>
-                  <div className="font-medium">
-                    {formatJobOverview(job.description)}
+                  <h3 className="font-medium text-sm text-muted-foreground">Scheduled Time</h3>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span>{job.scheduled_time}</span>
                   </div>
                 </div>
-                
-                <div>
-                  <p className="text-sm text-muted-foreground">Scheduled Date</p>
-                  <p className="font-medium">
-                    {job.scheduled_date ? new Date(job.scheduled_date).toLocaleDateString() : 'Not scheduled'}
-                  </p>
-                </div>
-                
-                {job.scheduled_time && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Scheduled Time</p>
-                    <p className="font-medium">
-                      {job.scheduled_time}
-                    </p>
-                  </div>
-                )}
-                
-                <div>
-                  <p className="text-sm text-muted-foreground">Service Address</p>
-                  <p className="font-medium">
-                    {job.service_address || 'No address specified'}
-                  </p>
-                  {job.service_address && (
-                    <a
-                      href={`https://maps.google.com/?q=${encodeURIComponent(job.service_address)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 flex items-center mt-1"
-                    >
-                      <MapPin className="h-3 w-3 mr-1" />
-                      Get Directions
-                    </a>
-                  )}
+              )}
+
+              <div>
+                <h3 className="font-medium text-sm text-muted-foreground">Job Overview</h3>
+                <div className="text-sm mt-2">
+                  {formatJobOverview(job.description)}
                 </div>
               </div>
             </CardContent>
@@ -402,7 +649,7 @@ export default function TechnicianJobView({ job: initialJob, userId }: Technicia
         </div>
       </div>
 
-      {/* Media Viewer */}
+      {/* Media Viewer Modal */}
       {viewerOpen && (
         <MediaViewer
           items={viewerItems}
