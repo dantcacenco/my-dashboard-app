@@ -169,9 +169,9 @@ export default function CalendarView({
     const weekDays = getWeekDays(weekStart)
     const weekEnd = weekDays[6]
     
-    // Generate hour slots from 6 AM to 10 PM
+    // Generate hour slots from 7 AM to 7 PM (12 hours)
     const hours = []
-    for (let i = 6; i <= 22; i++) {
+    for (let i = 7; i <= 19; i++) {
       hours.push(i)
     }
 
