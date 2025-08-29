@@ -77,12 +77,28 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
   // Check for payment success on mount
   useEffect(() => {
     const payment = searchParams.get('payment')
+    console.log('Payment param detected:', payment)
+    console.log('Current URL:', window.location.href)
+    console.log('Current proposal status:', proposal.status)
+    console.log('Current deposit_paid_at:', proposal.deposit_paid_at)
+    
     if (payment === 'success') {
+      console.log('Payment success detected - refreshing proposal data')
       // Force refresh multiple times to ensure we get the latest data
       refreshProposal()
       // Additional refresh after a short delay to handle any race conditions
-      setTimeout(() => refreshProposal(), 1000)
-      setTimeout(() => refreshProposal(), 2000)
+      setTimeout(() => {
+        console.log('Delayed refresh 1')
+        refreshProposal()
+      }, 1000)
+      setTimeout(() => {
+        console.log('Delayed refresh 2')
+        refreshProposal()
+      }, 2000)
+      setTimeout(() => {
+        console.log('Delayed refresh 3')
+        refreshProposal()
+      }, 3000)
     }
   }, [searchParams])
 
@@ -233,6 +249,8 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
           break
       }
 
+      console.log('Initiating payment for stage:', stage, 'Amount:', amount)
+
       // Create payment session
       const response = await fetch('/api/create-payment', {
         method: 'POST',
@@ -250,8 +268,10 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
       })
 
       const data = await response.json()
+      console.log('Payment session created:', data)
       
       if (data.checkout_url) {
+        console.log('Redirecting to Stripe:', data.checkout_url)
         // Redirect to Stripe checkout
         window.location.href = data.checkout_url
       } else {
@@ -609,7 +629,18 @@ export default function CustomerProposalView({ proposal: initialProposal, token 
 
                 {/* Payment Progress */}
                 <div className="mt-8 bg-gray-50 rounded-lg p-6">
-                  <h3 className="font-semibold mb-3">Payment Progress</h3>
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-semibold">Payment Progress</h3>
+                    <button
+                      onClick={() => {
+                        console.log('Manual refresh triggered')
+                        refreshProposal()
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Refresh Status
+                    </button>
+                  </div>
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Total Project Cost</span>
